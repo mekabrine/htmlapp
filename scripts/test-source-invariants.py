@@ -432,3 +432,9 @@ assert 'case "ai.cancel":' in native
 assert 'aiTasks.values.forEach { $0.cancel() }' in native
 assert '"remainingBudget"' in native and '"totalRequests"' in native
 assert 'args["json"] as? Bool == true' in native
+
+# Regression: duplicated top-level Vision dispatch labels make the later
+# NaturalLanguage branch misleading and can hide routing defects.
+assert 'case "vision.recognizeText", "vision.scanCodes", "vision.classifyImage", "vision.detectFaces", "language.detect"' not in native, "Duplicate Vision dispatch in language branch"
+for method in ("vision.recognizeText", "vision.scanCodes", "vision.classifyImage", "vision.detectFaces"):
+    assert native.count('case "' + method + '"') >= 1, f"Missing Vision dispatch: {method}"
