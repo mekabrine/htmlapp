@@ -93,7 +93,7 @@ struct HTMLAppMain: App {
                 }
                 .task { await store.syncICloud() }
                 .onReceive(NotificationCenter.default.publisher(for: HTMLAppPortableDataStore.localDataChanged)) { _ in
-                    if HTMLAppICloudPreferences.includeData { store.requestICloudSync() }
+                    if HTMLAppICloudPreferences.includeData { store.portableDataNeedsSync() }
                 }
                 .onChange(of: scenePhase) { phase in
                     if phase == .active { store.requestICloudSync() }
@@ -236,6 +236,14 @@ final class AppStore: ObservableObject {
     @Published var pendingWebsiteUpdate: SavedHTMLApp?
     @Published var errorMessage: String?
     @Published var notice: String?
+    @Published private(set) var isSyncing = false
+    @Published private(set) var syncStatus = "Not checked yet"
+    @Published private(set) var syncIssue: String?
+    @Published private(set) var syncPendingChanges = false
+    @Published private(set) var lastSyncCheck = UserDefaults.standard.object(forKey: "htmlapp.sync.lastCheck") as? Date
+    @Published private(set) var syncConflicts: [HTMLAppSyncConflict] = []
+    @Published private(set) var lastPreparedBackup = UserDefaults.standard.object(forKey: "htmlapp.backup.lastPrepared") as? Date
+    private var syncRequestedAgain = false
     @Published private(set) var libraryLoadBlocked = false
     @Published var showLibraryRecoveryAlert = false
     @Published private(set) var libraryCorruptCopyName: String?
@@ -257,6 +265,10 @@ final class AppStore: ObservableObject {
         libraryURL = base.appendingPathComponent("library.json")
         load()
         loadFoldersAndMigrate()
+        if let data = try? Data(contentsOf: syncConflictsURL),
+           let conflicts = try? JSONDecoder().decode([HTMLAppSyncConflict].self, from: data) {
+            syncConflicts = conflicts
+        }
         if !libraryLoadBlocked {
             FolderAppLinkStore.shared.prune(
                 validAppIDs: Set(apps.map(\.id)),
@@ -265,58 +277,201 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// Pull remote changes without deleting local apps. iCloud absence never
-    /// clears or blocks the local Library.
+    /// Exchange snapshots without replacing concurrent local edits. Conflicts
+    /// survive restarts and are resolved from Settings or Backup & Transfer.
     func syncICloud() async {
-        guard HTMLAppICloudPreferences.enabled, !libraryLoadBlocked else { return }
-        let snapshot = apps
-        let portable = HTMLAppICloudPreferences.includeData
-            ? Dictionary(uniqueKeysWithValues: apps.map { ($0.id, HTMLAppPortableDataStore.all(appID: $0.id)) })
-            : [:]
-        let incoming = await HTMLAppICloudSync.shared.exchange(localApps: snapshot, localFolders: folders, localData: portable, localDeleted: HTMLAppICloudPreferences.deleted)
-        guard HTMLAppICloudPreferences.enabled, !libraryLoadBlocked else { return }
-        var changed = false
-        var foldersChanged = false
-        for cloud in incoming.folders where !folders.contains(where: { $0.id == cloud.id }) {
-            folders.append(cloud)
-            foldersChanged = true
-        }
-        if foldersChanged { persistFolders() }
-        var deleted = HTMLAppICloudPreferences.deleted
-        for (id, time) in incoming.deleted {
-            deleted[id] = max(deleted[id] ?? 0, time)
-        }
-        HTMLAppICloudPreferences.deleted = deleted
-        let oldCount = apps.count
-        apps.removeAll { item in (deleted[item.id] ?? 0) > item.updatedAt.timeIntervalSince1970 }
-        if apps.count != oldCount { changed = true }
-        for cloud in incoming.apps {
-            guard (deleted[cloud.id] ?? 0) <= cloud.updatedAt.timeIntervalSince1970 else { continue }
-            if let index = apps.firstIndex(where: { $0.id == cloud.id }) {
-                if cloud.updatedAt > apps[index].updatedAt {
-                    apps[index] = cloud
-                    changed = true
-                }
-            } else {
-                var imported = cloud
-                if let folderID = imported.folderID, !folders.contains(where: { $0.id == folderID }) {
-                    imported.folderID = nil
-                }
-                apps.append(imported)
-                changed = true
+        guard HTMLAppICloudPreferences.enabled, !libraryLoadBlocked, !isSyncing else { return }
+        isSyncing = true
+        syncIssue = nil
+        defer {
+            isSyncing = false
+            if syncRequestedAgain {
+                syncRequestedAgain = false
+                requestICloudSync()
             }
         }
-        for (id, values) in incoming.data where HTMLAppICloudPreferences.includeData {
-            // No cross-app access: only the matching saved app owns its store.
-            guard apps.contains(where: { $0.id == id }) else { continue }
-            HTMLAppPortableDataStore.replace(appID: id, values: values)
+        let snapshot = apps
+        do {
+            var portable: [String: [String: String]] = [:]
+            if HTMLAppICloudPreferences.includeData {
+                for app in snapshot { portable[app.id] = try HTMLAppPortableDataStore.allChecked(appID: app.id) }
+            }
+            let incoming = try await HTMLAppICloudSync.shared.exchange(localApps: snapshot, localFolders: folders, localData: portable, localDeleted: HTMLAppICloudPreferences.deleted)
+            guard HTMLAppICloudPreferences.enabled, !libraryLoadBlocked else { return }
+            var changed = false
+            var sourceAcknowledgements: [SavedHTMLApp] = []
+            var foldersChanged = false
+            for cloud in incoming.folders where !folders.contains(where: { $0.id == cloud.id }) {
+                folders.append(cloud)
+                foldersChanged = true
+            }
+            if foldersChanged { persistFolders() }
+            var deleted = HTMLAppICloudPreferences.deleted
+            for (id, time) in incoming.deleted { deleted[id] = max(deleted[id] ?? 0, time) }
+            HTMLAppICloudPreferences.deleted = deleted
+            for app in apps where (deleted[app.id] ?? 0) > app.updatedAt.timeIntervalSince1970 {
+                try preserveSyncRecovery(for: app)
+            }
+            let oldCount = apps.count
+            apps.removeAll { item in (deleted[item.id] ?? 0) > item.updatedAt.timeIntervalSince1970 }
+            if apps.count != oldCount { changed = true }
+            for cloud in incoming.apps {
+                guard (deleted[cloud.id] ?? 0) <= cloud.updatedAt.timeIntervalSince1970 else { continue }
+                if let index = apps.firstIndex(where: { $0.id == cloud.id }) {
+                    let current = apps[index]
+                    let sourceChangedWhileSyncing = snapshot.first(where: { $0.id == cloud.id }).map {
+                        HTMLAppICloudSync.sourceValues($0) != HTMLAppICloudSync.sourceValues(current)
+                    } ?? true
+                    if incoming.sourceConflicts.contains(cloud.id) || incoming.dataConflicts.contains(cloud.id) ||
+                        syncConflicts.contains(where: { $0.id == cloud.id }) || sourceChangedWhileSyncing {
+                        try stageSyncConflict(app: current, cloudApp: cloud, cloudData: nil)
+                    } else if current != cloud {
+                        if HTMLAppICloudSync.sourceValues(current) != HTMLAppICloudSync.sourceValues(cloud) {
+                            try preserveSyncRecovery(for: current)
+                        }
+                        var imported = cloud
+                        if let folderID = imported.folderID, !folders.contains(where: { $0.id == folderID }) { imported.folderID = nil }
+                        apps[index] = imported
+                        changed = true
+                        sourceAcknowledgements.append(cloud)
+                    }
+                } else {
+                    var imported = cloud
+                    if let folderID = imported.folderID, !folders.contains(where: { $0.id == folderID }) { imported.folderID = nil }
+                    apps.append(imported)
+                    changed = true
+                    sourceAcknowledgements.append(cloud)
+                }
+            }
+            for (id, values) in incoming.data where HTMLAppICloudPreferences.includeData {
+                guard let app = apps.first(where: { $0.id == id }) else { continue }
+                let current = try HTMLAppPortableDataStore.allChecked(appID: id)
+                guard current != values else { continue }
+                if incoming.dataConflicts.contains(id) || syncConflicts.contains(where: { $0.id == id }) ||
+                    (portable[id] ?? [:]) != current {
+                    try stageSyncConflict(app: app, cloudApp: nil, cloudData: values)
+                } else {
+                    try preserveSyncRecovery(for: app)
+                    try HTMLAppPortableDataStore.replaceChecked(appID: id, values: values)
+                    HTMLAppSyncMergePolicy.acknowledge(values, id: id, kind: "data")
+                }
+            }
+            if changed {
+                errorMessage = nil
+                save()
+                if let errorMessage { throw NSError(domain: "HTMLAppSync", code: 1, userInfo: [NSLocalizedDescriptionKey: errorMessage]) }
+            }
+            for app in sourceAcknowledgements {
+                HTMLAppSyncMergePolicy.acknowledge(HTMLAppICloudSync.sourceValues(app), id: app.id, kind: "source")
+            }
+            syncPendingChanges = syncRequestedAgain
+            lastSyncCheck = Date()
+            if let lastSyncCheck { UserDefaults.standard.set(lastSyncCheck, forKey: "htmlapp.sync.lastCheck") }
+            syncStatus = !syncConflicts.isEmpty ? "Changes need your review" :
+                incoming.pendingDownloads > 0 ? "Waiting for \(incoming.pendingDownloads) iCloud file(s)" : "iCloud files checked"
+            if incoming.pendingDownloads > 0 { syncIssue = "Some files are still downloading or could not be read. They were kept untouched. Check again after iCloud finishes." }
+        } catch {
+            syncStatus = "Sync needs attention"
+            syncIssue = error.localizedDescription
+            syncPendingChanges = true
+            // Avoid an automatic retry loop after a filesystem/account failure.
+            syncRequestedAgain = false
         }
-        if changed { save() }
+    }
+
+    func portableDataNeedsSync() {
+        syncPendingChanges = true
+        requestICloudSync()
     }
 
     func requestICloudSync() {
         guard HTMLAppICloudPreferences.enabled else { return }
+        if isSyncing { syncRequestedAgain = true; return }
         Task { await syncICloud() }
+    }
+
+    private var syncConflictsURL: URL { libraryURL.deletingLastPathComponent().appendingPathComponent("sync-conflicts.json") }
+    private var syncRecoveryRoot: URL { libraryURL.deletingLastPathComponent().appendingPathComponent("SyncRecovery", isDirectory: true) }
+    var latestSyncRecoveryURL: URL? {
+        ((try? FileManager.default.contentsOfDirectory(at: syncRecoveryRoot, includingPropertiesForKeys: [.creationDateKey])) ?? [])
+            .filter { $0.pathExtension == "zip" }.sorted { $0.lastPathComponent > $1.lastPathComponent }.first
+    }
+
+    private func persistSyncConflicts(_ conflicts: [HTMLAppSyncConflict]) throws {
+        try JSONEncoder().encode(conflicts).write(to: syncConflictsURL, options: .atomic)
+        syncConflicts = conflicts
+    }
+
+    private func stageSyncConflict(app: SavedHTMLApp, cloudApp: SavedHTMLApp?, cloudData: [String: String]?) throws {
+        var items = syncConflicts
+        let index = items.firstIndex(where: { $0.id == app.id })
+        var item = index.map { items[$0] } ?? HTMLAppSyncConflict(id: app.id, name: app.name)
+        if let cloudApp {
+            item.cloudApp = cloudApp
+            item.localSourceHash = HTMLAppSyncMergePolicy.fingerprint(HTMLAppICloudSync.sourceValues(app))
+        }
+        if let cloudData {
+            item.cloudData = cloudData
+            item.localDataHash = HTMLAppSyncMergePolicy.fingerprint(try HTMLAppPortableDataStore.allChecked(appID: app.id))
+        }
+        item.receivedAt = Date()
+        if let index { items[index] = item } else { items.append(item) }
+        try persistSyncConflicts(items)
+    }
+
+    private func preserveSyncRecovery(for app: SavedHTMLApp) throws {
+        _ = try HTMLAppPortableDataStore.allChecked(appID: app.id)
+        let archive = try HTMLAppPackageTransfer.createArchive(apps: [app], folders: folders, links: [])
+        let fm = FileManager.default
+        try fm.createDirectory(at: syncRecoveryRoot, withIntermediateDirectories: true)
+        let name = String(format: "%020.3f", Date().timeIntervalSince1970) + "-" + UUID().uuidString + ".htmlapp.zip"
+        try fm.copyItem(at: archive, to: syncRecoveryRoot.appendingPathComponent(name))
+        let backups = try fm.contentsOfDirectory(at: syncRecoveryRoot, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "zip" }.sorted { $0.lastPathComponent > $1.lastPathComponent }
+        for old in backups.dropFirst(10) { try? fm.removeItem(at: old) }
+    }
+
+    func resolveSyncConflict(_ reviewed: HTMLAppSyncConflict, useCloud: Bool) async throws {
+        guard !isSyncing else { throw HTMLAppSyncError.changedDuringReview }
+        guard let conflict = syncConflicts.first(where: { $0.id == reviewed.id }),
+              conflict.receivedAt == reviewed.receivedAt,
+              let current = apps.first(where: { $0.id == conflict.id }) else { throw HTMLAppSyncError.changedDuringReview }
+        let localData = try HTMLAppPortableDataStore.allChecked(appID: current.id)
+        let sourceHash = HTMLAppSyncMergePolicy.fingerprint(HTMLAppICloudSync.sourceValues(current))
+        let dataHash = HTMLAppSyncMergePolicy.fingerprint(localData)
+        guard conflict.localSourceHash.map({ $0 == sourceHash }) ?? true,
+              conflict.localDataHash.map({ $0 == dataHash }) ?? true else { throw HTMLAppSyncError.changedDuringReview }
+        isSyncing = true
+        defer { isSyncing = false }
+        try preserveSyncRecovery(for: current)
+        var chosen = useCloud ? conflict.cloudApp ?? current : current
+        chosen.updatedAt = Date()
+        if let folderID = chosen.folderID, !folders.contains(where: { $0.id == folderID }) { chosen.folderID = nil }
+        try await HTMLAppICloudSync.shared.resolveConflict(conflict,
+            replacementApp: !useCloud && conflict.cloudApp != nil ? chosen : nil,
+            replacementData: !useCloud && conflict.cloudData != nil ? localData : nil)
+        guard HTMLAppICloudPreferences.enabled,
+              let index = apps.firstIndex(where: { $0.id == current.id }),
+              HTMLAppSyncMergePolicy.fingerprint(HTMLAppICloudSync.sourceValues(apps[index])) == sourceHash,
+              HTMLAppSyncMergePolicy.fingerprint(try HTMLAppPortableDataStore.allChecked(appID: current.id)) == dataHash else {
+            throw HTMLAppSyncError.changedDuringReview
+        }
+        if useCloud, let values = conflict.cloudData {
+            try HTMLAppPortableDataStore.replaceChecked(appID: current.id, values: values)
+            HTMLAppSyncMergePolicy.acknowledge(values, id: current.id, kind: "data")
+        }
+        if conflict.cloudApp != nil {
+            apps[index] = chosen
+            errorMessage = nil
+            save()
+            if let errorMessage { throw NSError(domain: "HTMLAppSync", code: 2, userInfo: [NSLocalizedDescriptionKey: errorMessage]) }
+            HTMLAppSyncMergePolicy.acknowledge(HTMLAppICloudSync.sourceValues(chosen), id: current.id, kind: "source")
+        }
+        try persistSyncConflicts(syncConflicts.filter { $0.id != conflict.id })
+        syncStatus = syncConflicts.isEmpty ? "Sync choice saved" : "Changes need your review"
+        syncIssue = nil
+        notice = "Sync choice saved. A recovery backup is available in Backup & Transfer."
+        syncRequestedAgain = false
     }
 
     func prepareNewItemDestination(_ folderID: String?) {
@@ -912,6 +1067,8 @@ final class AppStore: ObservableObject {
                 folders: folders,
                 links: links
             )
+            lastPreparedBackup = Date()
+            if let lastPreparedBackup { UserDefaults.standard.set(lastPreparedBackup, forKey: "htmlapp.backup.lastPrepared") }
             SharePresenter.present(items: [url])
             notice = selected.count == apps.count
                 ? "HTMLApp backup ready to share."
@@ -1349,6 +1506,7 @@ final class AppStore: ObservableObject {
                 try previous.write(to: libraryBackupURL, options: .atomic)
             }
             try result.write(to: libraryURL, options: .atomic)
+            syncPendingChanges = true
             requestICloudSync()
         } catch {
             errorMessage = "The library couldn't be saved. Existing data and its backup were kept."

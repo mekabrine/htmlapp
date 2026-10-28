@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       run_widget_simulator_tests:
-        description: "Also run slower simulator-based widget tests"
+        description: "Also run simulator widget and app experience policy tests"
         required: false
         type: boolean
         default: false
@@ -124,6 +124,9 @@ jobs:
 
       - name: Test JavaScript widget rejection diagnostics
         run: node scripts/test-widget-bridge.js
+
+      - name: Test bundled starter app workflows
+        run: node scripts/test-starter-apps.js
 
       - name: Check Swift source syntax before dependency compilation
         shell: bash

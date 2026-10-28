@@ -69,6 +69,9 @@ struct AIGenerationView: View {
     @State private var rewriteCheckedPrompt: String?
     @State private var showingChange = false
     @State private var saving = false
+    @State private var showingVersionComparison = false
+    @State private var showingProviderSetup = false
+    @State private var retainedFailure: String?
     @State private var showCancelConfirmation = false
     @State private var uiPolishNotice: String?
     @State private var didLoadExisting = false
@@ -151,6 +154,19 @@ struct AIGenerationView: View {
                 Text("You practiced Forge without sending an AI request or saving anything to your Library.")
             }
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showingVersionComparison) {
+                HTMLAppVersionComparisonView(
+                    before: unsavedEditHistory.last ?? existingApp?.html ?? session.streamedHTML,
+                    after: session.streamedHTML)
+            }
+            .sheet(isPresented: $showingProviderSetup) {
+                NavigationStack {
+                    AIConfigurationSettingsView()
+                        .toolbar { ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showingProviderSetup = false }
+                        } }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -165,6 +181,14 @@ struct AIGenerationView: View {
                         }
                     }
                     .disabled(saving)
+                }
+                if !session.streamedHTML.isEmpty && !session.isWorking &&
+                    (!unsavedEditHistory.isEmpty || existingApp != nil) {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { showingVersionComparison = true } label: {
+                            Label("Compare Versions", systemImage: "rectangle.on.rectangle")
+                        }
+                    }
                 }
                 if !unsavedEditHistory.isEmpty {
                     ToolbarItem(placement: .confirmationAction) {
@@ -273,12 +297,13 @@ struct AIGenerationView: View {
                 set: { if !$0 { session.errorMessage = nil } }
             )) {
                 Button(retryButtonTitle) {
+                    retainedFailure = nil
                     session.errorMessage = nil
                     retryLastFailure()
                 }
-                Button("Dismiss", role: .cancel) { session.errorMessage = nil }
+                Button("Keep Draft", role: .cancel) { session.errorMessage = nil }
             } message: {
-                Text(session.errorMessage ?? "")
+                Text((session.errorMessage ?? "") + "\n\n" + ForgeRecoveryAdvice.message(for: session.errorMessage ?? ""))
             }
             .confirmationDialog("Resume Forge draft?", isPresented: $showDraftRecovery, titleVisibility: .visible) {
                 Button("Continue Generation") { continueRecoveredDraft() }
@@ -515,7 +540,11 @@ struct AIGenerationView: View {
         .onChange(of: session.streamedHTML) { html in
             milestones.inspectHTML(html)
         }
+        .onChange(of: session.isWorking) { working in
+            if working { retainedFailure = nil }
+        }
         .onChange(of: session.errorMessage) { message in
+            if let message { retainedFailure = message }
             if let message, AIDebugTraceStore.shared.isActive {
                 AIDebugTraceStore.shared.append("ERROR DETAILS",
                     "Phase: \(session.phase)\nFailure: \(message)\nHTML: \(session.streamedHTML.utf8.count) bytes")
@@ -575,8 +604,37 @@ struct AIGenerationView: View {
         return "Retry"
     }
 
+    private func failureSection(_ error: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Draft preserved", systemImage: "arrow.counterclockwise.circle").font(.headline)
+            Text(ForgeRecoveryAdvice.message(for: error)).font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button(retryButtonTitle) { retainedFailure = nil; session.errorMessage = nil; retryLastFailure() }
+                    .buttonStyle(.bordered)
+                Button("AI Settings") { showingProviderSetup = true }.buttonStyle(.bordered)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
     private var promptView: some View {
         Form {
+            if let retainedFailure { failureSection(retainedFailure) }
+            if existingApp == nil && importedDraft == nil && !demoMode {
+                Section {
+                    ForgeStarterPicker { starter, instant in
+                        prompt = starter.prompt
+                        if instant {
+                            session.beginDraft(prompt: starter.prompt)
+                            session.description = starter.detail
+                            session.phase = "Ready to review"
+                            session.acceptExternalHTML(starter.html)
+                            retainedFailure = nil
+                            uiPolishNotice = "Try it with sample entries, then Save App. Trial entries are not copied into the saved app. AI setup is optional until you ask for an AI edit."
+                        }
+                    }
+                }
+            }
             Section {
                 if demoMode {
                     Label("PRACTICE 1 OF 5 · Edit the sample idea below, then tap Make My App. No AI calls or Library changes will occur.", systemImage: "hand.tap.fill")
@@ -724,8 +782,9 @@ struct AIGenerationView: View {
 
             if !AISettingsStore.configuration.isConfigured && !demoMode {
                 Section {
-                    Label("Connect your AI in Settings to start making apps.", systemImage: "exclamationmark.triangle")
+                    Text("Instant starters work without an AI account. Connect a provider when you want to generate or customize with AI.")
                         .foregroundStyle(.secondary)
+                    Button("Set Up AI Provider") { showingProviderSetup = true }
                 }
             }
 
@@ -1176,7 +1235,7 @@ struct AIGenerationView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(browserResearch.isBrowsing ? "Researching your app" : session.isWorking ? "Creating your app" : "Your app is ready")
+                        Text(retainedFailure != nil ? "Your draft is kept" : browserResearch.isBrowsing ? "Researching your app" : session.isWorking ? "Creating your app" : "Your app is ready")
                             .font(.headline)
                         Text(browserResearch.isBrowsing ? browserResearch.status : session.phase)
                             .font(.subheadline)
@@ -1231,6 +1290,13 @@ struct AIGenerationView: View {
                 .padding(.vertical, 11)
                 .background(.bar)
 
+                ForgeStageStrip(phase: browserResearch.isBrowsing ? "Planning research" : session.phase,
+                                working: session.isWorking || browserResearch.isBrowsing,
+                                hasHTML: !session.streamedHTML.isEmpty, failed: retainedFailure != nil)
+                    .padding(.horizontal, 14).padding(.vertical, 6)
+                if let retainedFailure, !session.isWorking && !browserResearch.isBrowsing {
+                    failureSection(retainedFailure).padding(.horizontal, 14)
+                }
                 if demoMode && !session.isWorking {
                     practiceGuide
                 }
@@ -1247,7 +1313,7 @@ struct AIGenerationView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     HTMLWebView(
-                        html: session.streamedHTML.isEmpty ? loadingHTML : session.streamedHTML,
+                        html: session.streamedHTML.isEmpty ? loadingHTML : (existingApp == nil ? HTMLAppTrialDocument.prepare(session.streamedHTML) : session.streamedHTML),
                         appID: existingApp?.id ?? "PREVIEW",
                         onJavaScriptError: { error in
                             if !runtimeErrors.contains(error) && runtimeErrors.count < 30 { runtimeErrors.append(error) }
@@ -2029,6 +2095,7 @@ Requested edit:
             return
         }
         saving = true
+        store.errorMessage = nil
         Task {
             var html = session.streamedHTML
             if let icon = session.renderedIconData {
@@ -2036,6 +2103,11 @@ Requested edit:
             }
             if let existingApp {
                 await store.updateFromAI(existingApp, html: html, summary: session.description.isEmpty ? existingApp.summary : session.description, note: session.lastEditSummary.isEmpty ? "AI changed this app." : session.lastEditSummary)
+                guard store.errorMessage == nil else {
+                    saving = false
+                    session.errorMessage = store.errorMessage
+                    return
+                }
                 if let icon = session.renderedIconData {
                     store.setGeneratedIcon(icon, for: existingApp)
                 }
@@ -2048,6 +2120,11 @@ Requested edit:
                     workTracker.associateDraft(with: added.id)
                     if let selectedStyle { ForgeStyleReferenceStore.save(selectedStyle, for: added.id) }
                 }
+            }
+            guard store.errorMessage == nil else {
+                saving = false
+                session.errorMessage = store.errorMessage
+                return
             }
             AIDebugTraceStore.shared.finish(outcome: "Saved")
             session.clearCheckpoint()

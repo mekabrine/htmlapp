@@ -113,6 +113,14 @@ enum HTMLPermission: String, CaseIterable, Identifiable {
     }
 }
 
+enum HTMLAppPermissionPrompt {
+    static func message(for permission: HTMLPermission, appName: String) -> String {
+        let name = String(appName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+        return "“\(name.isEmpty ? "This saved app" : name)” is requesting \(permission.title.lowercased()).\n\n" +
+            permission.detail + "\n\nYou can decline and keep using features that don’t need this access. Change this choice later in the app’s Permissions page."
+    }
+}
+
 enum HTMLPermissionChoice: String, CaseIterable, Identifiable {
     case ask
     case allow
@@ -162,13 +170,15 @@ enum HTMLPermissionStore {
 final class NativePermissionCoordinator: NSObject, CLLocationManagerDelegate {
     private weak var webView: WKWebView?
     private let appID: String
+    private let appName: String
     private var locationManager: CLLocationManager?
     private var pendingLocationCallbacks: [String] = []
     private var locationTimeouts: [String: DispatchWorkItem] = [:]
 
-    init(webView: WKWebView, appID: String) {
+    init(webView: WKWebView, appID: String, appName: String = "This saved app") {
         self.webView = webView
         self.appID = appID
+        self.appName = appName
         super.init()
     }
 
@@ -369,7 +379,7 @@ final class NativePermissionCoordinator: NSObject, CLLocationManagerDelegate {
             }
             let alert = UIAlertController(
                 title: "Allow \(permission.title)?",
-                message: "This saved HTML app wants to use \(permission.title.lowercased()). You can change this later from its Permissions page.",
+                message: HTMLAppPermissionPrompt.message(for: permission, appName: appName),
                 preferredStyle: .alert
             )
             alert.addAction(UIAlertAction(title: "Don’t Allow", style: .cancel) { _ in

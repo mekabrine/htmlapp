@@ -12,6 +12,10 @@ HTMLApp is an iOS 16+ app for creating, saving, running, editing, and privately 
 - Siri/Shortcuts entry points, debug history, and an onboarding walkthrough
 - Manual-only device IPA builds; app and widget version metadata is validated before packaging
 
+## Everyday app experience
+
+Instant offline starters, version comparison and undo, favorites/recent quick access, contextual permission prompts, and iCloud status/conflict review are described in [Everyday app experience](docs/everyday-app-experience.md), including validation and recovery behavior.
+
 ## Building
 
 The active XcodeGen project is `project.yml`. It compiles `HTMLAppV3/`, `HTMLAppShared/`, `HTMLApp/WebClipSupport.swift`, widget sources, and app icon assets. The older app entry points were removed because they were not part of the target.

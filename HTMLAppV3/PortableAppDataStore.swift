@@ -41,6 +41,17 @@ enum HTMLAppPortableDataStore {
         queue.sync { load(appID: appID) }
     }
 
+    /// Sync must distinguish missing data from an unreadable existing file.
+    static func allChecked(appID: String) throws -> [String: String] {
+        try queue.sync { try loadChecked(appID: appID) }
+    }
+
+    private static func loadChecked(appID: String) throws -> [String: String] {
+        let url = fileURL(appID: appID)
+        guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
+        return try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
+    }
+
     static func replace(appID: String, values: [String: String]) {
         let removed = Set(all(appID: appID).keys).subtracting(values.keys)
         queue.sync { persist(values, appID: appID) }
@@ -50,6 +61,17 @@ enum HTMLAppPortableDataStore {
         for (key, value) in values {
             HTMLAppWidgetStore.updateFromPortableData(appID: appID, key: key, value: value)
         }
+        HTMLAppWidgetReloadCoordinator.request()
+    }
+
+    static func replaceChecked(appID: String, values: [String: String]) throws {
+        let removed = try queue.sync { () throws -> Set<String> in
+            let previous = try loadChecked(appID: appID)
+            try persistChecked(values, appID: appID)
+            return Set(previous.keys).subtracting(values.keys)
+        }
+        for key in removed { HTMLAppWidgetStore.updateFromPortableData(appID: appID, key: key, value: nil) }
+        for (key, value) in values { HTMLAppWidgetStore.updateFromPortableData(appID: appID, key: key, value: value) }
         HTMLAppWidgetReloadCoordinator.request()
     }
 

@@ -293,8 +293,8 @@ struct HTMLWebView: UIViewRepresentable {
                 shakeExit = HTMLAppFaceDownShakeExit(webView: webView)
                 shakeExit?.start()
             }
-            nativePermissions = NativePermissionCoordinator(webView: webView, appID: appID)
-            locationPermissions = HTMLLocationBridge(webView: webView, appID: appID)
+            nativePermissions = NativePermissionCoordinator(webView: webView, appID: appID, appName: HTMLTools.title(in: initialHTML) ?? "This saved app")
+            locationPermissions = HTMLLocationBridge(webView: webView, appID: appID, appName: HTMLTools.title(in: initialHTML) ?? "This saved app")
             nativeBridge = HTMLNativeAPIBridge(webView: webView, appID: appID, permissionCoordinator: nativePermissions)
             localNetworkBridge = HTMLLocalNetworkBridge(webView: webView, permissionCoordinator: nativePermissions)
         }
@@ -613,7 +613,7 @@ struct HTMLWebView: UIViewRepresentable {
                 }
                 let alert = UIAlertController(
                     title: "Allow Motion & Orientation?",
-                    message: "This saved HTML app wants access to device motion, orientation, and compass events while it is open.",
+                    message: HTMLAppPermissionPrompt.message(for: .motion, appName: HTMLTools.title(in: lastHTML) ?? "This saved app"),
                     preferredStyle: .alert
                 )
                 alert.addAction(UIAlertAction(title: "Don’t Allow", style: .cancel) { _ in
