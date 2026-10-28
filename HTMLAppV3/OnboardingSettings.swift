@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct OnboardingView: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var showStarterForge = false
+    @State private var starterAppCount = 0
     @Binding var complete: Bool
     @AppStorage("libraryLayout") private var libraryLayout = "list"
     @State private var step = 0
@@ -82,6 +85,17 @@ struct OnboardingView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
+                        if step == 0 {
+                            Button {
+                                starterAppCount = store.apps.count
+                                showStarterForge = true
+                            } label: {
+                                Label("Try a Useful App Now", systemImage: "play.circle.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Text("Choose an instant starter, try it, and save it. No AI account is needed.")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
                         tutorialContent
                     }
                     .frame(maxWidth: 580)
@@ -112,6 +126,11 @@ struct OnboardingView: View {
             }
         }
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .sheet(isPresented: $showStarterForge, onDismiss: {
+            if store.apps.count > starterAppCount { complete = true }
+        }) {
+            AIGenerationView().environmentObject(store).interactiveDismissDisabled(true)
+        }
         .sheet(isPresented: $showForgePractice) {
             AIGenerationView(demoMode: true)
                 .interactiveDismissDisabled(false)
@@ -487,7 +506,7 @@ struct SettingsView: View {
                             .onChange(of: iCloudSyncData) { _ in store.requestICloudSync() }
                         Text("Sync app code and details across devices signed into the same iCloud account. Data syncing includes each HTMLApp's portable saved data, but not permissions or credentials.")
                             .font(.footnote).foregroundStyle(.secondary)
-                        Button("Sync Now") { store.requestICloudSync() }
+                        HTMLAppSyncStatusView().environmentObject(store)
                     } else {
                         Text("iCloud syncing is off. Apps and data stay on this device.")
                             .font(.footnote).foregroundStyle(.secondary)

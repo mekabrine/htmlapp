@@ -115,34 +115,7 @@ struct LibraryView: View {
             AIGenerationView(existingApp: app).environmentObject(store).interactiveDismissDisabled(true)
         }
         .sheet(item: $editHistoryApp) { app in
-            NavigationStack {
-                List {
-                    let history = store.editHistory(for: app)
-                    if history.isEmpty {
-                        Text("No AI edit checkpoints yet. Earlier versions appear after you save an AI edit.")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(history.reversed()) { checkpoint in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(checkpoint.note).font(.headline)
-                            Text(checkpoint.created.formatted(date: .abbreviated, time: .shortened))
-                                .font(.caption).foregroundStyle(.secondary)
-                            Button("Restore this version") {
-                                Task {
-                                    await store.restoreAIEdit(app, checkpointID: checkpoint.id)
-                                    editHistoryApp = nil
-                                }
-                            }
-                        }
-                    }
-                }
-                .htmlAppFirstUseToasts()
-                .onAppear { HTMLAppFirstUseTips.show("restore") }
-                .navigationTitle("AI Edit History")
-                .toolbar { ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { editHistoryApp = nil }
-                } }
-            }
+            HTMLAppEditHistoryView(app: app).environmentObject(store)
         }
         .sheet(item: $aiIconApp) { app in
             AIIconGenerationView(app: app).environmentObject(store)
@@ -429,6 +402,23 @@ struct LibraryView: View {
                 libraryList(folderID: folderID, entries: entries)
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if folderID == nil && queryIsEmpty {
+                VStack(spacing: 6) {
+                    if !store.syncConflicts.isEmpty {
+                        NavigationLink {
+                            HTMLAppSyncReviewView().environmentObject(store)
+                        } label: {
+                            Label("Review iCloud Changes", systemImage: "icloud.and.arrow.down")
+                                .font(.subheadline).padding(.horizontal, 16)
+                        }
+                    }
+                    HTMLAppQuickAccess(apps: store.apps, open: store.launch,
+                                       edit: { aiEditorApp = $0 }, favorite: store.toggleFavorite)
+                }
+                .background(.bar)
+            }
+        }
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .navigationTitle(folderName ?? "HTMLApp")
         .searchable(text: $searchText, prompt: "Search all HTML apps")
@@ -441,6 +431,10 @@ struct LibraryView: View {
             }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 Menu {
+                    Button {
+                        store.prepareNewItemDestination(folderID)
+                        showGenerator = true
+                    } label: { Label("Create with Forge", systemImage: "sparkles") }
                     Button { showAllApps = true } label: {
                         Label("See All Apps", systemImage: "square.stack.3d.up")
                     }
@@ -550,6 +544,7 @@ struct LibraryView: View {
             }
             Button { permissionsApp = app } label: { Label("Permissions", systemImage: "hand.raised") }
             Button { aiEditorApp = app } label: { Label("Edit with AI", systemImage: "sparkles") }
+            Button { editHistoryApp = app } label: { Label("Edit History & Undo", systemImage: "clock.arrow.circlepath") }
             Button { aiIconApp = app } label: { Label("Regenerate Icon", systemImage: "app.badge") }
         } label: { Label("Everyday Usage", systemImage: "hand.tap") }
         .onAppear { HTMLAppFirstUseTips.show("context") }

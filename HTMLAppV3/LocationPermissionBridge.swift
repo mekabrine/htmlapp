@@ -7,13 +7,15 @@ import WebKit
 final class HTMLLocationBridge: NSObject, CLLocationManagerDelegate {
     private weak var webView: WKWebView?
     private let appID: String
+    private let appName: String
     private let manager = CLLocationManager()
     private var callbacks: [String: DispatchWorkItem] = [:]
     private var cachedLocation: CLLocation?
 
-    init(webView: WKWebView, appID: String) {
+    init(webView: WKWebView, appID: String, appName: String = "This saved app") {
         self.webView = webView
         self.appID = appID
+        self.appName = appName
         super.init()
         manager.delegate = self
     }
@@ -164,7 +166,7 @@ final class HTMLLocationBridge: NSObject, CLLocationManagerDelegate {
             }
             let alert = UIAlertController(
                 title: "Allow Location?",
-                message: "This saved HTML app wants your current location. You can change this later from its Permissions page.",
+                message: HTMLAppPermissionPrompt.message(for: .location, appName: appName),
                 preferredStyle: .alert
             )
             alert.addAction(UIAlertAction(title: "Don’t Allow", style: .cancel) { _ in

@@ -11,6 +11,20 @@ struct HTMLAppDataTransferView: View {
 
     var body: some View {
         List {
+            if HTMLAppICloudPreferences.enabled {
+                Section("iCloud Status") { HTMLAppSyncStatusView().environmentObject(store) }
+            }
+            Section("Recovery & Backup Status") {
+                if let date = store.lastPreparedBackup {
+                    Text("Last backup prepared: \(date.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.subheadline)
+                    Text("Preparing a backup does not confirm it was saved elsewhere. Finish saving it in the share sheet.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("No exported backup has been prepared on this device yet.").font(.subheadline)
+                }
+                NavigationLink("Sync Recovery Backups") { HTMLAppSyncReviewView().environmentObject(store) }
+            }
             Section {
                 Button {
                     store.exportPortablePackage()
