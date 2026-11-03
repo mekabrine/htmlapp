@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.58"
-    static let compiledBuild = "66"
+    static let compiledVersion = "1.6.59"
+    static let compiledBuild = "67"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.59" { return [
+            Entry(id: "visual-form-redesign-repair", title: "Visual edits respect your forms", description: "Forge now detects broken multi-column layouts that split labels away from their fields, then retries the visual patch from the original app. It preserves existing data and behavior instead of approving a visually broken change.", symbol: "paintbrush.pointed", tint: .pink),
+            Entry(id: "spoken-edit-rescue", title: "Voice edits recover without repeating speech", description: "Whisper keeps your recorded audio through automatic transcription retries, can reload its speech model, and offers Retry using saved audio if decoding still fails. Successful retries return to the original edit or style feedback action.", symbol: "waveform", tint: .blue),
+            Entry(id: "microphone-start-retries", title: "Smarter microphone retries", description: "Transient microphone startup problems show a retrying status while HTMLApp attempts to start recording again.", symbol: "mic.fill", tint: .green)
+        ] }
         if version == "1.6.58" { return [
             Entry(id: "popup-redesign-guard", title: "Cleaner, more reliable AI edits", description: "Forge now checks visual edits for broken form layouts, duplicate dialog copy, and unchanged output. When a popup redesign misplaces labels and fields, Forge asks the editor to repair the patch instead of accepting the broken result.", symbol: "paintbrush.pointed", tint: .pink),
             Entry(id: "whisper-recording-retry", title: "Whisper retries without making you repeat yourself", description: "If Whisper cannot decode a recorded voice edit, it retries the same saved audio automatically and can reload its model. A Retry using saved audio action remains available if all attempts fail.", symbol: "waveform", tint: .blue),

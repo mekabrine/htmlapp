@@ -37,6 +37,7 @@ struct AIGenerationView: View {
     @State private var microphoneRecordingTask: Task<Void, Never>?
     @State private var microphoneEditNotice: String?
     @State private var pendingFloatingVoiceFeedback: Bool?
+    @State private var pendingInlineVoiceEdit = false
     @ObservedObject private var debugTrace = AIDebugTraceStore.shared
     @AppStorage("developerMode") private var developerMode = false
     @AppStorage("forgeTestMode") private var forgeTestMode = ForgeTestMode.fast.rawValue
@@ -439,16 +440,29 @@ struct AIGenerationView: View {
                 }
                 submitPromptGeneration()
             }
-            guard !processing, let forFeedback = pendingFloatingVoiceFeedback else { return }
-            pendingFloatingVoiceFeedback = nil
+            guard !processing else { return }
             let words = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            if pendingInlineVoiceEdit {
+                if !words.isEmpty {
+                    changePrompt = dictationPrefix +
+                        (dictationPrefix.isEmpty ? "" : "\n") + words
+                    pendingInlineVoiceEdit = false
+                } else if !dictation.canRetryTranscription {
+                    pendingInlineVoiceEdit = false
+                }
+            }
+            guard let forFeedback = pendingFloatingVoiceFeedback else { return }
             guard !words.isEmpty else {
                 microphoneEditNotice = dictation.canRetryTranscription
                     ? "Your speech was saved. Retry transcription without recording again."
                     : "No audio was available for transcription."
+                if !dictation.canRetryTranscription {
+                    pendingFloatingVoiceFeedback = nil
+                }
                 if forFeedback { showingStyleFeedback = true } else { showingChange = true }
                 return
             }
+            pendingFloatingVoiceFeedback = nil
             if forFeedback {
                 styleFeedback = words
                 styleFeedbackNotice = "Regenerating all looks from spoken feedback."
@@ -1323,7 +1337,13 @@ struct AIGenerationView: View {
                                     .lineLimit(1...4)
                                     .textFieldStyle(.roundedBorder)
                                 Button {
-                                    if dictation.recording { dictation.stop(); dictationForEdit = false }
+                                    if dictation.recording {
+                                        if dictationForEdit && !dictation.appleSpeechActive {
+                                            pendingInlineVoiceEdit = true
+                                        }
+                                        dictation.stop()
+                                        dictationForEdit = false
+                                    }
                                     else {
                                         promptDictationActive = false
                                         dictationForEdit = true

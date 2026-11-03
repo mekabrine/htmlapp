@@ -655,7 +655,7 @@ Requested change:
             streamedByteCount = response.utf8.count
             AIDebugTraceStore.shared.append("EDIT PATCH VOLUME",
                 "Source bytes: \(changedSource.utf8.count); response bytes: \(response.utf8.count); section: \(streamedSection)")
-            let output = try await applyEditOutputWithRecovery(
+            var output = try await applyEditOutputWithRecovery(
                 initialOutput,
                 requestedChange: improvedChange,
                 config: config
@@ -697,7 +697,7 @@ Requested change:
                     messages: [("user", retryUser)],
                     timeout: 120, maxTokens: 9500, retryOnTransient: true
                 )
-                let repairedOutput = try await applyEditOutputWithRecovery(
+                output = try await applyEditOutputWithRecovery(
                     AIHTMLAgent.parse(retryResponse),
                     requestedChange: cleanChange,
                     config: config
@@ -707,9 +707,6 @@ Requested change:
                 ) {
                     AIDebugTraceStore.shared.append("VISUAL EDIT REJECTED", remainingIssue)
                     throw AIGenerationError.invalidPatch
-                }
-                if !repairedOutput.description.isEmpty {
-                    description = repairedOutput.description
                 }
                 let repairedSummary = AIHTMLAgent.value("edit_summary", in: retryResponse)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
