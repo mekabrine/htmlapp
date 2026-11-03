@@ -45,7 +45,7 @@ enum HTMLAppLocalAgent {
     #if canImport(FoundationModels)
     @available(iOS 26.0, *)
     @Generable
-    private struct LocalStructuredAnswer {
+    struct LocalStructuredAnswer {
         @Guide(description: "A factual direct answer to the user's request")
         var answer: String
 
