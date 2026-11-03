@@ -913,75 +913,82 @@ struct AIGenerationView: View {
                     .padding(.top, 8)
 
                     if !styleOptions.isEmpty {
-                        HStack(spacing: 8) {
-                            ForgeStyleSketchView(html: styleOptions[min(selectedStyleIndex, styleOptions.count - 1)].previewHTML)
-                                .id(styleOptions[min(selectedStyleIndex, styleOptions.count - 1)].id)
-                                .clipShape(RoundedRectangle(cornerRadius: 34))
-                                .overlay(RoundedRectangle(cornerRadius: 34).strokeBorder(.primary.opacity(0.24), lineWidth: 5))
-                                .padding(7)
-                                .background(Color.black.opacity(0.9), in: RoundedRectangle(cornerRadius: 42))
-                                .padding(.leading, 4)
-                                .padding(.vertical, 8)
-                                .blur(radius: exploringStyles ? 26 : 0)
-                                .overlay {
-                                    if exploringStyles {
-                                        VStack(spacing: 10) {
-                                            ProgressView()
-                                            Text("\(styleOptions.count) of 3 sketches prepared")
-                                                .font(.headline)
-                                        }
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                        .background(.ultraThinMaterial)
-                                    }
-                                }
-                                .allowsHitTesting(!exploringStyles)
-                            GeometryReader { choicesGeometry in
-                                ScrollView(.vertical, showsIndicators: true) {
+                        // Give the preview the FULL available width. The old
+                        // side-by-side 88-point look selector squeezed WebKit
+                        // into an unusable phone viewport and clipped columns.
+                        VStack(spacing: 10) {
+                            ForgeStyleSketchView(
+                                html: styleOptions[min(selectedStyleIndex, styleOptions.count - 1)].previewHTML
+                            )
+                            .id(styleOptions[min(selectedStyleIndex, styleOptions.count - 1)].id)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: min(max(235, geometry.size.height * 0.52), 610))
+                            .clipShape(RoundedRectangle(cornerRadius: 26))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 26)
+                                    .strokeBorder(.primary.opacity(0.18), lineWidth: 3)
+                            )
+                            .background(Color(.systemBackground),
+                                        in: RoundedRectangle(cornerRadius: 26))
+                            .blur(radius: exploringStyles ? 18 : 0)
+                            .overlay {
+                                if exploringStyles {
                                     VStack(spacing: 10) {
-                                        ForEach(0..<max(3, (styleOptions.map(\.id).max() ?? -1) + 1), id: \.self) { slot in
-                                            let available = styleOptions.firstIndex(where: { $0.id == slot })
-                                            Button {
-                                                if let available { selectedStyleIndex = available }
-                                            } label: {
-                                                HStack(spacing: 3) {
-                                                    Text("Look \(slot + 1)")
-                                                    if available == nil {
-                                                        Image(systemName: "hourglass").font(.caption2)
-                                                    }
-                                                }
-                                                .font(.caption.bold())
-                                                .frame(width: 76, height: 44)
-                                                .foregroundStyle(available == nil ? .secondary : .primary)
-                                                .background(
-                                                    available == selectedStyleIndex ? Color.accentColor.opacity(0.24) : Color(.secondarySystemBackground),
-                                                    in: RoundedRectangle(cornerRadius: 12)
-                                                )
-                                            }
-                                            .buttonStyle(.plain)
-                                            .disabled(available == nil || exploringStyles)
-                                            .accessibilityLabel("View mockup \(slot + 1)")
-                                        }
+                                        ProgressView()
+                                        Text("\(styleOptions.count) of 3 sketches prepared")
+                                            .font(.headline)
+                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(.ultraThinMaterial)
+                                }
+                            }
+                            .allowsHitTesting(!exploringStyles)
+                            .padding(.horizontal, 12)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 9) {
+                                    ForEach(0..<max(3, (styleOptions.map(\.id).max() ?? -1) + 1), id: \.self) { slot in
+                                        let available = styleOptions.firstIndex(where: { $0.id == slot })
                                         Button {
-                                            generateAdditionalStyles()
+                                            if let available { selectedStyleIndex = available }
                                         } label: {
-                                            Image(systemName: "plus.circle.fill")
-                                                .font(.title2)
-                                                .frame(width: 76, height: 44)
+                                            HStack(spacing: 5) {
+                                                Text("Look \(slot + 1)")
+                                                if available == nil {
+                                                    Image(systemName: "hourglass").font(.caption2)
+                                                } else if available == selectedStyleIndex {
+                                                    Image(systemName: "checkmark.circle.fill")
+                                                }
+                                            }
+                                            .font(.subheadline.weight(.semibold))
+                                            .padding(.horizontal, 15)
+                                            .frame(height: 46)
+                                            .foregroundStyle(available == nil ? .secondary : .primary)
+                                            .background(
+                                                available == selectedStyleIndex
+                                                    ? Color.accentColor.opacity(0.24)
+                                                    : Color(.secondarySystemBackground),
+                                                in: Capsule()
+                                            )
                                         }
                                         .buttonStyle(.plain)
-                                        .disabled(exploringStyles || styleOptions.isEmpty)
-                                        .accessibilityLabel("Generate three more AI-designed looks")
+                                        .disabled(available == nil || exploringStyles)
+                                        .accessibilityLabel("View mockup \(slot + 1)")
                                     }
-                                    .padding(.horizontal, 4)
+                                    Button {
+                                        generateAdditionalStyles()
+                                    } label: {
+                                        Label("More looks", systemImage: "plus.circle.fill")
+                                            .font(.subheadline.weight(.semibold))
+                                            .padding(.horizontal, 13)
+                                            .frame(height: 46)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(exploringStyles || styleOptions.isEmpty)
                                 }
-                                // 5 full rows and half the sixth hint that more choices exist.
-                                // Short displays use the available height, without covering the footer.
-                                .frame(height: min(292, max(0, choicesGeometry.size.height)))
-                                .clipped()
+                                .padding(.horizontal, 14)
                             }
-                            .frame(width: 88)
-                            .frame(maxHeight: 292)
-                            .zIndex(2)
+                            .frame(height: 54)
                         }
                     } else if exploringStyles {
                         Spacer()

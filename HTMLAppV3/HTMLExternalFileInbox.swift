@@ -5,7 +5,7 @@ import Foundation
 /// onboarding, or a pending release-notes sheet cannot lose the source.
 enum HTMLExternalFileInbox {
     private static let maxBytes = 12_000_000
-    private static let extensions = Set(["html", "htm", "xhtml", "txt"])
+    private static let extensions = Set(["html", "htm", "xhtml", "htmk", "txt"])
 
     private static var root: URL {
         FileManager.default.temporaryDirectory
@@ -17,7 +17,7 @@ enum HTMLExternalFileInbox {
         var errorDescription: String? {
             switch self {
             case .unsupportedType:
-                return "Choose an HTML file (.html, .htm or .xhtml). A .txt file containing HTML also works."
+                return "Choose an HTML document (.html, .htm, .xhtml or .htmk). A .txt file containing HTML also works."
             case .tooLarge:
                 return "This HTML file exceeds the 12 MB limit."
             case .empty:

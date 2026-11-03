@@ -826,7 +826,7 @@ forgeview = source("HTMLAppV3/AIGenerationView.swift")
 assert "queueExternalHTMLFile(url)" in appcore
 assert "pendingExternalHTMLFiles" in appcore and "canPresentExternalHTMLImport" in appcore
 assert "HTMLExternalFileInbox.stage(url)" in appcore
-assert "store.takeExternalHTMLFile()" in library
+assert "self.pendingExternalHTMLFiles.removeFirst()" in appcore
 assert "HTMLExternalFileInbox.read(url)" in library
 assert "HTMLExternalFileInbox.disposeIfStaged(url)" in library
 assert "NSFileCoordinator" in incoming and "startAccessingSecurityScopedResource" in incoming
@@ -850,3 +850,21 @@ assert "resetModel: Bool = false" in speech
 # Floating microphone surfaces retry status without blocking its gesture.
 assert "floatingMicrophoneRetryStatus" in source("HTMLAppV3/AIGenerationView.swift")
 assert "dictation.transcribingOffline" in source("HTMLAppV3/AIGenerationView.swift")
+
+# Root-owned external imports and full-width mobile style sketches.
+appcore = source("HTMLAppV3/AppCore.swift")
+styles = source("HTMLAppV3/AIGenerationView.swift")
+preview = source("HTMLAppV3/ForgeStylePreview.swift")
+network = source("HTMLAppV3/HTMLAppNetworkBridge.swift")
+archive = source("HTMLAppV3/HTMLAppPackageTransfer.swift")
+assert "externalImportPayload" in appcore and "presentNextExternalHTMLImport()" in appcore
+assert 'ImportHTMLDestinationView(payload: payload)' in appcore
+assert 'consumeExternalHTMLImport()' not in source("HTMLAppV3/LibraryUI.swift")
+assert 'ScrollView(.horizontal, showsIndicators: false)' in styles
+assert 'frame(width: 76, height: 44)' not in styles
+assert 'htmlapp-preview-viewport' in preview and 'width=device-width' in preview
+assert 'HTMLAppPublicAddressGuard.publicDNSAddresses(for: host)' in network
+assert 'validateConnectedAddresses()' in network
+assert "compression_decode_buffer" in archive and "CRC32.checksum(content)" in archive
+assert "archiveTooLarge" in archive and "Int(count) <= maxEntries" in archive
+assert "String(item.path.dropFirst(prefix.count))" in archive

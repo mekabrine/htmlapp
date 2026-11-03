@@ -154,7 +154,6 @@ struct LibraryView: View {
         .onChange(of: pendingImport) { item in
             if item == nil {
                 presentQueuedFileImport()
-                consumeExternalHTMLImport()
             }
         }
         .alert("This HTML needs its original server", isPresented: Binding(
@@ -173,21 +172,6 @@ struct LibraryView: View {
             Button("Cancel", role: .cancel) { serverDependentImport = nil }
         } message: {
             Text("This file calls a root-relative server API such as /api/build. Saving it offline cannot include the server. To keep the build or login functions working, enter the real hosted website URL in Website Import. If you import a local copy, those API calls will be unavailable until configured.")
-        }
-        // An incoming file can be delivered before Library exists.
-        // AppStore retains a private staged copy until this screen and all
-        // launch covers are ready to present a sheet.
-        .onChange(of: store.pendingExternalHTMLFiles) { _ in
-            consumeExternalHTMLImport()
-        }
-        .onChange(of: store.canPresentExternalHTMLImport) { ready in
-            if ready { consumeExternalHTMLImport() }
-        }
-        .onChange(of: showSettings) { showing in
-            if !showing { consumeExternalHTMLImport() }
-        }
-        .onChange(of: showGenerator) { showing in
-            if !showing { consumeExternalHTMLImport() }
         }
         .onChange(of: importingFile) { showing in
             if !showing { presentQueuedFileImport() }
@@ -215,7 +199,6 @@ struct LibraryView: View {
             beginRemoteHTMLImportIfRequested()
         }
         .onAppear {
-            consumeExternalHTMLImport()
             handlePendingShortcut()
             beginRemoteHTMLImportIfRequested()
             if !checkedInterruptedForgeThisLaunch && !showGenerator {
@@ -236,7 +219,6 @@ struct LibraryView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            consumeExternalHTMLImport()
             handlePendingShortcut()
             beginRemoteHTMLImportIfRequested()
         }
@@ -695,18 +677,6 @@ struct LibraryView: View {
     private func edit(_ app: SavedHTMLApp) {
         if app.websiteSourceURL != nil { websiteEditorApp = app }
         else { editor = .edit(app) }
-    }
-
-    private func consumeExternalHTMLImport() {
-        guard store.canPresentExternalHTMLImport,
-              !importingFile,
-              !showSettings, !showGenerator,
-              remoteHTMLDraft == nil, aiEditorApp == nil,
-              !showWebsiteImporter,
-              pendingImport == nil, queuedFileImport == nil,
-              serverDependentImport == nil,
-              let url = store.takeExternalHTMLFile() else { return }
-        importFile(.success([url]))
     }
 
     private func importFile(_ result: Result<[URL], Error>) {

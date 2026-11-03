@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.61"
-    static let compiledBuild = "69"
+    static let compiledVersion = "1.6.62"
+    static let compiledBuild = "70"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,12 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.62" { return [
+            Entry(id: "root-import-ui", title: "Files and shared HTML now open Import", description: "Incoming HTML files open the import destination screen from the app root, including cold launches and files shared from Files. The app also recognizes the .htmk file extension.", symbol: "doc.badge.arrow.up", tint: .green),
+            Entry(id: "full-width-style-sketches", title: "Readable, full-width Forge previews", description: "Generated style mockups now use the full screen width with look choices below, correct mobile viewport scaling and responsive layout guidance, reducing tiny or clipped previews.", symbol: "rectangle.portrait", tint: .purple),
+            Entry(id: "safer-native-networking", title: "Safer native HTTPS requests", description: "Native requests now screen DNS answers against private and local addresses and verify connection-address metadata before returning a response, with blocked redirects and stricter host-name checks.", symbol: "network.badge.shield.half.filled", tint: .blue),
+            Entry(id: "robust-zip-import", title: "More compatible, safer backups", description: "Backup import now accepts standard Deflate ZIP archives, checks file integrity, rejects duplicate paths, limits archive size and handles ZIP data descriptors. Export preserves nested cache paths correctly.", symbol: "archivebox", tint: .orange)
+        ] }
         if version == "1.6.61" { return [
             Entry(id: "whisper-auto-retry-status", title: "See microphone and transcription retries", description: "The floating Forge microphone now displays clear retrying status while it reconnects to the microphone or reuses captured audio to retry Whisper transcription, without blocking your drag gesture.", symbol: "mic.fill", tint: .blue),
             Entry(id: "visual-redesign-recovery", title: "Better-looking popup edits", description: "Forge detects when a redesign misaligns labels and fields, requests a corrected layout, and respects later fixes that replace the old CSS grid.", symbol: "paintbrush.pointed", tint: .pink),

@@ -40,15 +40,26 @@ enum HTMLAppNetworkBridge {
               !host.hasSuffix(".onion"), host != "localhost",
               host.range(of: #"^[a-z0-9.-]+$"#, options: .regularExpression) != nil,
               !host.allSatisfy({ $0.isNumber || $0 == "." }),
-              host.split(separator: ".").allSatisfy({ !$0.isEmpty && !$0.hasPrefix("-") && !$0.hasSuffix("-") }) else {
+              host.split(separator: ".").allSatisfy({
+                  !$0.isEmpty && !$0.hasPrefix("-") && !$0.hasSuffix("-") &&
+                  // A hex/octal-looking numeric label may be interpreted as
+                  // an encoded IPv4 address by platform DNS and URL parsers.
+                  $0.range(of: #"(?i)^0x[0-9a-f]+$"#, options: .regularExpression) == nil &&
+                  $0.range(of: #"^0[0-9]+$"#, options: .regularExpression) == nil
+              }) else {
             return nil
         }
         return host
     }
 
     static func perform(_ args: [String: Any]) async throws -> [String: Any] {
-        guard validatedHost(args) != nil, let raw = args["url"] as? String,
+        guard let host = validatedHost(args), let raw = args["url"] as? String,
               let url = URL(string: raw) else { throw Failure.invalidURL }
+        // Resolve every A and AAAA record before contacting the domain.
+        // Reject mixed public/private DNS answers rather than choosing a
+        // convenient public one. This also catches localtest.me, nip.io and
+        // encoded-IP DNS alias tricks even after host consent.
+        let approvedAddresses = try await HTMLAppPublicAddressGuard.publicDNSAddresses(for: host)
         let method = (args["method"] as? String ?? "GET").uppercased()
         guard ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"].contains(method) else {
             throw Failure.invalidMethod
@@ -80,7 +91,7 @@ enum HTMLAppNetworkBridge {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 40
-        let delegate = NoRedirects()
+        let delegate = NoRedirects(approvedAddresses: approvedAddresses)
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         defer { session.invalidateAndCancel() }
         let (bytes, response) = try await session.bytes(for: request)
@@ -94,6 +105,10 @@ enum HTMLAppNetworkBridge {
             if data.count >= maxResponseBytes { throw Failure.responseTooLarge }
             data.append(byte)
         }
+        // Check the endpoint the OS really connected to, not only a DNS
+        // lookup from before URLSession created its connection. Fail closed
+        // if connection metrics are missing or reveal a changed/private IP.
+        try delegate.validateConnectedAddresses()
         guard let text = String(data: data, encoding: .utf8) else { throw Failure.invalidEncoding }
         return [
             "status": http.statusCode,
@@ -104,6 +119,32 @@ enum HTMLAppNetworkBridge {
     }
 
     private final class NoRedirects: NSObject, URLSessionTaskDelegate {
+        private let approvedAddresses: Set<String>
+        private let lock = NSLock()
+        private var observedAddresses: [String] = []
+
+        init(approvedAddresses: Set<String>) {
+            self.approvedAddresses = approvedAddresses
+            super.init()
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask,
+                        didFinishCollecting metrics: URLSessionTaskMetrics) {
+            let addresses = metrics.transactionMetrics.compactMap(\.remoteAddress)
+            lock.lock()
+            observedAddresses.append(contentsOf: addresses)
+            lock.unlock()
+        }
+
+        func validateConnectedAddresses() throws {
+            lock.lock()
+            let addresses = observedAddresses
+            lock.unlock()
+            guard !addresses.isEmpty, addresses.allSatisfy({
+                approvedAddresses.contains($0) && HTMLAppPublicAddressGuard.isPublicIP($0)
+            }) else { throw HTMLAppPublicAddressGuard.Failure.connectionMismatch }
+        }
+
         func urlSession(_ session: URLSession, task: URLSessionTask,
                         willPerformHTTPRedirection response: HTTPURLResponse,
                         newRequest request: URLRequest,

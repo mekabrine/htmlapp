@@ -172,6 +172,17 @@ enum ForgeStylePreviewService {
         decoration. Do not spend output on planning or reasoning text.
         Use responsive mobile-first styling. Design a visually complete
         preview with domain-relevant content, different shapes and hierarchy.
+        REQUIRED: <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">.
+        The ENTIRE design must fit a 320-CSS-pixel wide preview without clipping.
+        Never use a fixed-width desktop canvas, oversized min-width, viewport
+        zoom hacks, scale transforms, or an unwrapped two-column layout.
+        Use a single readable column on phones; stack panels and text before
+        using side-by-side sections. Set box-sizing:border-box and min-width:0
+        for grid/flex children; wrap long words and fit media to width.
+        Ensure all essential controls, headings, buttons, text and cards fit.
+        Reject layouts whose side-by-side elements spill beyond the viewport.
+        UI must be substantial at normal 1x device text scale; never fake
+        smallness by drawing a 900px desktop page inside a narrow preview.
         Three styles share the objective but must not share a template.
         Choose any composition that fits this product; avoid generic filler and copied templates.
         \(freeform ? "Invent a new composition without presets." : "Use the broad direction as guidance only; no prescribed layout, shapes, colors or navigation.")
@@ -268,8 +279,30 @@ struct ForgeStyleSketchView: UIViewRepresentable {
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
         """
         var document = html
+        // Without a viewport meta tag WKWebView uses the legacy ~980px
+        // layout viewport and shrinks the entire screenshot to tiny text.
+        let hasViewport = document.range(
+            of: #"<meta\s+[^>]*name\s*=\s*['\"]?viewport"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+        let responsiveViewport = hasViewport ? "" :
+            #"<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">"#
+        let previewSafety = """
+        <style id="htmlapp-preview-viewport">
+        html, body { width:100% !important; max-width:100% !important;
+          min-width:0 !important; margin-inline:0; overflow-x:clip !important; }
+        *, *::before, *::after { box-sizing:border-box; }
+        img, video, canvas, svg { max-width:100%; }
+        main, section, article, header, footer, form { max-width:100%; min-width:0; }
+        p, h1, h2, h3, h4, button, label { overflow-wrap:anywhere; }
+        @media(max-width:480px) {
+          input, textarea, select { max-width:100%; min-width:0; }
+        }
+        </style>
+        """
         if let head = document.range(of: #"<head\b[^>]*>"#, options: [.regularExpression, .caseInsensitive]) {
-            document.replaceSubrange(head, with: String(document[head]) + csp)
+            document.replaceSubrange(head, with: String(document[head]) +
+                csp + responsiveViewport + previewSafety)
         }
         view.loadHTMLString(document, baseURL: nil)
     }

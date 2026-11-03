@@ -111,7 +111,10 @@ struct HTMLAppMain: App {
                     if HTMLAppICloudPreferences.includeData { store.requestICloudSync() }
                 }
                 .onChange(of: scenePhase) { phase in
-                    if phase == .active { store.requestICloudSync() }
+                    if phase == .active {
+                        store.requestICloudSync()
+                        store.presentNextExternalHTMLImport()
+                    }
                 }
                 .onChange(of: onboardingComplete) { finished in
                     guard finished else {
@@ -121,6 +124,15 @@ struct HTMLAppMain: App {
                     checkedVersionThisLaunch = false
                     checkVersionOnLaunch()
                     store.setExternalHTMLImportReady(!presentingWhatsNew)
+                }
+                // Root-owned external import sheet survives cold launches,
+                // nested folders, onboarding and Library-specific modals.
+                .sheet(item: $store.externalImportPayload) { payload in
+                    ImportHTMLDestinationView(payload: payload)
+                        .environmentObject(store)
+                }
+                .onChange(of: store.externalImportPayload) { payload in
+                    if payload == nil { store.presentNextExternalHTMLImport() }
                 }
                 .sheet(item: $store.pendingWebClipGuideApp) { app in
                     HTMLAppHomeScreenGuide(
@@ -142,7 +154,7 @@ struct HTMLAppMain: App {
                     Text("HTMLApp couldn't read your saved apps. It preserved the damaged file rather than deleting it. Starting empty will not restore those apps. Use Keep Library Protected until you've recovered your data.")
                 }
                 .onOpenURL { url in
-                    if url.isFileURL, ["html", "htm", "xhtml"].contains(url.pathExtension.lowercased()) {
+                    if url.isFileURL, ["html", "htm", "xhtml", "htmk"].contains(url.pathExtension.lowercased()) {
                         // The Library may not yet exist during cold launch or
                         // may be covered by onboarding/release notes. Retain
                         // the request in AppStore instead of posting a
@@ -258,6 +270,8 @@ final class AppStore: ObservableObject {
     // Files/Open In and Share Sheet can arrive before the Library is visible.
     // Retain incoming URLs until the import UI consumes them.
     @Published private(set) var pendingExternalHTMLFiles: [URL] = []
+    @Published var externalImportPayload: HTMLFileImportPayload?
+    private var externalImportPresentationScheduled = false
     @Published private(set) var canPresentExternalHTMLImport = false
     @Published private(set) var apps: [SavedHTMLApp] = []
     @Published private(set) var folders: [LibraryFolder] = []
@@ -1089,7 +1103,7 @@ final class AppStore: ObservableObject {
 
     func queueExternalHTMLFile(_ url: URL) {
         guard url.isFileURL,
-              ["html", "htm", "xhtml"].contains(url.pathExtension.lowercased()) else {
+              ["html", "htm", "xhtml", "htmk"].contains(url.pathExtension.lowercased()) else {
             return
         }
         do {
@@ -1104,6 +1118,7 @@ final class AppStore: ObservableObject {
                 runningApp = nil
             }
             pendingExternalHTMLFiles.append(staged)
+            presentNextExternalHTMLImport()
         } catch {
             errorMessage = "Couldn't prepare that HTML file: \(error.localizedDescription)"
         }
@@ -1111,6 +1126,42 @@ final class AppStore: ObservableObject {
 
     func setExternalHTMLImportReady(_ ready: Bool) {
         canPresentExternalHTMLImport = ready
+        if ready { presentNextExternalHTMLImport() }
+    }
+
+    func presentNextExternalHTMLImport() {
+        guard canPresentExternalHTMLImport,
+              externalImportPayload == nil,
+              !externalImportPresentationScheduled,
+              runningApp == nil,
+              !pendingExternalHTMLFiles.isEmpty else { return }
+        externalImportPresentationScheduled = true
+        // Defer the presentation until iOS has dismissed the prior
+        // full-screen cover, app switch or document-provider open animation.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) { [weak self] in
+            guard let self else { return }
+            self.externalImportPresentationScheduled = false
+            guard self.canPresentExternalHTMLImport,
+                  self.externalImportPayload == nil,
+                  self.runningApp == nil,
+                  !self.pendingExternalHTMLFiles.isEmpty else { return }
+            let url = self.pendingExternalHTMLFiles.removeFirst()
+            defer { HTMLExternalFileInbox.disposeIfStaged(url) }
+            do {
+                let data = try HTMLExternalFileInbox.read(url)
+                let html = String(data: data, encoding: .utf8)
+                    ?? String(decoding: data, as: UTF8.self)
+                guard !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw HTMLExternalFileInbox.ImportError.empty
+                }
+                self.externalImportPayload = HTMLFileImportPayload(
+                    fileName: url.lastPathComponent, html: html
+                )
+            } catch {
+                self.errorMessage = "Couldn't open the shared HTML file: \(error.localizedDescription)"
+                self.presentNextExternalHTMLImport()
+            }
+        }
     }
 
     func takeExternalHTMLFile() -> URL? {
