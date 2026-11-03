@@ -479,11 +479,14 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 return
             }
             let system = (args["system"] as? String) ?? "Be helpful, accurate and concise."
-            guard let prompt = args["prompt"] as? String, prompt.utf8.count <= 4000,
-                  system.utf8.count <= 1200 else {
-                reject(id, code: "invalid_arguments", message: "Provide a short prompt and optional system instruction.")
+            guard let prompt = args["prompt"] as? String, !prompt.isEmpty,
+                  prompt.utf8.count <= 4000, system.utf8.count <= 1200 else {
+                reject(id, code: "invalid_arguments", message: "Provide a prompt under 4 KB and an optional short system instruction.")
                 return
             }
+            let structured = args["format"] as? String == "structured"
+            let json = args["format"] as? String == "json"
+            let cloudFallback = args["fallback"] as? String == "cloud"
             withPermission(.ai, id: id) { [weak self] in
                 guard let self else { return }
                 let key = "htmlapp.localAI.usage." + self.appID
@@ -495,19 +498,98 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                     return
                 }
                 UserDefaults.standard.set(previous + [now], forKey: key)
-                let json = args["format"] as? String == "json"
                 self.aiTasks[id] = Task { @MainActor [weak self] in
                     guard let self else { return }
                     defer { self.aiTasks.removeValue(forKey: id) }
                     do {
                         let result = try await HTMLAppLocalAgent.complete(
-                            prompt: prompt, system: system, json: json)
-                        guard !Task.isCancelled else { return }
+                            prompt: prompt, system: system,
+                            json: json, structured: structured
+                        )
+                        try Task.checkCancellation()
                         self.resolve(id, value: result)
-                    } catch is CancellationError {
-                        self.reject(id, code: "cancelled", message: "On-device AI request cancelled.")
                     } catch {
-                        self.reject(id, code: "local_ai_failed", message: error.localizedDescription)
+                        guard !Task.isCancelled else {
+                            self.reject(id, code: "cancelled", message: "On-device AI request cancelled.")
+                            return
+                        }
+                        guard cloudFallback,
+                              AISettingsStore.configuration.isConfigured else {
+                            self.reject(id, code: "local_ai_failed",
+                                        message: error.localizedDescription)
+                            return
+                        }
+                        // Even with the caller's explicit cloud-fallback flag,
+                        // confirm that the user agrees to disclose this specific
+                        // prompt to their configured AI service.
+                        let approved: Bool = await withCheckedContinuation { continuation in
+                            let shown = HTMLAppNativeUIService.alert(
+                                args: [
+                                    "title": "Switch to Cloud AI?",
+                                    "message": "The on-device model couldn't answer. Send this saved app's prompt to your configured AI provider for this request?",
+                                    "actions": [
+                                        ["id": "deny", "title": "Stay On Device", "style": "cancel"],
+                                        ["id": "allow", "title": "Use Cloud Once"]
+                                    ]
+                                ], appID: self.appID, menu: false
+                            ) { selection in
+                                continuation.resume(returning: selection?["id"] as? String == "allow")
+                            }
+                            if !shown { continuation.resume(returning: false) }
+                        }
+                        guard approved, !Task.isCancelled else {
+                            self.reject(id, code: "cloud_fallback_declined",
+                                        message: "Cloud AI fallback wasn't approved. No prompt was sent.")
+                            return
+                        }
+                        let quota = "htmlapp.aiBridge.usage." + self.appID
+                        let moment = Date().timeIntervalSince1970
+                        let uses = (UserDefaults.standard.array(forKey: quota) as? [Double] ?? [])
+                            .filter { moment - $0 < 60 }
+                        guard uses.count < 10 else {
+                            self.reject(id, code: "rate_limited", message: "Cloud AI rate limit reached.")
+                            return
+                        }
+                        UserDefaults.standard.set(uses + [moment], forKey: quota)
+                        let totalKey = "htmlapp.aiBridge.total." + self.appID
+                        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: totalKey) + 1, forKey: totalKey)
+                        do {
+                            let instruction = structured
+                                ? system + "\nReturn a JSON object with exactly the fields: answer (string), summary (string), confident (boolean)."
+                                : system
+                            let text = try await AIProviderClient.complete(
+                                config: AISettingsStore.configuration,
+                                system: instruction,
+                                messages: [("user", prompt)],
+                                timeout: 60, maxTokens: 1024
+                            )
+                            try Task.checkCancellation()
+                            if structured,
+                               let data = text.data(using: .utf8),
+                               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                               let answer = value["answer"] as? String,
+                               let summary = value["summary"] as? String,
+                               let confident = value["confident"] as? Bool {
+                                self.resolve(id, value: [
+                                    "text": text, "json": value, "answer": answer,
+                                    "summary": summary, "confident": confident,
+                                    "format": "structured", "provider": "cloud",
+                                    "fallback": true
+                                ])
+                            } else if structured {
+                                self.reject(id, code: "invalid_structured_output",
+                                            message: "Cloud provider didn't return the requested fields.")
+                            } else {
+                                self.resolve(id, value: [
+                                    "text": text, "format": json ? "json" : "text",
+                                    "provider": "cloud", "fallback": true
+                                ])
+                            }
+                        } catch {
+                            guard !Task.isCancelled else { return }
+                            self.reject(id, code: "cloud_ai_failed",
+                                        message: "The configured cloud provider couldn't complete this request.")
+                        }
                     }
                 }
             }

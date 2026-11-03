@@ -220,6 +220,7 @@ export interface HTMLAppNativeAPI {
   ai: {
     available(): Promise<{ available: boolean; remainingRequests: number; streaming: boolean }>;
     complete(options: { prompt: string; system?: string; maxTokens?: number; json?: boolean }): Promise<{ text: string }>;
+    localComplete(options: { prompt: string; system?: string; format?: "text" | "json" | "structured"; fallback?: "cloud" }): Promise<{ text: string; format: string; provider?: "cloud"; fallback?: boolean; json?: { answer: string; summary: string; confident: boolean } }>;
     stream(options: { prompt: string; system?: string; maxTokens?: number; signal?: AbortSignal; onToken?: (token: string, detail: { requestID: string; delta: string; done: boolean }) => void }): Promise<{ text: string; requestID: string }>;
     createSession(settings?: { system?: string; tools?: string[] }): HTMLAppAIAgentSession;
   };

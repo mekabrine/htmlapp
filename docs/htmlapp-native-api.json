@@ -197,8 +197,15 @@
       "permission": "ai",
       "userInitiationRecommended": false,
       "nativeCancellation": true,
-      "arguments": {},
-      "requiredArguments": [],
+      "arguments": {
+        "prompt": "string",
+        "system": "string",
+        "format": "string",
+        "fallback": "string"
+      },
+      "requiredArguments": [
+        "prompt"
+      ],
       "resultType": "unknown"
     },
     "ai.stream": {

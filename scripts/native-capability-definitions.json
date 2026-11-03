@@ -60,8 +60,15 @@
       "minimumIOS": "16.0",
       "userInitiated": false,
       "nativeCancellation": true,
-      "arguments": {},
-      "required": [],
+      "arguments": {
+        "prompt": "string",
+        "system": "string",
+        "format": "string",
+        "fallback": "string"
+      },
+      "required": [
+        "prompt"
+      ],
       "result": "unknown"
     },
     {

@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.66"
-    static let compiledBuild = "74"
+    static let compiledVersion = "1.6.67"
+    static let compiledBuild = "75"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.67" { return [
+            Entry(id: "on-device-structured-output", title: "Reliable on-device structured answers", description: "On iOS 26 with Foundation Models, saved apps can request typed answer, summary and confidence fields using Apple's native guided generation instead of relying on unvalidated text JSON.", symbol: "curlybraces", tint: .blue),
+            Entry(id: "cloud-fallback-opt-in", title: "Optional, clearly approved cloud fallback", description: "If the on-device model cannot answer, saved apps can request a one-time fallback to the configured cloud provider. HTMLApp asks for explicit confirmation before sending the current prompt.", symbol: "cloud", tint: .purple),
+            Entry(id: "native-ai-metadata", title: "Documented local AI limits", description: "The bridge's contract now validates local AI inputs and documents when answers stay on-device versus when a user-confirmed fallback uses a cloud provider.", symbol: "checkmark.shield", tint: .green)
+        ] }
         if version == "1.6.66" { return [
             Entry(id: "ios-share-extension", title: "Share HTML straight into HTMLApp", description: "A new iOS Share extension receives HTML file attachments into a secure shared inbox and attempts to open the app. If iOS does not allow automatic launch, the file is ready to import the next time you open HTMLApp.", symbol: "square.and.arrow.up", tint: .blue),
             Entry(id: "file-import-resume", title: "Import requests survive app switching", description: "HTMLApp now checks the shared inbox when it opens or returns to the foreground, presenting the New App or Update Existing import destination for staged documents.", symbol: "doc.badge.arrow.up", tint: .green),

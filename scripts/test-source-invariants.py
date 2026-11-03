@@ -904,3 +904,12 @@ assert "IncomingHTMLStaging" in share and "IncomingHTML" in share
 assert "group.com.mekabrine.htmlapp" in share
 assert "claimSharedDocuments()" in inbox and "claimShareExtensionFiles()" in core
 assert 'url.host?.lowercased() == "import-inbox"' in core
+
+# Apple Foundation Models guided structured output and explicit cloud fallback.
+local = source("HTMLAppV3/HTMLAppLocalAgent.swift")
+native = source("HTMLAppV3/NativeAPIBridge.swift")
+assert "@Generable" in local and "LocalStructuredAnswer" in local
+assert "generating: LocalStructuredAnswer.self" in local
+assert 'args["fallback"] as? String == "cloud"' in native
+assert "Switch to Cloud AI?" in native
+assert 'cloud_fallback_declined' in native
