@@ -1613,6 +1613,47 @@
       "result": "unknown"
     },
     {
+      "method": "ui.list",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": true,
+      "nativeCancellation": false,
+      "arguments": {
+        "title": "string",
+        "items": "array",
+        "allowsRefresh": "boolean"
+      },
+      "required": [
+        "items"
+      ],
+      "result": "unknown"
+    },
+    {
+      "method": "ui.listDismiss",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "required": [],
+      "result": "unknown"
+    },
+    {
+      "method": "ui.listUpdate",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "items": "array",
+        "sessionID": "string"
+      },
+      "required": [
+        "items"
+      ],
+      "result": "unknown"
+    },
+    {
       "method": "ui.menu",
       "permission": null,
       "minimumIOS": "16.0",

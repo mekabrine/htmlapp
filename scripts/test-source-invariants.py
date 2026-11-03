@@ -934,3 +934,13 @@ assert "HTMLAppVectorSearch.search(" in native
 assert "vectorSearch: (collection, text, limit = 20)" in native
 assert "db.vectorSearch" in source("scripts/native-capability-definitions.json")
 assert "test-vector-search.swift" in source(".github/workflows/verify-ios.yml")
+
+# Native UIKit sheet/list APIs are scoped to one active saved app.
+listService = source("HTMLAppV3/HTMLAppNativeListService.swift")
+native = source("HTMLAppV3/NativeAPIBridge.swift")
+assert "UIRefreshControl" in listService
+assert "UITableViewController" in listService
+assert "sessions[appID]" in listService and "item.title" in listService
+assert 'case "ui.list":' in native and 'case "ui.listUpdate":' in native
+assert "htmlapp:ui-list-refresh" in native
+assert "testNativeRPC" in source("scripts/test-native-bridge.js")

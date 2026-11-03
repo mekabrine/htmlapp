@@ -116,6 +116,10 @@ enum HTMLAppDeviceAPIResearch {
             constraints: "User-triggered only; dismissal must use Cancel/Done. Returns {cancelled,value?,timestampMS?}. Don't substitute for passive text inputs when native UI isn't necessary."
         ),
 
+        .init(id: "ui.list", title: "Native sheet with selectable list", keywords: ["native list", "iOS sheet", "navigation", "pull to refresh", "UIKit table"], purpose: "Present a responsive UIKit list sheet with selection, VoiceOver labels and optional pull-to-refresh events.", api: "HTMLAppNative.ui.list({title,items:[{id,title,detail?,symbol?}],allowsRefresh?})", example: "const choice = await HTMLAppNative.ui.list({title:'Choose a note',items:[{id:'1',title:'Morning note'}],allowsRefresh:true});", constraints: "Only show after a user action; at most 200 unique items. Selection or dismissal resolves the promise. Pull to refresh emits htmlapp:ui-list-refresh and the app updates data with ui.listUpdate; JS doesn't keep running in background."),
+        .init(id: "ui.listUpdate", title: "Refresh open native list", keywords: ["native UI", "list refresh", "pull to refresh", "UIKit"], purpose: "Update the currently presented app-owned UIKit list and end its pull-to-refresh indicator.", api: "HTMLAppNative.ui.listUpdate(items,sessionID?)", example: "await HTMLAppNative.ui.listUpdate([{id:'1',title:'Updated'}]);", constraints: "Only works while this saved app's own native list is visible; validates unique item IDs and caps list length at 200."),
+        .init(id: "ui.listDismiss", title: "Dismiss native list sheet", keywords: ["native UI", "close sheet", "navigation"], purpose: "Dismiss an open UIKit list and release its selection callback.", api: "HTMLAppNative.ui.listDismiss()", example: "await HTMLAppNative.ui.listDismiss();", constraints: "Works only for the active saved app's own list session; does not dismiss unrelated iOS presentations."),
+
         .init(
             id: "network.request",
             title: "Consent-gated public HTTPS API requests",

@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.69"
-    static let compiledBuild = "77"
+    static let compiledVersion = "1.6.70"
+    static let compiledBuild = "78"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.70" { return [
+            Entry(id: "native-list-ui", title: "Native lists and sheets for generated apps", description: "Generated HTML apps can now present genuine UIKit list sheets with accessible rows, selected-item results and native sheet transitions instead of relying only on web-styled dialogs.", symbol: "list.bullet.rectangle.portrait", tint: .blue),
+            Entry(id: "native-pull-refresh", title: "Pull to refresh native lists", description: "Optional native pull-to-refresh emits an event to the saved app, which can publish updated rows using HTMLAppNative.ui.listUpdate(). Lists are foreground-only and isolated per saved app.", symbol: "arrow.clockwise", tint: .green),
+            Entry(id: "private-vector-search", title: "On-device semantic search", description: "App-private SQLite documents can now be searched by semantic similarity using installed Apple NaturalLanguage sentence embeddings, with no cloud service required.", symbol: "brain", tint: .purple)
+        ] }
         if version == "1.6.69" { return [
             Entry(id: "local-vector-search", title: "Private semantic document search", description: "Saved HTML apps can search their own SQLite notes by meaning using Apple's on-device sentence embeddings. The indexed vectors remain on the device and are updated when records change.", symbol: "brain", tint: .purple),
             Entry(id: "fts-vector-fallback", title: "Search that respects device capability", description: "Semantic search reports when a device lacks an embedding model instead of using cloud AI silently. Existing exact and full-text SQLite search remain available as fallbacks.", symbol: "text.magnifyingglass", tint: .blue),

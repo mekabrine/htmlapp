@@ -56,6 +56,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     }
 
     func shutdown() {
+        HTMLAppNativeListService.dismiss(appID: appID)
         nativeTabBar?.remove()
         nativeTabBar = nil
         speechRecognition.stop()
@@ -1001,6 +1002,28 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             if !shown {
                 reject(id, code: "ui_unavailable", message: "Cannot present this native dialog now. Use a user tap and try again.")
             }
+        case "ui.list":
+            let shown = HTMLAppNativeListService.present(
+                args: args, appID: appID
+            ) { [weak self] selected in
+                self?.resolve(id, value: selected)
+            } onRefresh: { [weak self] sessionID in
+                self?.emitNativeListRefresh(sessionID: sessionID)
+            }
+            if !shown {
+                reject(id, code: "ui_unavailable",
+                       message: "Cannot show the native list. Use a user tap, valid items and only one open list.")
+            }
+        case "ui.listUpdate":
+            guard let result = HTMLAppNativeListService.update(args: args, appID: appID) else {
+                reject(id, code: "invalid_arguments",
+                       message: "No active native list or invalid item IDs. Provide at most 200 distinct items.")
+                return
+            }
+            resolve(id, value: result)
+        case "ui.listDismiss":
+            let dismissed = HTMLAppNativeListService.dismiss(appID: appID)
+            resolve(id, value: ["dismissed": dismissed])
         case "ui.colorPicker":
             let shown = HTMLAppNativeUIService.colorPicker(args: args, appID: appID) { [weak self] selected in
                 self?.resolve(id, value: selected)
@@ -3098,6 +3121,14 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         return service
     }
 
+    private func emitNativeListRefresh(sessionID: String) {
+        let detail = ["sessionID": sessionID]
+        guard let data = try? JSONSerialization.data(withJSONObject: detail),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript(
+            "window.dispatchEvent(new CustomEvent('htmlapp:ui-list-refresh', { detail: \(json) }));")
+    }
+
     private func emitAIStreamEvent(_ detail: [String: Any]) {
         guard JSONSerialization.isValidJSONObject(detail),
               let data = try? JSONSerialization.data(withJSONObject: detail),
@@ -3169,7 +3200,7 @@ enum HTMLNativeAPIScript {
         if (typeof options.onDispatch === 'function') options.onDispatch(id);
         // Pickers and system authorization sheets may stay open longer than
         // simple data calls. Every pending request still has a finite deadline.
-        const interactive = /^(files\.pick|photos\.(?:pick|read)|contacts\.pick|calendar\.|nfc\.readNDEF|health\.today|biometrics\.|share\.|speech\.listen|speech\.recognize|audio\.record|video\.capture|ui\.(?:alert|menu|datePicker|colorPicker))/.test(method);
+        const interactive = /^(files\.pick|photos\.(?:pick|read)|contacts\.pick|calendar\.|nfc\.readNDEF|health\.today|biometrics\.|share\.|speech\.listen|speech\.recognize|audio\.record|video\.capture|ui\.(?:alert|menu|datePicker|colorPicker|list))/.test(method);
         const deadline = interactive ? 180000 : (method.startsWith('ai.') ? 120000 : 30000);
         const timer = setTimeout(() => {
           if (!pending.has(id)) return;
@@ -3402,7 +3433,11 @@ enum HTMLNativeAPIScript {
           alert: (options = {}) => call('ui.alert', options),
           menu: (options = {}) => call('ui.menu', options),
           datePicker: (options = {}) => call('ui.datePicker', options),
-          colorPicker: (options = {}) => call('ui.colorPicker', options)
+          colorPicker: (options = {}) => call('ui.colorPicker', options),
+          list: (options = {}) => call('ui.list', options),
+          listUpdate: (items = [], sessionID) =>
+            call('ui.listUpdate', sessionID ? { items, sessionID } : { items }),
+          listDismiss: () => call('ui.listDismiss')
         },
         events: {
           on: (name, handler) => {

@@ -136,6 +136,9 @@
     "ui.alert",
     "ui.colorPicker",
     "ui.datePicker",
+    "ui.list",
+    "ui.listDismiss",
+    "ui.listUpdate",
     "ui.menu",
     "video.capture",
     "vision.classifyImage",
@@ -1622,6 +1625,44 @@
         "timestampMS": "number"
       },
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "ui.list": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": true,
+      "nativeCancellation": false,
+      "arguments": {
+        "title": "string",
+        "items": "array",
+        "allowsRefresh": "boolean"
+      },
+      "requiredArguments": [
+        "items"
+      ],
+      "resultType": "unknown"
+    },
+    "ui.listDismiss": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "ui.listUpdate": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "items": "array",
+        "sessionID": "string"
+      },
+      "requiredArguments": [
+        "items"
+      ],
       "resultType": "unknown"
     },
     "ui.menu": {

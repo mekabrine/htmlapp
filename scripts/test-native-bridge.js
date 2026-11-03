@@ -50,10 +50,16 @@ async function testNativeRPC() {
   await api.audio.stopRecording();
   await api.video.capture({ maxDuration: 15 });
   await api.ui.colorPicker({ hex: '#445566' });
+  await api.ui.list({ title: 'Choose', items: [{ id: 'a', title: 'One' }], allowsRefresh: true });
+  await api.ui.listUpdate([{ id: 'a', title: 'Updated' }]);
+  await api.ui.listDismiss();
   assert.ok(sent.some(msg => msg.method === 'audio.record' && msg.args.maxDuration === 30));
   assert.ok(sent.some(msg => msg.method === 'audio.stopRecording'));
   assert.ok(sent.some(msg => msg.method === 'video.capture' && msg.args.maxDuration === 15));
   assert.ok(sent.some(msg => msg.method === 'ui.colorPicker'));
+  assert.ok(sent.some(msg => msg.method === 'ui.list' && msg.args.items[0].id === 'a'));
+  assert.ok(sent.some(msg => msg.method === 'ui.listUpdate'));
+  assert.ok(sent.some(msg => msg.method === 'ui.listDismiss'));
 
   const controller = new AbortController();
   const request = api.network.request({ url: 'https://example.org/data', signal: controller.signal });

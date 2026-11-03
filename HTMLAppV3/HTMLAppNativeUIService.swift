@@ -9,7 +9,7 @@ enum HTMLAppNativeUIService {
     private static var lastPresentedAt: [String: Date] = [:]
     private static var colorSessions: [String: HTMLAppColorPickerSession] = [:]
 
-    private static func presenter(for appID: String) -> UIViewController? {
+    static func presenter(for appID: String) -> UIViewController? {
         guard appID != "PREVIEW" else { return nil }
         let now = Date()
         guard now.timeIntervalSince(lastPresentedAt[appID] ?? .distantPast) >= 1 else { return nil }

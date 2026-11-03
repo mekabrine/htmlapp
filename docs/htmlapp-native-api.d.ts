@@ -132,6 +132,9 @@ export type HTMLAppNativeMethod =
   | 'ui.alert'
   | 'ui.colorPicker'
   | 'ui.datePicker'
+  | 'ui.list'
+  | 'ui.listDismiss'
+  | 'ui.listUpdate'
   | 'ui.menu'
   | 'video.capture'
   | 'vision.classifyImage'
@@ -203,6 +206,9 @@ export interface HTMLAppNativeAPI {
     menu(args: { title?: string; message?: string; actions: { id: string; title: string; style?: string }[] }): Promise<{ id?: string; index?: number; cancelled: boolean }>;
     datePicker(args: { title?: string; mode?: "date" | "time" | "dateTime"; value?: string; timestampMS?: number }): Promise<{ cancelled: boolean; value?: string; timestampMS?: number }>;
     colorPicker(args?: { hex?: string; alpha?: boolean }): Promise<{ cancelled: boolean; hex?: string; alpha?: number }>;
+    list(args: { title?: string; items: { id: string; title: string; detail?: string; symbol?: string }[]; allowsRefresh?: boolean }): Promise<{ cancelled: boolean; id?: string; index?: number; sessionID?: string }>;
+    listUpdate(items: { id: string; title: string; detail?: string; symbol?: string }[], sessionID?: string): Promise<{ updated: boolean; count: number; sessionID: string }>;
+    listDismiss(): Promise<{ dismissed: boolean }>;
   };
   video: { capture(options?: { maxDuration?: number }): Promise<{ url: string; name: string; size: number; mimeType: string }> };
   audio: {
