@@ -41,6 +41,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private var videoCapture: HTMLAppVideoCapture?
     private var aiTasks: [String: Task<Void, Never>] = [:]
     private var networkTasks: [String: Task<Void, Never>] = [:]
+    private var networkStatusObserver: NSObjectProtocol?
     private let pedometer = CMPedometer()
     private let altimeter = CMAltimeter()
     private var nativeTabBar: HTMLAppNativeTabBar?
@@ -53,6 +54,16 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         self.appID = appID
         self.permissionCoordinator = permissionCoordinator
         super.init()
+        _ = HTMLAppNetworkStatus.shared
+        networkStatusObserver = NotificationCenter.default.addObserver(
+            forName: HTMLAppNetworkStatus.notification,
+            object: nil, queue: .main
+        ) { [weak self] notification in
+            let payload = notification.userInfo as? [String: Any] ?? [:]
+            Task { @MainActor [weak self] in
+                self?.emitNetworkEvent(payload)
+            }
+        }
     }
 
     func shutdown() {
@@ -72,6 +83,10 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         aiTasks.removeAll()
         networkTasks.values.forEach { $0.cancel() }
         networkTasks.removeAll()
+        if let networkStatusObserver {
+            NotificationCenter.default.removeObserver(networkStatusObserver)
+            self.networkStatusObserver = nil
+        }
         if let previousBrightness {
             UIScreen.main.brightness = previousBrightness
             self.previousBrightness = nil
@@ -1048,6 +1063,8 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             let task = aiTasks.removeValue(forKey: target) ?? networkTasks.removeValue(forKey: target)
             task?.cancel()
             resolve(id, value: ["cancelled": task != nil])
+        case "network.status":
+            resolve(id, value: HTMLAppNetworkStatus.shared.snapshot())
         case "network.allowedDomains":
             resolve(id, value: ["domains": HTMLAppNetworkDomainConsent.approved(for: appID)])
         case "network.revokeDomain":
@@ -1382,6 +1399,38 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                         } catch {
                             self.reject(id, code: "road_data_provider_unavailable", message: "Mapped road data request failed. Check connectivity and try again.")
                         }
+                    }
+                }
+            }
+        case "location.distance":
+            guard let lat1 = args["latitude1"] as? Double,
+                  let lon1 = args["longitude1"] as? Double,
+                  let lat2 = args["latitude2"] as? Double,
+                  let lon2 = args["longitude2"] as? Double else {
+                reject(id, code: "invalid_coordinates", message: "Two coordinate pairs are required.")
+                return
+            }
+            do {
+                resolve(id, value: try HTMLAppAddressLookup.distance(
+                    latitude1: lat1, longitude1: lon1,
+                    latitude2: lat2, longitude2: lon2))
+            } catch {
+                reject(id, code: "invalid_coordinates", message: error.localizedDescription)
+            }
+        case "location.geocode":
+            guard let query = args["query"] as? String,
+                  (2...180).contains(query.trimmingCharacters(in: .whitespacesAndNewlines).count) else {
+                reject(id, code: "invalid_arguments", message: "Provide a 2–180 character place or address.")
+                return
+            }
+            withPermission(.location, id: id) { [weak self] in
+                guard let self else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    do {
+                        self.resolve(id, value: try await HTMLAppAddressLookup.geocode(query))
+                    } catch {
+                        self.reject(id, code: "geocode_unavailable", message: error.localizedDescription)
                     }
                 }
             }
@@ -3137,6 +3186,14 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             "window.dispatchEvent(new CustomEvent('htmlapp:ai-stream', { detail: \(json) }));")
     }
 
+    private func emitNetworkEvent(_ detail: [String: Any]) {
+        guard JSONSerialization.isValidJSONObject(detail),
+              let data = try? JSONSerialization.data(withJSONObject: detail),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript(
+            "window.dispatchEvent(new CustomEvent('htmlapp:network', { detail: \(json) }));")
+    }
+
     private func emitAudioEvent(_ detail: [String: Any]) {
         guard JSONSerialization.isValidJSONObject(detail),
               let data = try? JSONSerialization.data(withJSONObject: detail),
@@ -3468,6 +3525,7 @@ enum HTMLNativeAPIScript {
             const { signal, ...args } = options;
             return call('network.request', args, { signal });
           },
+          status: () => call('network.status'),
           allowedDomains: () => call('network.allowedDomains'),
           revokeDomain: (host) => call('network.revokeDomain', { host })
         },
@@ -3482,6 +3540,9 @@ enum HTMLNativeAPIScript {
           range: (quantity, start, end) => call('health.range', { quantity, start, end })
         },
         location: {
+          distance: (latitude1, longitude1, latitude2, longitude2) =>
+            call('location.distance', { latitude1, longitude1, latitude2, longitude2 }),
+          geocode: (query) => call('location.geocode', { query: String(query ?? '') }),
           reverseGeocode: (latitude, longitude) => call('location.reverseGeocode', { latitude, longitude }),
           roadSpeedLimit: (latitude, longitude) => call('location.roadSpeedLimit', { latitude, longitude })
         },

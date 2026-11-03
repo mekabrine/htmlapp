@@ -53,6 +53,10 @@ jobs:
           python3 scripts/create-zip-fixtures.py "$RUNNER_TEMP/htmlapp-zip-tests"
           swiftc HTMLAppV3/HTMLAppStoredZip.swift scripts/test-stored-zip.swift -o "$RUNNER_TEMP/htmlapp-zip-tests-bin"
           "$RUNNER_TEMP/htmlapp-zip-tests-bin" "$RUNNER_TEMP/htmlapp-zip-tests"
+      - name: Test offline great-circle location distances
+        run: |
+          swiftc HTMLAppV3/HTMLAppAddressLookup.swift scripts/test-location-distance.swift -o "$RUNNER_TEMP/htmlapp-distance-test"
+          "$RUNNER_TEMP/htmlapp-distance-test"
       - name: Install XcodeGen and generate project
         run: |
           HOMEBREW_NO_AUTO_UPDATE=1 brew list xcodegen >/dev/null 2>&1 || HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen

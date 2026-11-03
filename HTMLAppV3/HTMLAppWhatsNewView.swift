@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.73"
-    static let compiledBuild = "81"
+    static let compiledVersion = "1.6.74"
+    static let compiledBuild = "82"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,12 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.74" { return [
+            Entry(id: "forward-geocoding", title: "Search addresses with Apple's geocoder", description: "Saved apps can look up approximate coordinates for a user-entered address or place through HTMLAppNative.location.geocode(). This needs location permission but does not request the device's GPS position.", symbol: "mappin.and.ellipse", tint: .blue),
+            Entry(id: "offline-distance", title: "Calculate distance without GPS", description: "HTMLAppNative.location.distance() computes straight-line great-circle distance between two supplied coordinate pairs entirely offline, without location permission.", symbol: "point.topleft.down.curvedto.point.bottomright.up", tint: .green),
+            Entry(id: "network-path-status", title: "Wi-Fi and cellular connection awareness", description: "HTMLAppNative.network.status() provides passive iOS network-path state and sends change events, allowing saved apps to display offline and constrained-network conditions without requesting a domain.", symbol: "wifi", tint: .purple),
+            Entry(id: "complete-typed-contract", title: "Native API signatures stay in sync", description: "The new methods are part of the canonical generated native bridge, TypeScript contract, Forge capability planning and automated argument tests.", symbol: "checkmark.shield", tint: .orange)
+        ] }
         if version == "1.6.73" { return [
             Entry(id: "verified-mobile-look-previews", title: "No more unchecked tiny preview sketches", description: "Forge now refuses to approve a style if the mobile WebView times out or cannot be measured. Its layout checker always evaluates a real 320-point phone viewport and regenerates layouts that are too wide or unreadable.", symbol: "iphone.gen3.radiowaves.left.and.right", tint: .blue),
             Entry(id: "portable-backup-regression-tests", title: "ZIP import compatibility checks", description: "Backups now have automated tests against normal and streaming Deflate ZIPs, bad CRCs, duplicate entries, excessive file counts, unsafe paths and exports.", symbol: "archivebox.fill", tint: .green)

@@ -74,6 +74,21 @@ struct ForgeCapabilityPlan {
             }
             constraints.append("Bluetooth requires scanned BLE devices; no arbitrary Classic Bluetooth or background scanning")
         }
+        if mentions(["geocode", "find address", "search address", "address lookup",
+                     "place to coordinates", "place search"]) {
+            methods.append("location.geocode")
+            constraints.append("Forward geocoding uses Apple's service, not device GPS; addresses may be approximate")
+        }
+        if mentions(["distance between", "great circle", "distance calculator",
+                     "coordinate distance", "as crow flies"]) {
+            methods.append("location.distance")
+            constraints.append("Distance between supplied coordinates is an offline straight-line estimate, not route length")
+        }
+        if mentions(["offline status", "network status", "connectivity",
+                     "wifi or cellular", "online or offline", "connection state"]) {
+            methods.append("network.status")
+            constraints.append("A satisfied network path does not prove that a particular endpoint is reachable")
+        }
         if mentions(["location", "gps", "track route", "speedometer", "where am i",
                      "how far", "nearby", "geofence"]) {
             browsers.append("navigator.geolocation (foreground, permission-gated)")

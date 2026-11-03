@@ -83,6 +83,8 @@
     "liveActivities.list",
     "liveActivities.start",
     "liveActivities.update",
+    "location.distance",
+    "location.geocode",
     "location.reverseGeocode",
     "location.roadSpeedLimit",
     "map.show",
@@ -91,6 +93,7 @@
     "network.allowedDomains",
     "network.request",
     "network.revokeDomain",
+    "network.status",
     "nfc.available",
     "nfc.readNDEF",
     "nfc.writeText",
@@ -1035,6 +1038,38 @@
       ],
       "resultType": "unknown"
     },
+    "location.distance": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "latitude1": "number",
+        "longitude1": "number",
+        "latitude2": "number",
+        "longitude2": "number"
+      },
+      "requiredArguments": [
+        "latitude1",
+        "longitude1",
+        "latitude2",
+        "longitude2"
+      ],
+      "resultType": "unknown"
+    },
+    "location.geocode": {
+      "minimumIOS": "16.0",
+      "permission": "location",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "query": "string"
+      },
+      "requiredArguments": [
+        "query"
+      ],
+      "resultType": "unknown"
+    },
     "location.reverseGeocode": {
       "minimumIOS": "16.0",
       "permission": "location",
@@ -1128,6 +1163,15 @@
       "requiredArguments": [
         "host"
       ],
+      "resultType": "unknown"
+    },
+    "network.status": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
       "resultType": "unknown"
     },
     "nfc.available": {

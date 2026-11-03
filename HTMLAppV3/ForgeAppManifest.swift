@@ -66,10 +66,13 @@ struct ForgeAppManifest: Codable {
         case "audio": return method == "audio.record" ? "microphone" : nil
         case "health", "nfc", "contacts", "calendar", "reminders", "bluetooth",
              "motion", "notifications", "biometrics", "ai", "spotlight",
-             "network", "clipboard", "files", "liveActivities": return group
+             "clipboard", "files", "liveActivities": return group
         case "photos": return "photoLibrary"
+        case "network": return method == "network.status" ? nil : "network"
         case "push": return "notifications"
-        case "location": return method == "location.roadSpeedLimit" ? "roadData" : "location"
+        case "location":
+            if method == "location.distance" { return nil }
+            return method == "location.roadSpeedLimit" ? "roadData" : "location"
         case "documents": return "files"
         case "externalApps", "system": return "externalApps"
         default: return nil

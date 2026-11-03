@@ -967,3 +967,16 @@ assert 'const width = 320;' in lookQA
 assert 'actualViewport' in lookQA
 assert 'self?.finish("This style could not be verified' in lookQA
 assert 'self.finish("Could not inspect this style' in lookQA
+
+# Native network path status, user-address search, offline distance contract.
+definitions = source("scripts/native-capability-definitions.json")
+native = source("HTMLAppV3/NativeAPIBridge.swift")
+registry = source("HTMLAppV3/HTMLAppBridgeRegistry.swift")
+for method in ("network.status", "location.geocode", "location.distance"):
+    assert f'"{method}"' in definitions and f'"{method}"' in registry
+    assert f'case "{method}":' in native
+assert "emitNetworkEvent" in native and "htmlapp:network" in native
+assert "HTMLAppNetworkStatus.shared.snapshot()" in native
+assert "HTMLAppAddressLookup.distance(" in native
+assert "HTMLAppAddressLookup.geocode(query)" in native
+assert "test-location-distance.swift" in source(".github/workflows/verify-ios.yml")

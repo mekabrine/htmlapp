@@ -79,6 +79,8 @@ export type HTMLAppNativeMethod =
   | 'liveActivities.list'
   | 'liveActivities.start'
   | 'liveActivities.update'
+  | 'location.distance'
+  | 'location.geocode'
   | 'location.reverseGeocode'
   | 'location.roadSpeedLimit'
   | 'map.show'
@@ -87,6 +89,7 @@ export type HTMLAppNativeMethod =
   | 'network.allowedDomains'
   | 'network.request'
   | 'network.revokeDomain'
+  | 'network.status'
   | 'nfc.available'
   | 'nfc.readNDEF'
   | 'nfc.writeText'
@@ -197,9 +200,16 @@ export interface HTMLAppNativeAPI {
     openSettings(): Promise<{ opened: boolean }>;
   };
   network: {
+    status(): Promise<{ status: "unknown" | "satisfied" | "unsatisfied" | "requires_connection"; online: boolean; interface: string; expensive: boolean; constrained: boolean }>;
     request(args: { url: string; method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD"; headers?: Record<string, string>; body?: string; signal?: AbortSignal }): Promise<{ status: number; ok: boolean; body: string; contentType: string }>;
     allowedDomains(): Promise<{ domains: string[] }>;
     revokeDomain(host: string): Promise<{ revoked: boolean }>;
+  };
+  location: {
+    geocode(query: string): Promise<{ results: { latitude: number; longitude: number; formattedAddress: string; approximate: boolean }[]; source: string }>;
+    distance(latitude1: number, longitude1: number, latitude2: number, longitude2: number): Promise<{ meters: number; kilometers: number; miles: number; kind: "great_circle" }>;
+    reverseGeocode(latitude: number, longitude: number): Promise<{ formattedAddress: string; approximate: boolean }>;
+    roadSpeedLimit(latitude: number, longitude: number): Promise<unknown>;
   };
   ui: {
     alert(args: { title?: string; message?: string; actions?: { id: string; title: string; style?: "cancel" | "default" | "destructive" }[] }): Promise<{ id?: string; index?: number; cancelled: boolean }>;

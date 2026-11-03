@@ -45,6 +45,15 @@ async function testNativeRPC() {
   assert.equal(typeof api.audio.record, 'function');
   assert.equal(typeof api.video.capture, 'function');
   assert.equal(typeof api.ui.colorPicker, 'function');
+  assert.equal(typeof api.network.status, 'function');
+  assert.equal(typeof api.location.geocode, 'function');
+  assert.equal(typeof api.location.distance, 'function');
+  await api.network.status();
+  await api.location.geocode('Central Park');
+  await api.location.distance(0, 0, 1, 1);
+  assert.ok(sent.some(msg => msg.method === 'network.status'));
+  assert.ok(sent.some(msg => msg.method === 'location.geocode' && msg.args.query === 'Central Park'));
+  assert.ok(sent.some(msg => msg.method === 'location.distance' && msg.args.latitude2 === 1));
   await api.audio.record({ maxDuration: 30 });
   await api.audio.levels();
   await api.audio.stopRecording();

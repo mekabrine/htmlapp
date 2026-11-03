@@ -968,6 +968,40 @@
       "result": "unknown"
     },
     {
+      "method": "location.distance",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "latitude1": "number",
+        "longitude1": "number",
+        "latitude2": "number",
+        "longitude2": "number"
+      },
+      "required": [
+        "latitude1",
+        "longitude1",
+        "latitude2",
+        "longitude2"
+      ],
+      "result": "unknown"
+    },
+    {
+      "method": "location.geocode",
+      "permission": "location",
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "query": "string"
+      },
+      "required": [
+        "query"
+      ],
+      "result": "unknown"
+    },
+    {
       "method": "location.reverseGeocode",
       "permission": "location",
       "minimumIOS": "16.0",
@@ -1068,6 +1102,16 @@
       "required": [
         "host"
       ],
+      "result": "unknown"
+    },
+    {
+      "method": "network.status",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "required": [],
       "result": "unknown"
     },
     {
