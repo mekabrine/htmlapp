@@ -55,6 +55,7 @@
     "db.put",
     "db.query",
     "db.search",
+    "db.vectorSearch",
     "device.battery",
     "device.brightness",
     "device.info",
@@ -716,6 +717,22 @@
       "resultType": "unknown"
     },
     "db.search": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "collection": "string",
+        "text": "string",
+        "limit": "number"
+      },
+      "requiredArguments": [
+        "collection",
+        "text"
+      ],
+      "resultType": "unknown"
+    },
+    "db.vectorSearch": {
       "minimumIOS": "16.0",
       "permission": null,
       "userInitiationRecommended": false,

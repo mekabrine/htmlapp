@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.68"
-    static let compiledBuild = "76"
+    static let compiledVersion = "1.6.69"
+    static let compiledBuild = "77"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.69" { return [
+            Entry(id: "local-vector-search", title: "Private semantic document search", description: "Saved HTML apps can search their own SQLite notes by meaning using Apple's on-device sentence embeddings. The indexed vectors remain on the device and are updated when records change.", symbol: "brain", tint: .purple),
+            Entry(id: "fts-vector-fallback", title: "Search that respects device capability", description: "Semantic search reports when a device lacks an embedding model instead of using cloud AI silently. Existing exact and full-text SQLite search remain available as fallbacks.", symbol: "text.magnifyingglass", tint: .blue),
+            Entry(id: "forge-preview-verification", title: "More readable generated style previews", description: "Forge now checks real WebKit layout geometry for overflow or unreadably tiny text before offering a look, and retries when the sketch is broken.", symbol: "eye", tint: .green)
+        ] }
         if version == "1.6.68" { return [
             Entry(id: "style-runtime-verifier", title: "Bad style sketches now get repaired", description: "Forge tests generated style previews in a real offscreen 320-point WebKit viewport. Offscreen content or unreadably small text triggers another design attempt before the look can be offered.", symbol: "eye", tint: .purple),
             Entry(id: "simulator-ui-qa", title: "Simulator import tests", description: "A new simulator UI test target exercises HTMLApp launch, a staged external HTML open, and a Share-extension inbox import on both iPhone and iPad. Tests are available in a dedicated GitHub Actions workflow.", symbol: "iphone", tint: .blue),

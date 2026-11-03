@@ -924,3 +924,13 @@ assert "htmlapp-ui-tests" in source(".github/workflows/verify-ui.yml")
 assert 'TEST_TARGET_NAME: HTMLApp' in source("project.yml")
 assert 'testSharedInboxOpensImportScreen' in source("HTMLAppUITests/HTMLAppUITests.swift")
 assert '-HTMLAppUITestExternalImport' in source("HTMLAppV3/AppCore.swift")
+
+# App-local semantic retrieval never calls a cloud embedding API.
+vectors = source("HTMLAppV3/HTMLAppVectorSearch.swift")
+native = source("HTMLAppV3/NativeAPIBridge.swift")
+assert "NLEmbedding.sentenceEmbedding(for:" in vectors
+assert "document_embeddings" in vectors
+assert "HTMLAppVectorSearch.search(" in native
+assert "vectorSearch: (collection, text, limit = 20)" in native
+assert "db.vectorSearch" in source("scripts/native-capability-definitions.json")
+assert "test-vector-search.swift" in source(".github/workflows/verify-ios.yml")

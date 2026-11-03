@@ -44,6 +44,10 @@ jobs:
         run: |
           swiftc HTMLAppV3/HTMLAppDocumentDatabase.swift scripts/test-sqlite-fts.swift -o /tmp/htmlapp-fts-test
           /tmp/htmlapp-fts-test
+      - name: Test on-device vector-search contracts on macOS
+        run: |
+          swiftc HTMLAppV3/HTMLAppDocumentDatabase.swift HTMLAppV3/HTMLAppVectorSearch.swift scripts/test-vector-search.swift -o /tmp/htmlapp-vector-test
+          /tmp/htmlapp-vector-test
       - name: Install XcodeGen and generate project
         run: |
           HOMEBREW_NO_AUTO_UPDATE=1 brew list xcodegen >/dev/null 2>&1 || HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen

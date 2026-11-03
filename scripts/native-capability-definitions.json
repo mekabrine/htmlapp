@@ -640,6 +640,23 @@
       "result": "unknown"
     },
     {
+      "method": "db.vectorSearch",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "collection": "string",
+        "text": "string",
+        "limit": "number"
+      },
+      "required": [
+        "collection",
+        "text"
+      ],
+      "result": "unknown"
+    },
+    {
       "method": "device.battery",
       "permission": null,
       "minimumIOS": "16.0",

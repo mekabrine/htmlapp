@@ -20,7 +20,8 @@ enum HTMLAppDocumentDatabase {
         }
         return pointer
     }
-    private static let lock = NSRecursiveLock()
+    // Shared with the bounded on-device vector index to serialize writes.
+    static let lock = NSRecursiveLock()
     private static func valid(_ name: String) -> Bool {
         !name.isEmpty && name.count <= 80 &&
         name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }

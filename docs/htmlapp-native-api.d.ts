@@ -51,6 +51,7 @@ export type HTMLAppNativeMethod =
   | 'db.put'
   | 'db.query'
   | 'db.search'
+  | 'db.vectorSearch'
   | 'device.battery'
   | 'device.brightness'
   | 'device.info'
@@ -216,6 +217,7 @@ export interface HTMLAppNativeAPI {
   db: {
     search(collection: string, text: string, limit?: number): Promise<{ items: { id: string; document: unknown }[] }>;
     searchFullText(collection: string, text: string, limit?: number): Promise<{ items: { id: string; document: unknown; rank: number }[] }>;
+    vectorSearch(collection: string, text: string, limit?: number): Promise<{ items: { id: string; document: unknown; score: number }[] }>;
   };
   ai: {
     available(): Promise<{ available: boolean; remainingRequests: number; streaming: boolean }>;

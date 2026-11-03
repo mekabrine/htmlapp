@@ -336,14 +336,24 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 }
                 resolve(id, value: ["entities": entities])
             }
-        case "db.put", "db.get", "db.delete", "db.query", "db.count", "db.export", "db.import", "db.search":
+        case "db.put", "db.get", "db.delete", "db.query", "db.count", "db.export", "db.import", "db.search", "db.vectorSearch":
             guard appID != "PREVIEW" else {
                 reject(id, code: "preview_restricted", message: "Database access is unavailable in preview.")
                 return
             }
             do {
                 let result: Any
-                if method == "db.search" {
+                if method == "db.vectorSearch" {
+                    guard let collection = args["collection"] as? String,
+                          let query = args["text"] as? String else {
+                        reject(id, code: "invalid_search", message: "Collection and query text are required.")
+                        return
+                    }
+                    result = ["items": try HTMLAppVectorSearch.search(
+                        appID: appID, collection: collection, query: query,
+                        limit: args["limit"] as? Int ?? 20
+                    )]
+                } else if method == "db.search" {
                     guard let collection = args["collection"] as? String,
                           let text = args["text"] as? String else {
                         reject(id, code: "invalid_search", message: "Collection and text are required.")
@@ -3479,6 +3489,8 @@ enum HTMLNativeAPIScript {
           search: (collection, text, limit = 50) => call('db.search', { collection, text, limit }),
           searchFullText: (collection, text, limit = 50) =>
             call('db.search', { collection, text, limit, mode: 'fts' }),
+          vectorSearch: (collection, text, limit = 20) =>
+            call('db.vectorSearch', { collection, text, limit }),
           export: () => call('db.export'),
           import: (payload) => call('db.import', { payload })
         },
