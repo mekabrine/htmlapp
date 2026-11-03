@@ -105,6 +105,43 @@ async function testAISessionTools() {
   assert.equal(session.history.length, 0);
 }
 
+async function testAIStreaming() {
+  const listeners = new Map();
+  const tokens = [];
+  const sent = [];
+  const window = {
+    addEventListener(name, fn) { listeners.set(name, fn); },
+    removeEventListener(name) { listeners.delete(name); },
+    webkit: { messageHandlers: { htmlappNative: { postMessage(msg) {
+      sent.push(msg);
+      queueMicrotask(() => {
+        if (msg.method === 'ai.stream') {
+          const listener = listeners.get('htmlapp:ai-stream');
+          assert.equal(typeof listener, 'function');
+          listener({ detail: { requestID: 'other-request', delta: 'SECRET', done: false } });
+          listener({ detail: { requestID: msg.id, delta: 'Hello', done: false } });
+          listener({ detail: { requestID: msg.id, delta: ' world', done: false } });
+          window.__htmlappNativeResolve(msg.id, true,
+            { text: 'Hello world', requestID: msg.id });
+        } else window.__htmlappNativeResolve(msg.id, true, {});
+      });
+    } } } }
+  };
+  vm.runInNewContext(nativeScript, {
+    window, setTimeout, clearTimeout, queueMicrotask, console,
+    AbortController, DOMException, Response, Blob, atob
+  });
+  assert.equal(typeof window.HTMLAppNative.ai.stream, 'function');
+  const answer = await window.HTMLAppNative.ai.stream({
+    prompt: 'Say hello',
+    onToken: value => tokens.push(value)
+  });
+  assert.equal(answer.text, 'Hello world');
+  assert.deepEqual(tokens, ['Hello', ' world']);
+  assert.equal(listeners.has('htmlapp:ai-stream'), false);
+  assert.ok(sent.some(x => x.method === 'ai.stream' && x.args.prompt === 'Say hello'));
+}
+
 function testViewport() {
   const elements = {};
   const head = { appendChild(node) {
@@ -143,6 +180,7 @@ function testViewport() {
 (async () => {
   await testNativeRPC();
   await testAISessionTools();
+  await testAIStreaming();
   testViewport();
   console.log('Native bridge and app viewport JS tests passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

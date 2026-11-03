@@ -14,6 +14,7 @@ enum HTMLAppBridgeRegistry {
         "ai.complete",
         "ai.localAvailable",
         "ai.localComplete",
+        "ai.stream",
         "appStorage.all",
         "appStorage.clear",
         "appStorage.get",
@@ -158,6 +159,7 @@ enum HTMLAppBridgeRegistry {
         "ai.complete": "ai",
         "ai.localAvailable": "ai",
         "ai.localComplete": "ai",
+        "ai.stream": "ai",
         "audio.record": "microphone",
         "biometrics.authenticate": "biometrics",
         "bluetooth.battery": "bluetooth",
@@ -247,9 +249,11 @@ enum HTMLAppBridgeRegistry {
     private static let cancellableMethods: Set<String> = [
         "ai.complete",
         "ai.localComplete",
+        "ai.stream",
         "network.request",
     ]
     private static let argumentTypes: [String: [String: String]] = [
+        "ai.stream": ["maxTokens": "number", "prompt": "string", "system": "string"],
         "appStorage.get": ["key": "string"],
         "appStorage.remove": ["key": "string"],
         "appStorage.set": ["key": "string", "value": "string"],
@@ -317,6 +321,7 @@ enum HTMLAppBridgeRegistry {
         "widgets.remove": ["id": "string"],
     ]
     private static let requiredArguments: [String: [String]] = [
+        "ai.stream": ["prompt"],
         "appStorage.get": ["key"],
         "appStorage.remove": ["key"],
         "appStorage.set": ["key", "value"],

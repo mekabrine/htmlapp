@@ -884,3 +884,11 @@ assert "createSession: (settings = {}) => createAISession(settings)" in native
 assert "Allow this AI tool call?" in native
 assert "The AI did not finish within its three-tool limit." in native
 assert "testAISessionTools" in source("scripts/test-native-bridge.js")
+
+# True provider token streaming with per-request routing, cleanup and cancellation.
+native = source("HTMLAppV3/NativeAPIBridge.swift")
+assert 'case "ai.stream":' in native
+assert "AIProviderClient.stream(" in native
+assert "emitAIStreamEvent" in native
+assert "onDispatch: id => { requestID = id; }" in native
+assert "testAIStreaming" in source("scripts/test-native-bridge.js")

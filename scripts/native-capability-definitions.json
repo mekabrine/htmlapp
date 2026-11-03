@@ -65,6 +65,22 @@
       "result": "unknown"
     },
     {
+      "method": "ai.stream",
+      "permission": "ai",
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": true,
+      "arguments": {
+        "prompt": "string",
+        "system": "string",
+        "maxTokens": "number"
+      },
+      "required": [
+        "prompt"
+      ],
+      "result": "unknown"
+    },
+    {
       "method": "appStorage.all",
       "permission": null,
       "minimumIOS": "16.0",

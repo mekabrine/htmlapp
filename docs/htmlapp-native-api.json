@@ -10,6 +10,7 @@
     "ai.complete",
     "ai.localAvailable",
     "ai.localComplete",
+    "ai.stream",
     "appStorage.all",
     "appStorage.clear",
     "appStorage.get",
@@ -198,6 +199,21 @@
       "nativeCancellation": true,
       "arguments": {},
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "ai.stream": {
+      "minimumIOS": "16.0",
+      "permission": "ai",
+      "userInitiationRecommended": false,
+      "nativeCancellation": true,
+      "arguments": {
+        "prompt": "string",
+        "system": "string",
+        "maxTokens": "number"
+      },
+      "requiredArguments": [
+        "prompt"
+      ],
       "resultType": "unknown"
     },
     "appStorage.all": {

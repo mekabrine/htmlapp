@@ -463,7 +463,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 .filter { currentTime - $0 < 60 }.count
             let total = UserDefaults.standard.integer(forKey: "htmlapp.aiBridge.total." + appID)
             resolve(id, value: ["available": ready, "provider": ready ? "configured" : "unavailable",
-                                "onDevice": false, "streaming": false,
+                                "onDevice": false, "streaming": true,
                                 "models": ready ? [config.model] : [],
                                 "remainingRequests": ready ? max(0, 10 - used) : 0,
                                 "remainingBudget": ready ? max(0, 10 - used) : 0,
@@ -508,6 +508,72 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                         self.reject(id, code: "cancelled", message: "On-device AI request cancelled.")
                     } catch {
                         self.reject(id, code: "local_ai_failed", message: error.localizedDescription)
+                    }
+                }
+            }
+        case "ai.stream":
+            guard UserDefaults.standard.bool(forKey: "htmlapp.aiBridge.enabled") else {
+                reject(id, code: "ai_disabled", message: "AI access is disabled in Settings.")
+                return
+            }
+            let config = AISettingsStore.configuration
+            guard config.isConfigured else {
+                reject(id, code: "ai_unavailable", message: "Configure an AI provider in Settings.")
+                return
+            }
+            let system = (args["system"] as? String) ?? "Be helpful, accurate and concise."
+            guard let prompt = args["prompt"] as? String,
+                  !prompt.isEmpty, prompt.utf8.count <= 8192,
+                  system.utf8.count <= 2048 else {
+                reject(id, code: "invalid_arguments", message: "Provide a prompt up to 8 KB and system instruction up to 2 KB.")
+                return
+            }
+            withPermission(.ai, id: id) { [weak self] in
+                guard let self else { return }
+                let key = "htmlapp.aiBridge.usage." + self.appID
+                let now = Date().timeIntervalSince1970
+                let used = (UserDefaults.standard.array(forKey: key) as? [Double] ?? [])
+                    .filter { now - $0 < 60 }
+                guard used.count < 10 else {
+                    self.reject(id, code: "rate_limited", message: "AI request limit reached. Try again in one minute.")
+                    return
+                }
+                UserDefaults.standard.set(used + [now], forKey: key)
+                let totalKey = "htmlapp.aiBridge.total." + self.appID
+                UserDefaults.standard.set(UserDefaults.standard.integer(forKey: totalKey) + 1, forKey: totalKey)
+                let maxTokens = max(64, min(2048, (args["maxTokens"] as? Int) ?? 512))
+                self.aiTasks[id] = Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    defer { self.aiTasks.removeValue(forKey: id) }
+                    var text = ""
+                    do {
+                        let stream = try await AIProviderClient.stream(
+                            config: config, system: system,
+                            messages: [("user", prompt)], maxTokens: maxTokens
+                        )
+                        for try await chunk in stream {
+                            try Task.checkCancellation()
+                            guard text.utf8.count + chunk.utf8.count <= 128_000 else {
+                                throw AIGenerationError.provider("AI stream exceeded its maximum response size.")
+                            }
+                            text += chunk
+                            self.emitAIStreamEvent([
+                                "requestID": id, "delta": chunk, "done": false
+                            ])
+                        }
+                        try Task.checkCancellation()
+                        self.emitAIStreamEvent(["requestID": id, "done": true])
+                        self.resolve(id, value: ["text": text, "requestID": id])
+                    } catch is CancellationError {
+                        self.emitAIStreamEvent(["requestID": id, "done": true, "cancelled": true])
+                        self.reject(id, code: "cancelled", message: "AI streaming was cancelled.")
+                    } catch {
+                        guard !Task.isCancelled else { return }
+                        self.emitAIStreamEvent([
+                            "requestID": id, "done": true, "error": "stream_failed"
+                        ])
+                        self.reject(id, code: "ai_stream_failed",
+                                    message: "The AI streaming provider could not complete this request.")
                     }
                 }
             }
@@ -2940,6 +3006,14 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         return service
     }
 
+    private func emitAIStreamEvent(_ detail: [String: Any]) {
+        guard JSONSerialization.isValidJSONObject(detail),
+              let data = try? JSONSerialization.data(withJSONObject: detail),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript(
+            "window.dispatchEvent(new CustomEvent('htmlapp:ai-stream', { detail: \(json) }));")
+    }
+
     private func emitAudioEvent(_ detail: [String: Any]) {
         guard JSONSerialization.isValidJSONObject(detail),
               let data = try? JSONSerialization.data(withJSONObject: detail),
@@ -3000,6 +3074,7 @@ enum HTMLNativeAPIScript {
           return;
         }
         const id = `native-${Date.now()}-${++sequence}`;
+        if (typeof options.onDispatch === 'function') options.onDispatch(id);
         // Pickers and system authorization sheets may stay open longer than
         // simple data calls. Every pending request still has a finite deadline.
         const interactive = /^(files\.pick|photos\.(?:pick|read)|contacts\.pick|calendar\.|nfc\.readNDEF|health\.today|biometrics\.|share\.|speech\.listen|speech\.recognize|audio\.record|video\.capture|ui\.(?:alert|menu|datePicker|colorPicker))/.test(method);
@@ -3330,6 +3405,25 @@ enum HTMLNativeAPIScript {
           localAvailable: () => call('ai.localAvailable'),
           localComplete: (options = {}) => call('ai.localComplete', options),
           complete: (options = {}) => call('ai.complete', options),
+          stream: (options = {}) => {
+            const { signal, onToken, ...args } = options;
+            let requestID = null;
+            const onChunk = event => {
+              const detail = event.detail || {};
+              if (detail.requestID !== requestID || !detail.delta) return;
+              if (typeof onToken === 'function') {
+                try { onToken(detail.delta, detail); }
+                catch (error) { console.error('AI stream listener failed:', error); }
+              }
+            };
+            window.addEventListener('htmlapp:ai-stream', onChunk);
+            return call('ai.stream', args, {
+              signal,
+              onDispatch: id => { requestID = id; }
+            }).finally(() => {
+              window.removeEventListener('htmlapp:ai-stream', onChunk);
+            });
+          },
           classify: (options = {}) => call('ai.classify', options),
           cancel: (requestID) => call('ai.cancel', { requestID }),
           createSession: (settings = {}) => createAISession(settings)

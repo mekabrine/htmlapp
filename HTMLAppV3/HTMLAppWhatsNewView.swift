@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.64"
-    static let compiledBuild = "72"
+    static let compiledVersion = "1.6.65"
+    static let compiledBuild = "73"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.65" { return [
+            Entry(id: "live-ai-streaming", title: "Live AI responses in saved apps", description: "Generated apps can now receive live provider tokens through HTMLAppNative.ai.stream(), display them as they arrive and cancel with AbortSignal. Streams stay inside the saved app's permitted foreground AI session.", symbol: "text.bubble", tint: .blue),
+            Entry(id: "in-app-ai-tools", title: "AI can ask to use native tools", description: "Short, in-memory AI conversations can call selected calendars, reminders, health, location and saved-document methods with fresh permission confirmation before sensitive data goes to the provider.", symbol: "sparkles.rectangle.stack", tint: .purple),
+            Entry(id: "cancelled-ai-requests", title: "Safer cancellation and request limits", description: "Foreground AI streaming follows the existing per-app permission, request budget, response-size limits and request cancellation, with no promises of background streaming.", symbol: "hand.raised", tint: .green)
+        ] }
         if version == "1.6.64" { return [
             Entry(id: "tool-calling-ai-sessions", title: "AI sessions with confirmed native tools", description: "Saved apps can now create short AI conversations that request selected calendar, reminders, health, battery, location, and private document tools. Every sensitive tool call requires a new user confirmation before private results can reach the AI provider.", symbol: "sparkles.rectangle.stack", tint: .blue),
             Entry(id: "ai-private-conversation-memory", title: "Private, short-lived AI conversation context", description: "Each in-app AI session retains its recent messages only in the open WebView. Sessions include explicit clear and cancellation support and do not persist secrets or conversation history.", symbol: "bubble.left.and.bubble.right", tint: .purple),
