@@ -944,3 +944,14 @@ assert "sessions[appID]" in listService and "item.title" in listService
 assert 'case "ui.list":' in native and 'case "ui.listUpdate":' in native
 assert "htmlapp:ui-list-refresh" in native
 assert "testNativeRPC" in source("scripts/test-native-bridge.js")
+
+# Forge consumes the exact generated TypeScript contract and caches identical
+# planning requests only in memory. Costs are explicitly estimates.
+assert "HTMLApp/Resources/htmlapp-native-api.d.ts" in source("project.yml")
+assert "HTMLApp/Resources/htmlapp-native-api.d.ts" in source("scripts/generate-native-contract.js")
+assert "ForgeNativeTypedCatalog.promptContract" in source("HTMLAppV3/AIGenerationService.swift")
+assert "ForgePlanCache.shared.read" in source("HTMLAppV3/AIGenerationService.swift")
+assert "actor ForgePlanCache" in source("HTMLAppV3/ForgePlanCache.swift")
+assert "AI Work Cost Estimate" in source("HTMLAppV3/AISettingsView.swift")
+assert "EXCLUDE input tokens" in source("HTMLAppV3/ForgeRunTelemetry.swift")
+assert "Bridge lint: direct call to" in source("HTMLAppV3/HTMLAppBridgeLint.swift")

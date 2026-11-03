@@ -7,6 +7,7 @@ struct AIConfigurationSettingsView: View {
     @AppStorage("developerMode") private var developerMode = false
     @AppStorage("htmlapp.offlineForge.effort") private var offlineForgeEffort = "balanced"
     @AppStorage("htmlapp.forgeTaste.enabled") private var forgeTasteEnabled = false
+    @AppStorage("htmlapp.forge.estimatedOutputUSDPerMillion") private var estimatedOutputUSDPerMillion = 0.0
     @State private var showTasteCleared = false
     @AppStorage("ai.quickMode.policy") private var quickModePolicy = "automatic"
     @AppStorage("ai.quickLowReasoning") private var quickLowReasoning = true
@@ -140,6 +141,19 @@ struct AIConfigurationSettingsView: View {
                 }
             }
             if showAdvancedGeneration {
+            Section("AI Work Cost Estimate") {
+                HStack {
+                    Text("Output price / million tokens")
+                    Spacer()
+                    Text("$" + String(format: "%.2f", estimatedOutputUSDPerMillion))
+                        .monospacedDigit()
+                }
+                Slider(value: $estimatedOutputUSDPerMillion,
+                       in: 0...100, step: 0.25)
+                Text("Optional estimate only. Set your provider's output price; 0 hides cost estimates. The stage timeline estimates text tokens from source bytes and does NOT measure provider input, reasoning or actual billed tokens.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section {
                 TextField("QUICK! model name", text: $quickModel)
                     .textInputAutocapitalization(.never)

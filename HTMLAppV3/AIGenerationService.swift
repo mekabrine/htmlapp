@@ -2058,6 +2058,17 @@ Draw a distinctive, purpose-specific 1024px icon in IconScript. Use a crisp iOS-
     }
 
     static func planPrompt(_ prompt: String, config: AIProviderConfiguration, fromVoice: Bool = false) async throws -> AIPlanningResult {
+        let cacheKey = [config.compatibility.rawValue, config.apiURL,
+                        config.model, fromVoice ? "voice" : "text", prompt].joined(separator: "\u{1F}")
+        if let cached = await ForgePlanCache.shared.read(cacheKey) {
+            await MainActor.run {
+                AIDebugTraceStore.shared.append(
+                    "PLANNER CACHE HIT",
+                    "Reused an identical plan from this session (under twelve minutes old)."
+                )
+            }
+            return cached
+        }
         let system = """
 You are HTMLApp Forge's combined product-planning and capability-research planner. Turn the user's raw app idea into a compact implementation-ready brief AND decide what device/public API research is actually required.
 
@@ -2100,7 +2111,7 @@ Resolve ambiguity with ordinary reversible defaults. Do not expose hidden reason
                 plannerRole: true
             )
             let brief = value("brief", in: text).trimmed
-            return AIPlanningResult(
+            let planned = AIPlanningResult(
                 brief: brief.isEmpty ? prompt : brief,
                 research: AIResearchPlan(
                     publicQueries: plannedValues("query", in: text),
@@ -2112,6 +2123,8 @@ Resolve ambiguity with ordinary reversible defaults. Do not expose hidden reason
                 capabilities: Array(plannedValues("capability", in: text).prefix(10)),
                 recommendedMode: value("mode", in: text).trimmed
             )
+            await ForgePlanCache.shared.save(planned, for: cacheKey)
+            return planned
         } catch {
             await MainActor.run {
                 AIDebugTraceStore.shared.append(
@@ -2245,7 +2258,7 @@ It is valid to return both kinds. If neither device capabilities nor external se
         let base = AISettingsStore.resolvedSystemPrompt(research: research)
         // The catalog directory is always visible; detailed entries are injected from planner queries.
         let contract = base.contains("FORGE CORE CONTRACT") ? "" : "\n\n" + ForgeProductContract.rules
-        return base + contract + """
+        return base + contract + ForgeNativeTypedCatalog.promptContract + """
 
 REMOTE PUSH AND BACKGROUND VOICE:
 - HTMLAppNative.push.register() requests opt-in iOS push registration and returns a token only on APNs-provisioned builds. This does not create a server. Remote notifications require the user's backend to register tokens and send APNs messages; never claim notifications will arrive before that infrastructure exists.
@@ -2342,7 +2355,7 @@ RULES:
 Decide if <ui_polish_needed> should be yes. Say yes ONLY when the requested edit significantly changes visual identity, layout hierarchy, theme, or multiple screens and a separate UI specialist could meaningfully help. Say no for bug fixes, functional changes, wording, colors on one component, and ordinary small revisions; do not waste a specialist call.
 Keep or improve native-feeling animation and mobile interactions. Do not fabricate facts, APIs, live data or capabilities. If the revision depends on something uncertain, use the documented research below; if no credible API is available, implement an honest local/limited state rather than fake data.
 
-HTMLAPP CAPABILITY LOOKUP:\n\(HTMLAppDeviceAPIResearch.capabilityDirectory)\n\nRESEARCH RESULTS:\n\(research.isEmpty ? "No new external API research was needed or no suitable public API was found." : research)
+HTMLAPP CAPABILITY LOOKUP:\n\(HTMLAppDeviceAPIResearch.capabilityDirectory)\n\nTYPED NATIVE BRIDGE CONTRACT:\n\(ForgeNativeTypedCatalog.promptContract)\n\nRESEARCH RESULTS:\n\(research.isEmpty ? "No new external API research was needed or no suitable public API was found." : research)
 """
     }
 

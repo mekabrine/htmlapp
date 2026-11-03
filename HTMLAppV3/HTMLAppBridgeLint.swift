@@ -4,7 +4,15 @@ import Foundation
 /// Never executes untrusted app JavaScript.
 enum HTMLAppBridgeLint {
     static func warnings(in html: String) -> [String] {
-        let known = HTMLAppBridgeRegistry.methodSet
+        // Bridge methods are registry-validated. SDK convenience wrappers
+        // (which don't issue their own RPC) are validated separately so
+        // they are not misreported as nonexistent native operations.
+        let wrappers: Set<String> = [
+            "ai.createSession", "db.searchFullText",
+            "capabilities.has", "capabilities.describe",
+            "events.on"
+        ]
+        let known = HTMLAppBridgeRegistry.methodSet.union(wrappers)
         let pattern = #"\b(?:HTMLAppNative|HTMLApp)\.([A-Za-z][A-Za-z0-9]*)\.([A-Za-z][A-Za-z0-9]*)\s*\("#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let source = html as NSString
@@ -46,6 +54,21 @@ enum HTMLAppBridgeLint {
             if remaining.hasPrefix(")") && required > 0,
                seen.insert("arity:" + name).inserted {
                 warnings.append("Bridge lint: \(name) requires \(required) argument(s); the generated call is empty.")
+            }
+        }
+        // Literal raw RPC names can be validated without executing the app.
+        // This catches direct HTMLAppNative.call('wrong.method', ...) calls
+        // that the wrapper-notation lint above cannot see.
+        let directPattern = #"\bHTMLAppNative\s*\.\s*call\s*\(\s*['"]([A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*)['"]"#
+        if let directRegex = try? NSRegularExpression(pattern: directPattern) {
+            for match in directRegex.matches(
+                in: html, range: NSRange(location: 0, length: source.length)
+            ) where match.numberOfRanges == 2 {
+                let name = source.substring(with: match.range(at: 1))
+                if !HTMLAppBridgeRegistry.methodSet.contains(name),
+                   seen.insert("direct:" + name).inserted {
+                    warnings.append("Bridge lint: direct call to \(name) isn't registered. Use the generated native API contract.")
+                }
             }
         }
         if html.contains("navigator.bluetooth.requestDevice(") {

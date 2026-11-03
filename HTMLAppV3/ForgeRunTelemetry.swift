@@ -270,6 +270,8 @@ struct ForgeWorkRing: View {
 
 struct ForgeRunBreakdown: View {
     let runs: [ForgeWorkRun]
+    @AppStorage("htmlapp.forge.estimatedOutputUSDPerMillion")
+    private var estimatedOutputUSDPerMillion = 0.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -294,6 +296,13 @@ struct ForgeRunBreakdown: View {
                             if slice.sourceBytes > 0 {
                                 Text("~\(slice.estimatedTokens) tokens")
                                     .foregroundStyle(.secondary)
+                                if estimatedOutputUSDPerMillion > 0 {
+                                    let estimate = Double(slice.estimatedTokens) /
+                                        1_000_000 * estimatedOutputUSDPerMillion
+                                    Text(String(format: "~$%.4f", estimate))
+                                        .foregroundStyle(.secondary)
+                                        .accessibilityLabel("Output-only estimated cost")
+                                }
                                 Text(ByteCountFormatter.string(fromByteCount: Int64(slice.sourceBytes), countStyle: .file))
                                     .foregroundStyle(.secondary)
                             }
@@ -304,7 +313,7 @@ struct ForgeRunBreakdown: View {
                 .padding(8)
                 .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
             }
-            Text("Token counts are estimates (~4 bytes/token). The provider may not report actual usage. Timings reflect app-observed stages, not billed model time.")
+            Text("Token counts use an approximation (~4 bytes per token), not provider usage. Optional USD figures use your supplied output rate and EXCLUDE input tokens, reasoning tokens, cached tokens, image costs and provider charges; never treat them as a bill. Timings are measured by HTMLApp.")
                 .font(.caption2).foregroundStyle(.secondary)
         }
     }

@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.70"
-    static let compiledBuild = "78"
+    static let compiledVersion = "1.6.71"
+    static let compiledBuild = "79"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,12 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.71" { return [
+            Entry(id: "typed-forge-contract", title: "Forge knows the exact native APIs", description: "Forge now includes the schema-generated TypeScript native contract in its generation and editing prompts, helping prevent invented device methods and incorrect argument shapes.", symbol: "curlybraces.square", tint: .blue),
+            Entry(id: "planning-cache", title: "Less repeated planning work", description: "Retrying an identical app idea can reuse an in-memory planning result from the prior twelve minutes, avoiding unnecessary repeated provider calls without saving prompts to disk.", symbol: "bolt", tint: .green),
+            Entry(id: "stage-cost-estimates", title: "Optional AI work cost estimates", description: "Advanced AI Settings now lets you enter an output-token price, and the Forge stage timeline shows a clearly labeled approximate output-only cost. Estimates are not actual bills and exclude other token charges.", symbol: "chart.bar", tint: .purple),
+            Entry(id: "bridge-linting", title: "Smarter native bridge checks", description: "Forge also checks literal native RPC method names against the generated registry while recognizing supported higher-level SDK helpers.", symbol: "checkmark.shield", tint: .orange)
+        ] }
         if version == "1.6.70" { return [
             Entry(id: "native-list-ui", title: "Native lists and sheets for generated apps", description: "Generated HTML apps can now present genuine UIKit list sheets with accessible rows, selected-item results and native sheet transitions instead of relying only on web-styled dialogs.", symbol: "list.bullet.rectangle.portrait", tint: .blue),
             Entry(id: "native-pull-refresh", title: "Pull to refresh native lists", description: "Optional native pull-to-refresh emits an event to the saved app, which can publish updated rows using HTMLAppNative.ui.listUpdate(). Lists are foreground-only and isolated per saved app.", symbol: "arrow.clockwise", tint: .green),

@@ -137,6 +137,7 @@ ${requiredMap}
       arguments:d.arguments,requiredArguments:d.required,resultType:d.result
     }]))},null,2)+"\n";
   return {"HTMLAppV3/HTMLAppBridgeRegistry.swift":src,"docs/htmlapp-native-api.d.ts":dts,
+    "HTMLApp/Resources/htmlapp-native-api.d.ts":dts,
     "docs/htmlapp-native-api.json":json};
 };
 const outputs = generate(schema, types);
