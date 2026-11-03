@@ -866,7 +866,7 @@ assert 'htmlapp-preview-viewport' in preview and 'width=device-width' in preview
 assert 'HTMLAppPublicAddressGuard.publicDNSAddresses(for: host)' in network
 assert 'validateConnectedAddresses()' in network
 assert "compression_decode_buffer" in source("HTMLAppV3/HTMLAppStoredZip.swift") and "CRC32.checksum(content)" in source("HTMLAppV3/HTMLAppStoredZip.swift")
-assert "archiveTooLarge" in archive and "Int(count) <= maxEntries" in archive
+assert "archiveTooLarge" in source("HTMLAppV3/HTMLAppStoredZip.swift") and "Int(count) <= maxEntries" in source("HTMLAppV3/HTMLAppStoredZip.swift")
 assert "String(item.path.dropFirst(prefix.count))" in archive
 
 # On-demand SQLite FTS5 indexing and typed public SDK helper.
