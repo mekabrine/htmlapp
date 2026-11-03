@@ -32,8 +32,26 @@ async function testNativeRPC() {
       }
     } } }
   };
+  const element = attrs => ({
+    hidden: false,
+    getAttribute: key => attrs[key],
+    setAttribute: (key, value) => { attrs[key] = value; },
+    removeAttribute: key => { delete attrs[key]; }
+  });
+  const home = element({ 'data-htmlapp-screen': 'home' });
+  const settings = element({ 'data-htmlapp-screen': 'settings' });
+  const button = element({ 'data-htmlapp-go': 'settings' });
+  const fallback = element({});
+  const document = {
+    querySelectorAll: selector => ({
+      '[data-htmlapp-screen]': [home, settings],
+      '[data-htmlapp-go]': [button],
+      '[data-htmlapp-tab-fallback]': [fallback]
+    })[selector] || [],
+    addEventListener: (name, handler) => listeners.set(name, handler)
+  };
   vm.runInNewContext(nativeScript, {
-    window, setTimeout, clearTimeout, queueMicrotask, console,
+    window, document, setTimeout, clearTimeout, queueMicrotask, console,
     AbortController, DOMException, Response, Blob, atob
   }, { filename: 'HTMLNativeAPIScript.js' });
   const api = window.HTMLAppNative;
@@ -76,6 +94,20 @@ async function testNativeRPC() {
   await assert.rejects(request, err => err.code === 'cancelled');
   assert.ok(sent.some(msg => msg.method === 'bridge.cancel' && msg.args.targetID));
   listeners.get('pagehide')();
+  await api.screens.configure({ items: [{ id: 'home' }, { id: 'settings' }] });
+  assert.equal(home.hidden, false);
+  assert.equal(settings.hidden, true);
+  assert.equal(fallback.hidden, false);
+  listeners.get('htmlapp:native-tab-select')({ detail: { id: 'home' } });
+  assert.equal(fallback.hidden, true);
+  listeners.get('click')({ target: { closest: () => button }, preventDefault() {} });
+  assert.ok(sent.some(msg => msg.method === 'tabs.select' && msg.args.id === 'settings'));
+  listeners.get('htmlapp:native-tab-select')({ detail: { id: 'settings' } });
+  assert.equal(home.hidden, true);
+  assert.equal(settings.hidden, false);
+  assert.equal(button.getAttribute('aria-current'), 'page');
+  assert.equal(await api.screens.go('unknown'), false);
+
 }
 
 async function testAISessionTools() {
@@ -199,3 +231,4 @@ function testViewport() {
   testViewport();
   console.log('Native bridge and app viewport JS tests passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
+

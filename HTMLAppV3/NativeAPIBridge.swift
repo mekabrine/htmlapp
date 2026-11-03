@@ -3495,6 +3495,83 @@ enum HTMLNativeAPIScript {
         });
       };
 
+      // One router owns visibility for apps that opt into managed screens.
+      let screenRouter = null;
+      const screens = {
+        configure: async ({ items, selected } = {}) => {
+          if (screenRouter) throw new Error('Configure screens once per document.');
+          if (!Array.isArray(items) || items.length < 1 || items.length > 7)
+            throw new RangeError('Provide 1 to 7 screen tabs.');
+          const pages = new Map();
+          for (const page of document.querySelectorAll('[data-htmlapp-screen]')) {
+            const id = page.getAttribute('data-htmlapp-screen');
+            if (!id || pages.has(id)) throw new Error('Screen IDs must be unique and nonempty.');
+            pages.set(id, page);
+          }
+          const ids = new Set(items.map(item => item.id));
+          const initial = selected ?? items[0].id;
+          if (ids.size !== items.length || ids.size !== pages.size || !ids.has(initial)
+              || [...ids].some(id => !pages.has(id)))
+            throw new Error('Every screen must have exactly one matching tab ID.');
+          const show = id => {
+            if (!pages.has(id)) return;
+            screenRouter.active = id;
+            for (const [key, page] of pages) page.hidden = key !== id;
+            for (const control of document.querySelectorAll('[data-htmlapp-go]')) {
+              if (control.getAttribute('data-htmlapp-go') === id) control.setAttribute('aria-current', 'page');
+              else control.removeAttribute('aria-current');
+            }
+          };
+          screenRouter = { show, pages, active: initial, native: false };
+          show(initial);
+          const setNative = enabled => {
+            screenRouter.native = enabled;
+            for (const fallback of document.querySelectorAll('[data-htmlapp-tab-fallback]'))
+              fallback.hidden = enabled;
+          };
+          screenRouter.setNative = setNative;
+          setNative(false);
+          window.addEventListener('htmlapp:native-tab-select', event => {
+            const id = event.detail?.id;
+            if (!pages.has(id)) return;
+            const mounted = screenRouter.native;
+            setNative(true);
+            // The first event confirms UIKit mounted, which can happen after
+            // configure resolves. Preserve navigation made while waiting.
+            if (!mounted && screenRouter.active !== id) void screens.go(screenRouter.active);
+            else show(id);
+          });
+          document.addEventListener('click', event => {
+            if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            const control = event.target?.closest?.('[data-htmlapp-go]');
+            const id = control?.getAttribute('data-htmlapp-go');
+            if (!pages.has(id) || control.disabled || control.getAttribute('aria-disabled') === 'true') return;
+            event.preventDefault();
+            void screens.go(id);
+          });
+          try {
+            await api.tabs.configure({ items, selected: initial });
+          } catch {
+            // The HTML controls already work without UIKit.
+          }
+          return { enabled: screenRouter.native };
+        },
+        go: async id => {
+          if (!screenRouter?.pages.has(id)) return false;
+          if (screenRouter.native) {
+            try {
+              // UIKit emits the same selection event as a tap on the tab bar.
+              await api.tabs.select(id);
+              return true;
+            } catch {
+              screenRouter.setNative(false);
+            }
+          }
+          screenRouter.show(id);
+          return true;
+        }
+      };
+
       const api = {
         call,
         capabilities: () => call('capabilities.list'),
@@ -3649,6 +3726,7 @@ enum HTMLNativeAPIScript {
             call('bluetooth.gattSubscribe', { id, service, characteristic }),
           gattStop: () => call('bluetooth.gattStop')
         },
+        screens,
         tabs: {
           configure: async (input, opts = {}) => {
             const items = Array.isArray(input) ? input : input?.items;
@@ -3867,3 +3945,4 @@ questionmark.circle info.circle exclamationmark.triangle hand.tap hand.raised ey
 square.on.square rectangle.portrait.on.rectangle.portrait app.badge apps.iphone square.grid.3x3.fill
 """.split(whereSeparator: \.isWhitespace).map(String.init)
 }
+
