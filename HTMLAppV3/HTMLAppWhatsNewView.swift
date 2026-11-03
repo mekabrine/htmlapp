@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.59"
-    static let compiledBuild = "67"
+    static let compiledVersion = "1.6.60"
+    static let compiledBuild = "68"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.60" { return [
+            Entry(id: "reliable-visual-form-fixes", title: "More reliable popup redesigns", description: "Forge now recognizes when a corrected layout replaces an older bad grid rule, so valid repairs are accepted without breaking label and input alignment.", symbol: "paintbrush.pointed", tint: .pink),
+            Entry(id: "whisper-rescue", title: "Retry speech without repeating it", description: "Whisper keeps the captured audio through multiple automatic transcription retries and provides a Retry using saved audio option if needed. Recovered speech still applies to the original edit or style-feedback action.", symbol: "waveform", tint: .blue),
+            Entry(id: "visual-edit-recovery", title: "AI edits catch broken dialog layouts", description: "Visual changes that split labels from fields or produce no actual source change trigger a corrective patch attempt rather than being reported as finished.", symbol: "rectangle.on.rectangle", tint: .indigo)
+        ] }
         if version == "1.6.59" { return [
             Entry(id: "visual-form-redesign-repair", title: "Visual edits respect your forms", description: "Forge now detects broken multi-column layouts that split labels away from their fields, then retries the visual patch from the original app. It preserves existing data and behavior instead of approving a visually broken change.", symbol: "paintbrush.pointed", tint: .pink),
             Entry(id: "spoken-edit-rescue", title: "Voice edits recover without repeating speech", description: "Whisper keeps your recorded audio through automatic transcription retries, can reload its speech model, and offers Retry using saved audio if decoding still fails. Successful retries return to the original edit or style feedback action.", symbol: "waveform", tint: .blue),

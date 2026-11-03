@@ -63,22 +63,37 @@ enum ForgeVisualEditQualityGate {
             let declarations = rules.matches(in: after,
                 range: NSRange(location: 0, length: text.length))
                 .map { text.substring(with: $0.range(at: 1)).lowercased() }
-            let introducedGrid = declarations.contains { $0.range(
-                of: #"display\s*:\s*grid\b"#, options: .regularExpression
-            ) != nil }
-            let columns = declarations.contains { body in
-                guard let range = body.range(
+            // CSS cascade: an old grid rule can legitimately be corrected by
+            // a later display:flex/block declaration. Judge the last effective
+            // declaration instead of rejecting any historical grid mention.
+            var effectiveDisplay: String?
+            var effectiveColumns: String?
+            for body in declarations {
+                if let match = body.range(
+                    of: #"display\s*:\s*(grid|flex|block|contents|inline-grid)\b"#,
+                    options: .regularExpression
+                ) {
+                    effectiveDisplay = String(body[match])
+                        .replacingOccurrences(of: #"^display\s*:\s*"#, with: "",
+                                              options: .regularExpression)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let match = body.range(
                     of: #"grid-template-columns\s*:\s*([^;}]+)"#,
                     options: .regularExpression
-                ) else { return false }
-                let value = String(body[range]).replacingOccurrences(
-                    of: #"^grid-template-columns\s*:\s*"#, with: "",
-                    options: .regularExpression
-                ).trimmingCharacters(in: .whitespacesAndNewlines)
-                return value.contains(" 1fr") || value.contains("minmax(") ||
-                       value.contains("repeat(") || value.contains("50%") ||
-                       value.contains(" 50%")
+                ) {
+                    effectiveColumns = String(body[match])
+                        .replacingOccurrences(of: #"^grid-template-columns\s*:\s*"#,
+                                              with: "", options: .regularExpression)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                }
             }
+            let introducedGrid = effectiveDisplay == "grid" || effectiveDisplay == "inline-grid"
+            let columns = effectiveColumns.map { value in
+                value.contains(" 1fr") || value.contains("minmax(") ||
+                value.contains("repeat(") || value.contains("50%") ||
+                value.contains(" 50%")
+            } ?? false
             if introducedGrid && columns {
                 return "The form #\(id) has separate sibling labels and fields, but the redesign gives it multiple grid columns. This misaligns labels, inputs and reminder controls. Use a single-column field stack or add proper grouped wrappers while preserving IDs and behaviors."
             }

@@ -32,6 +32,13 @@ struct VisualEditGuardTests {
         )
         precondition(issue?.contains("labels") == true,
                      "Flat form changed to two-column grid must fail QA")
+        let repaired = broken.replacingOccurrences(
+            of: "</head>",
+            with: "<style>#habitForm {display:flex;flex-direction:column}</style></head>"
+        )
+        precondition(ForgeVisualEditQualityGate.issue(
+            before: original, after: repaired, request: "redo the popup"
+        ) == nil, "A later single-column form override must clear old grid issues")
         let safe = original.replacingOccurrences(
             of: "</head>",
             with: "<style>#habitDialog { border: 4px solid hotpink; padding: 24px; }</style></head>"
