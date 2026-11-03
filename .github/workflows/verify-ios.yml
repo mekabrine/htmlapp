@@ -48,6 +48,11 @@ jobs:
         run: |
           swiftc HTMLAppV3/HTMLAppDocumentDatabase.swift HTMLAppV3/HTMLAppVectorSearch.swift scripts/test-vector-search.swift -o /tmp/htmlapp-vector-test
           /tmp/htmlapp-vector-test
+      - name: Exercise ZIP Store, Deflate and integrity regressions
+        run: |
+          python3 scripts/create-zip-fixtures.py "$RUNNER_TEMP/htmlapp-zip-tests"
+          swiftc HTMLAppV3/HTMLAppStoredZip.swift scripts/test-stored-zip.swift -o "$RUNNER_TEMP/htmlapp-zip-tests-bin"
+          "$RUNNER_TEMP/htmlapp-zip-tests-bin" "$RUNNER_TEMP/htmlapp-zip-tests"
       - name: Install XcodeGen and generate project
         run: |
           HOMEBREW_NO_AUTO_UPDATE=1 brew list xcodegen >/dev/null 2>&1 || HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen

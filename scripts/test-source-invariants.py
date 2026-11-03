@@ -955,3 +955,8 @@ assert "actor ForgePlanCache" in source("HTMLAppV3/ForgePlanCache.swift")
 assert "AI Work Cost Estimate" in source("HTMLAppV3/AISettingsView.swift")
 assert "EXCLUDE input tokens" in source("HTMLAppV3/ForgeRunTelemetry.swift")
 assert "Bridge lint: direct call to" in source("HTMLAppV3/HTMLAppBridgeLint.swift")
+
+# ZIP parser is isolated and tested independently of the SwiftUI app.
+assert "enum StoredZip" in source("HTMLAppV3/HTMLAppStoredZip.swift")
+assert "enum StoredZip" not in source("HTMLAppV3/HTMLAppPackageTransfer.swift")
+assert "test-stored-zip.swift" in source(".github/workflows/verify-ios.yml")

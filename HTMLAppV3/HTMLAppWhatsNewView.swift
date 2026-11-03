@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.71"
-    static let compiledBuild = "79"
+    static let compiledVersion = "1.6.72"
+    static let compiledBuild = "80"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,10 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.72" { return [
+            Entry(id: "zip-fixture-validation", title: "More reliable HTMLApp backups", description: "ZIP handling is now isolated in a small tested module. Automated macOS tests check compressed archives, data descriptors, integrity failures, duplicate entries, path traversal and backup round trips.", symbol: "archivebox.fill", tint: .green),
+            Entry(id: "simulator-import-tests", title: "Import tested across phone and tablet", description: "The continuous UI test matrix exercises the root Import screen on both iPhone and iPad simulators. Actual Files and Share Sheet handoff still depends on iOS delivery and signing.", symbol: "iphone.gen3", tint: .purple)
+        ] }
         if version == "1.6.71" { return [
             Entry(id: "typed-forge-contract", title: "Forge knows the exact native APIs", description: "Forge now includes the schema-generated TypeScript native contract in its generation and editing prompts, helping prevent invented device methods and incorrect argument shapes.", symbol: "curlybraces.square", tint: .blue),
             Entry(id: "planning-cache", title: "Less repeated planning work", description: "Retrying an identical app idea can reuse an in-memory planning result from the prior twelve minutes, avoiding unnecessary repeated provider calls without saving prompts to disk.", symbol: "bolt", tint: .green),
