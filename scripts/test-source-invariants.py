@@ -865,7 +865,7 @@ assert 'frame(width: 76, height: 44)' not in styles
 assert 'htmlapp-preview-viewport' in preview and 'width=device-width' in preview
 assert 'HTMLAppPublicAddressGuard.publicDNSAddresses(for: host)' in network
 assert 'validateConnectedAddresses()' in network
-assert "compression_decode_buffer" in archive and "CRC32.checksum(content)" in archive
+assert "compression_decode_buffer" in source("HTMLAppV3/HTMLAppStoredZip.swift") and "CRC32.checksum(content)" in source("HTMLAppV3/HTMLAppStoredZip.swift")
 assert "archiveTooLarge" in archive and "Int(count) <= maxEntries" in archive
 assert "String(item.path.dropFirst(prefix.count))" in archive
 
