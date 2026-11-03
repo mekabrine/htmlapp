@@ -42,6 +42,7 @@ enum ForgeStyleMobileQualityCheck {
                 webView.scrollView.pinchGestureRecognizer?.isEnabled = false
                 var document = html
                 let safeHead = """
+                <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
                 <meta http-equiv="Content-Security-Policy"
                 content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';
                 img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'">
@@ -55,8 +56,9 @@ enum ForgeStyleMobileQualityCheck {
                 watchdog = Task { [weak self] in
                     try? await Task.sleep(nanoseconds: 4_000_000_000)
                     guard !Task.isCancelled else { return }
-                    // A hung WebKit process should not block style choices.
-                    self?.finish(nil)
+                    // Fail closed. A style that we could not measure must
+                    // never be silently approved as a good mobile preview.
+                    self?.finish("This style could not be verified at phone width. Generate a simpler responsive layout.")
                 }
             }
         }
@@ -64,7 +66,8 @@ enum ForgeStyleMobileQualityCheck {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             let check = #"""
             (() => {
-              const width = Math.max(1, document.documentElement.clientWidth || innerWidth);
+              const width = 320;
+              const actualViewport = document.documentElement.clientWidth || innerWidth;
               const elements = Array.from(document.body?.querySelectorAll('*') || []).slice(0, 1000);
               const overflowing = [];
               let tinyText = 0;
@@ -89,7 +92,9 @@ enum ForgeStyleMobileQualityCheck {
               }
               return {
                 width,
-                scrollWidth: document.documentElement.scrollWidth,
+                actualViewport,
+                scrollWidth: Math.max(document.documentElement.scrollWidth,
+                  document.body?.scrollWidth || 0),
                 overflow: overflowing,
                 tinyText, visibleText
               };
@@ -99,15 +104,16 @@ enum ForgeStyleMobileQualityCheck {
                 Task { @MainActor in
                     guard let self else { return }
                     guard error == nil, let values = result as? [String: Any] else {
-                        self.finish(nil)
+                        self.finish("Could not inspect this style's live layout. Try a simpler responsive sketch.")
                         return
                     }
                     let viewport = (values["width"] as? NSNumber)?.doubleValue ?? 320
+                    let actualViewport = (values["actualViewport"] as? NSNumber)?.doubleValue ?? 320
                     let scroll = (values["scrollWidth"] as? NSNumber)?.doubleValue ?? 320
                     let over = values["overflow"] as? [String] ?? []
                     let tiny = (values["tinyText"] as? NSNumber)?.intValue ?? 0
                     let text = (values["visibleText"] as? NSNumber)?.intValue ?? 0
-                    if scroll > viewport + 5 || !over.isEmpty {
+                    if actualViewport > viewport + 5 || scroll > viewport + 5 || !over.isEmpty {
                         self.finish("Mobile preview overflows the 320px viewport. Out-of-bounds elements: " +
                                     over.prefix(4).joined(separator: ", ") +
                                     ". Stack content vertically and use responsive widths.")

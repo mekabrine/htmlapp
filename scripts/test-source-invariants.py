@@ -960,3 +960,10 @@ assert "Bridge lint: direct call to" in source("HTMLAppV3/HTMLAppBridgeLint.swif
 assert "enum StoredZip" in source("HTMLAppV3/HTMLAppStoredZip.swift")
 assert "enum StoredZip" not in source("HTMLAppV3/HTMLAppPackageTransfer.swift")
 assert "test-stored-zip.swift" in source(".github/workflows/verify-ios.yml")
+
+# Generated style sketches must fail closed when WebKit cannot measure layout.
+lookQA = source("HTMLAppV3/ForgeStyleMobileQualityCheck.swift")
+assert 'const width = 320;' in lookQA
+assert 'actualViewport' in lookQA
+assert 'self?.finish("This style could not be verified' in lookQA
+assert 'self.finish("Could not inspect this style' in lookQA
