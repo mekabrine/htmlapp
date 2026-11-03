@@ -86,6 +86,9 @@ struct HTMLAppMain: App {
                     .interactiveDismissDisabled(true)
                 }
                 .onAppear {
+                    #if DEBUG
+                    prepareUITestImportsIfRequested()
+                    #endif
                     store.claimShareExtensionFiles()
                     checkVersionOnLaunch()
                     store.setExternalHTMLImportReady(
@@ -188,6 +191,39 @@ struct HTMLAppMain: App {
                 }
         }
     }
+
+    #if DEBUG
+    private func prepareUITestImportsIfRequested() {
+        let args = ProcessInfo.processInfo.arguments
+        guard args.contains("-HTMLAppUITestExternalImport") ||
+              args.contains("-HTMLAppUITestSharedInbox") else { return }
+        // Avoid the release notes cover hiding the import route during the
+        // actual UI regression test. This affects only test-launched Debug
+        // builds and never production user defaults.
+        lastOpenedVersion = HTMLAppReleaseNotes.installedVersion
+        lastSeenBuild = installedBuildFingerprint
+        let html = "<!doctype html><html><head><title>UI Import Fixture</title></head><body><h1>Import QA</h1></body></html>"
+        if args.contains("-HTMLAppUITestExternalImport") {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("htmlapp-UI-test-external.html")
+            try? html.data(using: .utf8)?.write(to: url, options: .atomic)
+            store.queueExternalHTMLFile(url)
+        }
+        if args.contains("-HTMLAppUITestSharedInbox"),
+           let group = FileManager.default.containerURL(
+               forSecurityApplicationGroupIdentifier: "group.com.mekabrine.htmlapp"
+           ) {
+            let folder = group.appendingPathComponent("IncomingHTML", isDirectory: true)
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder,
+                                                      withIntermediateDirectories: true)
+            try? html.data(using: .utf8)?.write(
+                to: folder.appendingPathComponent("From-Share-UI-Test.html"),
+                options: .atomic
+            )
+        }
+    }
+    #endif
 
     private var installedBuildFingerprint: String {
         let info = Bundle.main.infoDictionary ?? [:]

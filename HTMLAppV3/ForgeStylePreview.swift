@@ -196,17 +196,38 @@ enum ForgeStylePreviewService {
         Use matching background, cards and text contrast; do not force a dark
         theme in a light-mode system or vice versa.
         """
-        for attempt in 0..<(ForgeRunOptions.quick ? 1 : 2) {
+        var visualRepairInstruction = ""
+        // A second attempt is worth its cost when the first look is
+        // actually clipped or unreadable, even in Quick mode.
+        for attempt in 0..<2 {
             try Task.checkCancellation()
             let config = attempt == 0 ? preferredConfig : recoveryConfig
             do {
                 let raw = try await AIProviderClient.complete(
-                    config: config, system: system, messages: [("user", user)],
+                    config: config, system: system,
+                    messages: [("user", user + visualRepairInstruction)],
                     timeout: ForgeRunOptions.quick ? 55 : (attempt == 0 ? 75 : 90),
                     maxTokens: ForgeRunOptions.quick ? 6500 : (attempt == 0 ? 8500 : 12000),
                     retryOnTransient: false
                 )
                 if let html = extractHTML(raw) {
+                    if let issue = await ForgeStyleMobileQualityCheck.inspect(html) {
+                        visualRepairInstruction = """
+
+                        REGENERATE FROM SCRATCH: The previous proposed mockup
+                        failed real 320px WebKit geometry validation: \(issue)
+                        Use a fully responsive one-column composition on phones
+                        with readable text and no horizontal offscreen elements.
+                        Keep the same product purpose and assigned style direction.
+                        """
+                        await MainActor.run {
+                            AIDebugTraceStore.shared.append(
+                                "STYLE MOBILE QA REJECTED",
+                                "Look \(index + 1), attempt \(attempt + 1): \(issue)"
+                            )
+                        }
+                        continue
+                    }
                     return ForgeStyleConcept(id: index, name: freeform ? "AI Look \(index + 1)" : variant.0,
                         summary: freeform ? "Original AI-designed concept" : variant.1,
                         direction: freeform ? "Unrestricted creative direction" : variant.2, previewHTML: html)

@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.67"
-    static let compiledBuild = "75"
+    static let compiledVersion = "1.6.68"
+    static let compiledBuild = "76"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.68" { return [
+            Entry(id: "style-runtime-verifier", title: "Bad style sketches now get repaired", description: "Forge tests generated style previews in a real offscreen 320-point WebKit viewport. Offscreen content or unreadably small text triggers another design attempt before the look can be offered.", symbol: "eye", tint: .purple),
+            Entry(id: "simulator-ui-qa", title: "Simulator import tests", description: "A new simulator UI test target exercises HTMLApp launch, a staged external HTML open, and a Share-extension inbox import on both iPhone and iPad. Tests are available in a dedicated GitHub Actions workflow.", symbol: "iphone", tint: .blue),
+            Entry(id: "native-capability-progress", title: "Continued native improvements", description: "Saved apps now support AI tool conversations, live token streaming, structured on-device model responses, approved cloud fallback, and a Share-sheet import inbox.", symbol: "sparkles", tint: .green)
+        ] }
         if version == "1.6.67" { return [
             Entry(id: "on-device-structured-output", title: "Reliable on-device structured answers", description: "On iOS 26 with Foundation Models, saved apps can request typed answer, summary and confidence fields using Apple's native guided generation instead of relying on unvalidated text JSON.", symbol: "curlybraces", tint: .blue),
             Entry(id: "cloud-fallback-opt-in", title: "Optional, clearly approved cloud fallback", description: "If the on-device model cannot answer, saved apps can request a one-time fallback to the configured cloud provider. HTMLApp asks for explicit confirmation before sending the current prompt.", symbol: "cloud", tint: .purple),

@@ -1,0 +1,83 @@
+name: HTMLApp Simulator UI Matrix
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 7 * * 1'
+
+concurrency:
+  group: htmlapp-simulator-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  import-and-launch:
+    name: ${{ matrix.device }} import and launch
+    runs-on: macos-26-intel
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHOICE="$(printf '%s\n' /Applications/Xcode_26*.app | sort -Vr | head -n 1)"
+          test -d "$CHOICE"
+          sudo xcode-select -s "$CHOICE/Contents/Developer"
+          xcodebuild -version
+      - name: Select an available iOS Simulator
+        shell: bash
+        env:
+          DEVICE_FAMILY: ${{ matrix.device }}
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available -j > simulator-devices.json
+          python3 - <<'PY'
+          import json, os
+          data=json.load(open('simulator-devices.json'))
+          family=os.environ['DEVICE_FAMILY']
+          choices=[]
+          for runtime, devices in data['devices'].items():
+              if 'iOS' not in runtime: continue
+              for device in devices:
+                  if device.get('isAvailable') and device['name'].startswith(family):
+                      choices.append((runtime,device['name'],device['udid']))
+          if not choices:
+              raise SystemExit(f'No available {family} simulator runtime was installed')
+          selected=sorted(choices,reverse=True)[0]
+          with open(os.environ['GITHUB_ENV'],'a') as output:
+              print('SIMULATOR_ID='+selected[2],file=output)
+          print('Selected:',selected)
+          PY
+      - name: Generate project
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 brew list xcodegen >/dev/null 2>&1 || HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen
+          xcodegen generate
+      - name: Run root import and launch UI tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project HTMLApp.xcodeproj \
+            -scheme HTMLAppUITests \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_ID}" \
+            -sdk iphonesimulator \
+            -derivedDataPath "$PWD/DerivedDataUITests" \
+            -resultBundlePath "$PWD/htmlapp-ui-tests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            test 2>&1 | tee htmlapp-ui-tests.log
+      - name: Upload UI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-${{ matrix.device }}-${{ github.run_id }}
+          path: |
+            htmlapp-ui-tests.log
+            htmlapp-ui-tests.xcresult
+            simulator-devices.json
+          if-no-files-found: ignore

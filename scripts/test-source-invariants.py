@@ -913,3 +913,14 @@ assert "generating: LocalStructuredAnswer.self" in local
 assert 'args["fallback"] as? String == "cloud"' in native
 assert "Switch to Cloud AI?" in native
 assert 'cloud_fallback_declined' in native
+
+# WebKit geometry QA rejects offscreen/tiny mockups before style selection.
+styles = source("HTMLAppV3/ForgeStylePreview.swift")
+geometry = source("HTMLAppV3/ForgeStyleMobileQualityCheck.swift")
+assert "ForgeStyleMobileQualityCheck.inspect(html)" in styles
+assert "STYLE MOBILE QA REJECTED" in styles
+assert "getBoundingClientRect()" in geometry and "320" in geometry
+assert "htmlapp-ui-tests" in source(".github/workflows/verify-ui.yml")
+assert 'TEST_TARGET_NAME: HTMLApp' in source("project.yml")
+assert 'testSharedInboxOpensImportScreen' in source("HTMLAppUITests/HTMLAppUITests.swift")
+assert '-HTMLAppUITestExternalImport' in source("HTMLAppV3/AppCore.swift")
