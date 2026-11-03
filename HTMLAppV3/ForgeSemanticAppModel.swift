@@ -268,7 +268,7 @@ struct ForgeEditContract {
             let parts = Set(normalized.components(separatedBy: CharacterSet.alphanumerics.inverted)
                 .filter { $0.count >= 2 && !generic.contains($0) })
             let overlap = parts.intersection(words).count
-            return overlap > 0 ? (id, overlap * 10 + (parts.isSubset(of: words) ? 5 : 0)) : nil
+            return overlap > 0 ? (id, overlap * 10) : nil
         }
         let ranked = scored.sorted { $0.1 == $1.1 ? $0.0 < $1.0 : $0.1 > $1.1 }
         let targets = ranked.filter { $0.1 == ranked.first?.1 }.map { $0.0 }

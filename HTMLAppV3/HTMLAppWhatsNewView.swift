@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.76"
-    static let compiledBuild = "84"
+    static let compiledVersion = "1.6.77"
+    static let compiledBuild = "85"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,7 +30,7 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
-        if version == "1.6.76" { return [
+        if version == "1.6.77" || version == "1.6.76" { return [
             Entry(id: "forge-intent", title: "Smarter small edits", description: "Forge ranks specific screen and component matches, avoids accidental Bluetooth matches in ordinary words, and keeps broader context for ambiguous or functional edits.", symbol: "text.magnifyingglass", tint: .blue),
             Entry(id: "forge-reliability", title: "Safer generation and patches", description: "Incomplete provider responses and unfinished patch blocks are rejected. Cancelled requests stop retrying, and visual edits protect existing screens, routes and native integrations.", symbol: "checkmark.shield", tint: .green),
             Entry(id: "forge-native-workflows", title: "More thoughtful app generation", description: "Updated generation guidance emphasizes complete workflows from short prompts, native iOS interactions, keyboard and accessibility behavior, reliable saving and recovery.", symbol: "iphone", tint: .purple)

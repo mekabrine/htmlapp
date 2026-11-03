@@ -1,4 +1,4 @@
-# Forge generation and edit reliability — 1.6.76 (84)
+# Forge generation and edit reliability — 1.6.76–1.6.77 (85)
 
 ## Problems addressed
 
@@ -47,3 +47,7 @@ Use the same configured model, settings and prompt set before/after; compare mul
 ## Remaining limitations
 
 Targeting is a bounded lexical heuristic, not full natural-language understanding. Preservation uses source extraction rather than AST or runtime proof. Provider quality and supported capabilities still determine generated results. Native appearance must be evaluated on an actual supported iOS host; better prompting cannot make HTML implement unavailable entitlements or backend services.
+
+## CI-driven follow-up
+
+The first macOS regression run found that filtering generic words gave `weekly-card` a specificity bonus over `weekly-summary` for `make weekly smaller`. Removed that bonus so tied partial matches remain ambiguous. This product fix is released as 1.6.77 (85). The Linux test command also now includes the focused-context implementation and runs provider/patch regressions.
