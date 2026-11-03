@@ -443,7 +443,9 @@ struct AIGenerationView: View {
             pendingFloatingVoiceFeedback = nil
             let words = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !words.isEmpty else {
-                microphoneEditNotice = "Whisper could not transcribe that recording."
+                microphoneEditNotice = dictation.canRetryTranscription
+                    ? "Your speech was saved. Retry transcription without recording again."
+                    : "No audio was available for transcription."
                 if forFeedback { showingStyleFeedback = true } else { showingChange = true }
                 return
             }
@@ -1036,6 +1038,17 @@ struct AIGenerationView: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .coordinateSpace(name: "forgeEditSurface")
+            .overlay(alignment: .bottom) {
+                if dictation.canRetryTranscription {
+                    Button {
+                        dictation.retryTranscription()
+                    } label: {
+                        Label("Retry using saved audio", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.bottom, 80)
+                }
+            }
             .overlay {
                 if microphoneCapturing && dictation.appleSpeechActive {
                     liveDictationCaptions
@@ -1282,6 +1295,21 @@ struct AIGenerationView: View {
                             Text(microphoneEditNotice).font(.caption)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if dictation.transcribingOffline {
+                            Label(dictation.status, systemImage: "waveform")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if dictation.canRetryTranscription {
+                            Button {
+                                dictation.retryTranscription()
+                            } label: {
+                                Label("Retry using saved audio", systemImage: "arrow.clockwise")
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityHint("Retries Whisper on the previous recording. You do not need to speak again.")
                         }
                         if let uiPolishNotice {
                             Text(uiPolishNotice)

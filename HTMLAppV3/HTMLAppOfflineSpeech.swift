@@ -32,13 +32,22 @@ final class HTMLAppOfflineSpeech {
         }
     }
 
-    func transcribe(fileURL: URL) async throws -> String {
+    func transcribe(fileURL: URL, resetModel: Bool = false) async throws -> String {
+        if resetModel {
+            // A failed Whisper decoder/model initialization must not poison
+            // the next attempt on the very same recorded audio file.
+            loadingTask?.cancel()
+            loadingTask = nil
+            whisper = nil
+        }
         let model = try await preparedModel()
         let result = try await model.transcribe(audioPath: fileURL.path)
-        guard !result.isEmpty else {
+        let words = result.map(\.text).joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else {
             throw NSError(domain: "HTMLAppWhisper", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "No transcription was returned."])
         }
-        return result.map(\.text).joined(separator: " ")
+        return words
     }
 }

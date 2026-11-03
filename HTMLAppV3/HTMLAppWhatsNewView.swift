@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.57"
-    static let compiledBuild = "65"
+    static let compiledVersion = "1.6.58"
+    static let compiledBuild = "66"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.58" { return [
+            Entry(id: "popup-redesign-guard", title: "Cleaner, more reliable AI edits", description: "Forge now checks visual edits for broken form layouts, duplicate dialog copy, and unchanged output. When a popup redesign misplaces labels and fields, Forge asks the editor to repair the patch instead of accepting the broken result.", symbol: "paintbrush.pointed", tint: .pink),
+            Entry(id: "whisper-recording-retry", title: "Whisper retries without making you repeat yourself", description: "If Whisper cannot decode a recorded voice edit, it retries the same saved audio automatically and can reload its model. A Retry using saved audio action remains available if all attempts fail.", symbol: "waveform", tint: .blue),
+            Entry(id: "whisper-microphone-recovery", title: "Clearer microphone recovery", description: "Transient microphone-start failures now report that recording is retrying, while the microphone only indicates active capture once recording actually starts.", symbol: "mic.fill", tint: .green)
+        ] }
         if version == "1.6.57" { return [
             Entry(id: "reliable-external-html-import", title: "HTML files now open into Import reliably", description: "Opening an HTML file from Files or sharing one to HTMLApp now stages the document safely and keeps the import request until the Library is ready, including cold launches and the What's New screen.", symbol: "doc.badge.arrow.up", tint: .green),
             Entry(id: "simpler-settings", title: "Simpler Settings", description: "Everyday settings are grouped around AI & Voice, Library, iCloud, Manage, and Help, while developer and rarely used controls are tucked into Advanced Settings.", symbol: "gearshape.2", tint: .blue),

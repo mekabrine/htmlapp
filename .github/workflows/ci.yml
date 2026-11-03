@@ -52,6 +52,8 @@ jobs:
           else
             echo "::notice::Swift compiler unavailable; Forge semantic tests require Swift."
           fi
+      - name: Visual edit layout guard regression fixtures
+        run: swiftc HTMLAppV3/ForgeVisualEditQualityGate.swift scripts/test-visual-edit-guard.swift -o "${RUNNER_TEMP:-/tmp}/htmlapp-visual-edit-tests" && "${RUNNER_TEMP:-/tmp}/htmlapp-visual-edit-tests"
       - name: Schema-generated native argument and availability tests
         shell: bash
         run: |

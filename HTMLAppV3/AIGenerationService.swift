@@ -615,9 +615,14 @@ final class AIGenerationSession: ObservableObject {
             AIDebugTraceStore.shared.append("EDIT SOURCE CONTEXT",
                 focusedSource == nil ? "Full source included for safe patching." :
                     "Explicit selector match: focused excerpts supplied; patch recovery retains complete original.")
+            let visualTargetHint = ForgeVisualEditQualityGate.targetHint(
+                html: streamedHTML, request: cleanChange
+            )
             let user = """
 Current app:
 \(sourceContext)
+
+\(visualTargetHint)
 
 Semantic app model and preserved invariants:
 \(semanticModel.summary)
@@ -655,6 +660,64 @@ Requested change:
                 requestedChange: improvedChange,
                 config: config
             )
+            if let issue = ForgeVisualEditQualityGate.issue(
+                before: beforeEditHTML, after: streamedHTML, request: cleanChange
+            ) {
+                // The HTML can pass syntax/bridge checks yet have a visibly
+                // broken form. Rebuild the PATCH from the original document,
+                // not from the rejected proposal; never stack a second bad CSS
+                // layer on top of it.
+                AIDebugTraceStore.shared.append("VISUAL EDIT REPAIR", issue)
+                phase = "Correcting the popup layout"
+                streamedHTML = beforeEditHTML
+                let retryUser = """
+                Your prior visual patch was rejected because it creates a broken layout:
+                \(issue)
+
+                ORIGINAL APP SOURCE (authoritative):
+                <htmlapp_existing>
+                \(beforeEditHTML)
+                </htmlapp_existing>
+
+                USER REQUEST:
+                \(cleanChange)
+
+                \(visualTargetHint)
+
+                Return a DIFFERENT, correct, meaningful redesign as a minimal
+                <htmlapp_patch> against the original source. Preserve every
+                behavior, input ID, event handler, data key and route. Ensure
+                each label remains above its matching field; group controls
+                explicitly when using columns. Reuse existing helper copy.
+                Do not report success without a real effective visual change.
+                """
+                let retryResponse = try await AIProviderClient.complete(
+                    config: config,
+                    system: AIHTMLAgent.patchSystemPrompt(research: lastResearch),
+                    messages: [("user", retryUser)],
+                    timeout: 120, maxTokens: 9500, retryOnTransient: true
+                )
+                let repairedOutput = try await applyEditOutputWithRecovery(
+                    AIHTMLAgent.parse(retryResponse),
+                    requestedChange: cleanChange,
+                    config: config
+                )
+                if let remainingIssue = ForgeVisualEditQualityGate.issue(
+                    before: beforeEditHTML, after: streamedHTML, request: cleanChange
+                ) {
+                    AIDebugTraceStore.shared.append("VISUAL EDIT REJECTED", remainingIssue)
+                    throw AIGenerationError.invalidPatch
+                }
+                if !repairedOutput.description.isEmpty {
+                    description = repairedOutput.description
+                }
+                let repairedSummary = AIHTMLAgent.value("edit_summary", in: retryResponse)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                lastEditSummary = repairedSummary.isEmpty
+                    ? "Corrected the requested visual layout."
+                    : repairedSummary
+                AIDebugTraceStore.shared.append("VISUAL EDIT REPAIR", "Applied corrected visual patch.")
+            }
             let dataSafety = ForgeEditSafetyGate.violations(
                 before: beforeEditHTML, after: streamedHTML, request: cleanChange
             )
@@ -686,6 +749,12 @@ Requested change:
             if !finalSafety.isEmpty {
                 AIDebugTraceStore.shared.append("POST-REPAIR DATA PRESERVATION",
                     finalSafety.map(\.description).joined(separator: "\n"))
+                throw AIGenerationError.invalidPatch
+            }
+            if let issue = ForgeVisualEditQualityGate.issue(
+                before: beforeEditHTML, after: streamedHTML, request: cleanChange
+            ) {
+                AIDebugTraceStore.shared.append("POST-REPAIR VISUAL QA", issue)
                 throw AIGenerationError.invalidPatch
             }
             try Task.checkCancellation()
@@ -2258,6 +2327,18 @@ replacement text
 </htmlapp_patch>
 
 You may include multiple SEARCH/REPLACE blocks. SEARCH text must match exactly and should be as small and unique as practical. If an exact safe patch is genuinely impossible, return a complete <htmlapp_code> document instead.
+
+VISUAL REDESIGN ACCEPTANCE:
+For requests like "redo the popup", materially improve the target's actual
+visual hierarchy, field grouping, readable spacing and responsive layout.
+Do not claim a redesign was completed if effective visual styling is unchanged.
+Inspect the actual current DOM: when labels and their inputs are separate
+siblings, a multi-column CSS grid on the entire form separates labels from
+their fields and is unacceptable. Either retain a vertical field stack or
+introduce explicit grouped wrappers preserving all existing IDs/behaviors.
+Do not duplicate visible descriptive copy via ::before/::after content when
+the existing element can be styled instead. Ensure labels and inputs remain
+associated and tappable at 320pt width and tablet widths.
 
 RULES:
 \(designGuide)
