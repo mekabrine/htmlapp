@@ -48,6 +48,12 @@ final class HTMLAppBackgroundCoordinator {
         await runJobs(force: true, appID: appID, jobID: jobID)
     }
 
+    /// APNs background wakeups only refresh *due* approved jobs; they cannot
+    /// force execution of unrelated saved apps or bypass their network grants.
+    func runDueJobs() async -> [HTMLAppBackgroundFetchJob] {
+        await runJobs(force: false, appID: nil, jobID: nil)
+    }
+
     private func handle(_ task: BGAppRefreshTask) {
         schedule()
 
@@ -132,33 +138,35 @@ final class HTMLAppBackgroundCoordinator {
     }
 
     private func fetch(_ job: HTMLAppBackgroundFetchJob) async throws -> String {
-        guard let url = URL(string: job.url),
-              url.scheme?.lowercased() == "https" else {
+        guard let host = HTMLAppNetworkBridge.validatedHost(["url": job.url]) else {
             throw URLError(.unsupportedURL)
         }
+        // The same per-app permission and domain consent applies to scheduled
+        // work as to foreground network.request. Imported/stale jobs which
+        // lack these grants cannot secretly contact a hostname.
+        let approved = await MainActor.run {
+            HTMLPermissionStore.choice(for: .network, appID: job.appID) == .allow &&
+            HTMLAppNetworkDomainConsent.approved(for: job.appID).contains(host)
+        }
+        guard approved else { throw URLError(.userAuthenticationRequired) }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 20
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard data.count <= 4_000_000,
-              let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode) else {
+        // Reuse bounded, no-cookie, no-redirect, public-DNS/remote-IP verified
+        // HTTPS transport instead of unrestricted URLSession.shared.
+        let response = try await HTMLAppNetworkBridge.perform([
+            "url": job.url, "method": "GET"
+        ])
+        guard response["ok"] as? Bool == true,
+              let raw = response["body"] as? String,
+              let data = raw.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) else {
             throw URLError(.badServerResponse)
         }
-
-        let json = try JSONSerialization.jsonObject(with: data)
         let selected = job.jsonPath.flatMap { path in
             HTMLAppJSONPath.value(at: path, in: json)
         } ?? json
-
-        guard let string = HTMLAppJSONPath.jsonString(selected) else {
+        guard let result = HTMLAppJSONPath.jsonString(selected) else {
             throw CocoaError(.propertyListWriteInvalid)
         }
-        return string
+        return result
     }
 }
-

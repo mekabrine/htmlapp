@@ -578,7 +578,7 @@ enum HTMLAppDeviceAPIResearch {
             // Later, including after an iOS background refresh:
             const cached = await HTMLAppNative.appStorage.get("latestForecast");
             """,
-            constraints: "This is iOS-scheduled BGAppRefresh, not a permanently running process. Jobs are opportunistic, minimum requested interval is 15 minutes, and iOS may delay or skip runs due to user settings, battery, Low Power Mode, or system policy. Jobs support public HTTPS GET JSON only and cannot execute arbitrary HTML/JavaScript in the background. One HTMLApp can register at most 6 jobs."
+            constraints: "This is iOS-scheduled BGAppRefresh, not a permanently running process. Jobs are opportunistic, minimum requested interval is 15 minutes, and iOS may delay or skip runs due to user settings, battery, Low Power Mode, or system policy. Jobs require per-app Network permission and explicit approval of the public DNS hostname; the same no-redirect, public-address-verified HTTPS transport is used in the background. Jobs support public HTTPS GET JSON only and cannot execute arbitrary HTML/JavaScript in the background. On appropriately signed APNs-enabled hosts, a content-available push with htmlapp_refresh=due can opportunistically wake *due* jobs; delivery is not guaranteed. One HTMLApp can register at most 6 jobs."
         ),
         .init(
             id: "downloads",

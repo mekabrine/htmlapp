@@ -210,6 +210,31 @@ final class HTMLAppBackgroundURLSessionDelegate: NSObject, UIApplicationDelegate
         Task { @MainActor in HTMLAppRemotePushService.shared.didFail(error) }
     }
 
+    /// iOS may deliver an APNs content-available push to the signed host.
+    /// Only an explicit app-level refresh hint is honored; this is never a
+    /// general-purpose background JavaScript execution pathway.
+    func application(_ application: UIApplication,
+                     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let aps = userInfo["aps"] as? [String: Any] ?? [:]
+        let contentAvailable = (aps["content-available"] as? NSNumber)?.intValue ?? 0
+        guard contentAvailable == 1,
+              userInfo["htmlapp_refresh"] as? String == "due" else {
+            completionHandler(.noData)
+            return
+        }
+        Task {
+            let jobs = await HTMLAppBackgroundCoordinator.shared.runDueJobs()
+            if jobs.contains(where: { $0.lastError != nil }) {
+                completionHandler(.failed)
+            } else if jobs.isEmpty {
+                completionHandler(.noData)
+            } else {
+                completionHandler(.newData)
+            }
+        }
+    }
+
     func application(_ application: UIApplication,
                      handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {

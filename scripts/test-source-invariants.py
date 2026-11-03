@@ -980,3 +980,16 @@ assert "HTMLAppNetworkStatus.shared.snapshot()" in native
 assert "HTMLAppAddressLookup.distance(" in native
 assert "HTMLAppAddressLookup.geocode(query)" in native
 assert "test-location-distance.swift" in source(".github/workflows/verify-ios.yml")
+
+# Scheduled fetches may not bypass per-app domain approval or public IP checks.
+background = source("HTMLAppV3/BackgroundRefreshCoordinator.swift")
+native = source("HTMLAppV3/NativeAPIBridge.swift")
+pushDelegate = source("HTMLAppV3/ForgeBackgroundUpload.swift")
+assert 'HTMLAppNetworkBridge.perform([' in background
+assert 'HTMLPermissionStore.choice(for: .network, appID: job.appID) == .allow' in background
+assert 'HTMLAppNetworkDomainConsent.approved(for: job.appID).contains(host)' in background
+assert 'case "background.configure":' in native and 'withPermission(.network, id: id)' in native
+assert 'HTMLAppNetworkDomainConsent.request(host: host, appID: self.appID)' in native
+assert 'didReceiveRemoteNotification userInfo:' in pushDelegate and '"htmlapp_refresh"' in pushDelegate
+assert '- remote-notification' in source("project.yml")
+assert '"permission": "network"' in source("scripts/native-capability-definitions.json")

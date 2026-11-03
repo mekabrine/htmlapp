@@ -1649,7 +1649,24 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             HTMLAppWidgetReloadCoordinator.request()
             resolve(id, value: ["reloaded": true])
         case "background.configure":
-            configureBackgroundJob(id: id, args: args)
+            guard let rawURL = args["url"] as? String,
+                  let host = HTMLAppNetworkBridge.validatedHost(["url": rawURL]) else {
+                reject(id, code: "invalid_url", message: "Scheduled refresh requires a public HTTPS DNS hostname.")
+                return
+            }
+            withPermission(.network, id: id) { [weak self] in
+                guard let self else { return }
+                HTMLAppNetworkDomainConsent.request(host: host, appID: self.appID) {
+                    [weak self] approved in
+                    guard let self else { return }
+                    guard approved else {
+                        self.reject(id, code: "domain_denied",
+                            message: "Scheduled network refresh needs approval for this domain.")
+                        return
+                    }
+                    self.configureBackgroundJob(id: id, args: args)
+                }
+            }
         case "background.list":
             listBackgroundJobs(id: id)
         case "background.remove":
@@ -1979,7 +1996,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         guard let jobID = validGeneratedIdentifier(args["id"] as? String),
               let rawURL = args["url"] as? String,
               let url = URL(string: rawURL),
-              url.scheme?.lowercased() == "https",
+              HTMLAppNetworkBridge.validatedHost(["url": rawURL]) != nil,
               let storageKey = (args["storageKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !storageKey.isEmpty,
               storageKey.count <= 200 else {

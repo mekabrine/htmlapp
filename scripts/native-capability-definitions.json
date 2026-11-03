@@ -229,12 +229,24 @@
     },
     {
       "method": "background.configure",
-      "permission": null,
+      "permission": "network",
       "minimumIOS": "16.0",
       "userInitiated": false,
       "nativeCancellation": false,
-      "arguments": {},
-      "required": [],
+      "arguments": {
+        "id": "string",
+        "url": "string",
+        "storageKey": "string",
+        "intervalMinutes": "number",
+        "enabled": "boolean",
+        "jsonPath": "string",
+        "widgetID": "string"
+      },
+      "required": [
+        "id",
+        "url",
+        "storageKey"
+      ],
       "result": "unknown"
     },
     {

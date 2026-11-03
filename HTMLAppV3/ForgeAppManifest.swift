@@ -70,6 +70,7 @@ struct ForgeAppManifest: Codable {
         case "photos": return "photoLibrary"
         case "network": return method == "network.status" ? nil : "network"
         case "push": return "notifications"
+        case "background": return method == "background.configure" ? "network" : nil
         case "location":
             if method == "location.distance" { return nil }
             return method == "location.roadSpeedLimit" ? "roadData" : "location"

@@ -360,11 +360,23 @@
     },
     "background.configure": {
       "minimumIOS": "16.0",
-      "permission": null,
+      "permission": "network",
       "userInitiationRecommended": false,
       "nativeCancellation": false,
-      "arguments": {},
-      "requiredArguments": [],
+      "arguments": {
+        "id": "string",
+        "url": "string",
+        "storageKey": "string",
+        "intervalMinutes": "number",
+        "enabled": "boolean",
+        "jsonPath": "string",
+        "widgetID": "string"
+      },
+      "requiredArguments": [
+        "id",
+        "url",
+        "storageKey"
+      ],
       "resultType": "unknown"
     },
     "background.list": {

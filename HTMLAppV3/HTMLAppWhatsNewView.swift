@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.74"
-    static let compiledBuild = "82"
+    static let compiledVersion = "1.6.75"
+    static let compiledBuild = "83"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.75" { return [
+            Entry(id: "safe-background-requests", title: "Background sync now honors network permissions", description: "Scheduled JSON refreshes require saved-app network approval and a separately approved public DNS host. Background requests use the same bounded, no-redirect, public-address-checked HTTPS transport as foreground APIs.", symbol: "lock.shield", tint: .green),
+            Entry(id: "silent-push-refresh", title: "Optional APNs-triggered refresh", description: "When HTMLApp is properly signed for APNs and iOS delivers a content-available notification, the host can refresh only due, consented background jobs. Apple controls delivery and no background JavaScript is executed.", symbol: "arrow.clockwise.icloud", tint: .blue),
+            Entry(id: "native-contract-refresh", title: "Stricter background API contracts", description: "The generated native bridge now requires the background job ID, public HTTPS URL and storage key and declares its network permission, helping Forge generate safer refresh behavior.", symbol: "checkmark.shield", tint: .purple)
+        ] }
         if version == "1.6.74" { return [
             Entry(id: "forward-geocoding", title: "Search addresses with Apple's geocoder", description: "Saved apps can look up approximate coordinates for a user-entered address or place through HTMLAppNative.location.geocode(). This needs location permission but does not request the device's GPS position.", symbol: "mappin.and.ellipse", tint: .blue),
             Entry(id: "offline-distance", title: "Calculate distance without GPS", description: "HTMLAppNative.location.distance() computes straight-line great-circle distance between two supplied coordinate pairs entirely offline, without location permission.", symbol: "point.topleft.down.curvedto.point.bottomright.up", tint: .green),
