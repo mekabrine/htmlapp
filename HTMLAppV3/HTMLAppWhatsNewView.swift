@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.60"
-    static let compiledBuild = "68"
+    static let compiledVersion = "1.6.61"
+    static let compiledBuild = "69"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.61" { return [
+            Entry(id: "whisper-auto-retry-status", title: "See microphone and transcription retries", description: "The floating Forge microphone now displays clear retrying status while it reconnects to the microphone or reuses captured audio to retry Whisper transcription, without blocking your drag gesture.", symbol: "mic.fill", tint: .blue),
+            Entry(id: "visual-redesign-recovery", title: "Better-looking popup edits", description: "Forge detects when a redesign misaligns labels and fields, requests a corrected layout, and respects later fixes that replace the old CSS grid.", symbol: "paintbrush.pointed", tint: .pink),
+            Entry(id: "keep-spoken-changes", title: "Your spoken edits stay recoverable", description: "Whisper automatically retries the original recorded audio, lets you retry the saved recording after a decoding failure, and routes recovered words back to the intended app edit.", symbol: "waveform", tint: .green)
+        ] }
         if version == "1.6.60" { return [
             Entry(id: "reliable-visual-form-fixes", title: "More reliable popup redesigns", description: "Forge now recognizes when a corrected layout replaces an older bad grid rule, so valid repairs are accepted without breaking label and input alignment.", symbol: "paintbrush.pointed", tint: .pink),
             Entry(id: "whisper-rescue", title: "Retry speech without repeating it", description: "Whisper keeps the captured audio through multiple automatic transcription retries and provides a Retry using saved audio option if needed. Recovered speech still applies to the original edit or style-feedback action.", symbol: "waveform", tint: .blue),

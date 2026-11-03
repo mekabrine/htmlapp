@@ -1061,11 +1061,20 @@ struct AIGenerationView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .padding(.bottom, 80)
+                } else if dictation.transcribingOffline {
+                    Label(dictation.status, systemImage: "waveform")
+                        .font(.headline)
+                        .padding(12)
+                        .background(.regularMaterial, in: Capsule())
+                        .padding(.bottom, 80)
+                        .allowsHitTesting(false)
                 }
             }
             .overlay {
                 if microphoneCapturing && dictation.appleSpeechActive {
                     liveDictationCaptions
+                } else if microphoneCapturing && dictation.requestingPermission {
+                    floatingMicrophoneRetryStatus
                 }
             }
             .overlay(alignment: .topLeading) {
@@ -1433,6 +1442,8 @@ struct AIGenerationView: View {
                 if (microphoneCapturing || dictationForEdit) &&
                    dictation.appleSpeechActive {
                     liveDictationCaptions
+                } else if microphoneCapturing && dictation.requestingPermission {
+                    floatingMicrophoneRetryStatus
                 }
             }
             .overlay(alignment: .topLeading) {
@@ -1492,6 +1503,20 @@ struct AIGenerationView: View {
         .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 15))
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
+    }
+
+    /// Display microphone permission and startup retries while the user
+    /// keeps holding the floating mic. This layer never blocks the drag.
+    private var floatingMicrophoneRetryStatus: some View {
+        Label(dictation.status, systemImage: "mic")
+            .font(.title3.weight(.semibold))
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 17)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .padding(.horizontal, 30)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
     }
 
     /// Real-time Apple Speech subtitles sit above the preview but do not

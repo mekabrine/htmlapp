@@ -846,3 +846,7 @@ assert "transcribeRetainedAudio()" in dictation and "retryTranscription()" in di
 assert "resetModel: attempt > 1" in dictation
 assert "canRetryTranscription" in source("HTMLAppV3/AIGenerationView.swift")
 assert "resetModel: Bool = false" in speech
+
+# Floating microphone surfaces retry status without blocking its gesture.
+assert "floatingMicrophoneRetryStatus" in source("HTMLAppV3/AIGenerationView.swift")
+assert "dictation.transcribingOffline" in source("HTMLAppV3/AIGenerationView.swift")
