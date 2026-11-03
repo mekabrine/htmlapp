@@ -86,6 +86,7 @@ struct HTMLAppMain: App {
                     .interactiveDismissDisabled(true)
                 }
                 .onAppear {
+                    store.claimShareExtensionFiles()
                     checkVersionOnLaunch()
                     store.setExternalHTMLImportReady(
                         onboardingComplete && !presentingWhatsNew
@@ -113,6 +114,7 @@ struct HTMLAppMain: App {
                 .onChange(of: scenePhase) { phase in
                     if phase == .active {
                         store.requestICloudSync()
+                        store.claimShareExtensionFiles()
                         store.presentNextExternalHTMLImport()
                     }
                 }
@@ -154,6 +156,12 @@ struct HTMLAppMain: App {
                     Text("HTMLApp couldn't read your saved apps. It preserved the damaged file rather than deleting it. Starting empty will not restore those apps. Use Keep Library Protected until you've recovered your data.")
                 }
                 .onOpenURL { url in
+                    if url.scheme?.lowercased() == "htmlapp",
+                       url.host?.lowercased() == "import-inbox" {
+                        store.claimShareExtensionFiles()
+                        store.presentNextExternalHTMLImport()
+                        return
+                    }
                     if url.isFileURL, ["html", "htm", "xhtml", "htmk"].contains(url.pathExtension.lowercased()) {
                         // The Library may not yet exist during cold launch or
                         // may be covered by onboarding/release notes. Retain
@@ -1099,6 +1107,20 @@ final class AppStore: ObservableObject {
             validFolderIDs: Set(folders.map(\.id))
         )
         notice = "Imported \(importedApps.count) HTMLApp\(importedApps.count == 1 ? "" : "s") as portable copies."
+    }
+
+    func claimShareExtensionFiles() {
+        let staged = HTMLExternalFileInbox.claimSharedDocuments()
+        guard !staged.isEmpty else { return }
+        if let running = runningApp {
+            NotificationCenter.default.post(
+                name: Notification.Name("HTMLAppCaptureRuntimeState"),
+                object: running.id
+            )
+            runningApp = nil
+        }
+        pendingExternalHTMLFiles.append(contentsOf: staged)
+        presentNextExternalHTMLImport()
     }
 
     func queueExternalHTMLFile(_ url: URL) {

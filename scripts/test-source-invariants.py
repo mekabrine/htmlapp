@@ -892,3 +892,15 @@ assert "AIProviderClient.stream(" in native
 assert "emitAIStreamEvent" in native
 assert "onDispatch: id => { requestID = id; }" in native
 assert "testAIStreaming" in source("scripts/test-native-bridge.js")
+
+# Real iOS share extension hands files through the signed App Group inbox.
+project = source("project.yml")
+share = source("HTMLAppShareExtension/HTMLAppShareViewController.swift")
+inbox = source("HTMLAppV3/HTMLExternalFileInbox.swift")
+core = source("HTMLAppV3/AppCore.swift")
+assert "HTMLAppShareExtension:" in project and "com.apple.share-services" in project
+assert "HTMLAppShareExtension/HTMLAppShareExtension.entitlements" in project
+assert "IncomingHTMLStaging" in share and "IncomingHTML" in share
+assert "group.com.mekabrine.htmlapp" in share
+assert "claimSharedDocuments()" in inbox and "claimShareExtensionFiles()" in core
+assert 'url.host?.lowercased() == "import-inbox"' in core

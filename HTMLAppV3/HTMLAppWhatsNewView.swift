@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.65"
-    static let compiledBuild = "73"
+    static let compiledVersion = "1.6.66"
+    static let compiledBuild = "74"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.66" { return [
+            Entry(id: "ios-share-extension", title: "Share HTML straight into HTMLApp", description: "A new iOS Share extension receives HTML file attachments into a secure shared inbox and attempts to open the app. If iOS does not allow automatic launch, the file is ready to import the next time you open HTMLApp.", symbol: "square.and.arrow.up", tint: .blue),
+            Entry(id: "file-import-resume", title: "Import requests survive app switching", description: "HTMLApp now checks the shared inbox when it opens or returns to the foreground, presenting the New App or Update Existing import destination for staged documents.", symbol: "doc.badge.arrow.up", tint: .green),
+            Entry(id: "live-ai-responses", title: "Watch saved-app AI answer live", description: "Live token streaming and bounded, confirmation-gated AI conversations are now available for generated HTML apps with authorized AI access.", symbol: "waveform", tint: .purple)
+        ] }
         if version == "1.6.65" { return [
             Entry(id: "live-ai-streaming", title: "Live AI responses in saved apps", description: "Generated apps can now receive live provider tokens through HTMLAppNative.ai.stream(), display them as they arrive and cancel with AbortSignal. Streams stay inside the saved app's permitted foreground AI session.", symbol: "text.bubble", tint: .blue),
             Entry(id: "in-app-ai-tools", title: "AI can ask to use native tools", description: "Short, in-memory AI conversations can call selected calendars, reminders, health, location and saved-document methods with fresh permission confirmation before sensitive data goes to the provider.", symbol: "sparkles.rectangle.stack", tint: .purple),
