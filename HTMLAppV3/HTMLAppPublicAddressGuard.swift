@@ -29,7 +29,7 @@ enum HTMLAppPublicAddressGuard {
     private static func resolve(_ host: String) throws -> Set<String> {
         var hints = addrinfo()
         hints.ai_family = AF_UNSPEC
-        hints.ai_socktype = Int32(SOCK_STREAM.rawValue)
+        hints.ai_socktype = Int32(SOCK_STREAM)
         hints.ai_flags = AI_ADDRCONFIG
         var head: UnsafeMutablePointer<addrinfo>?
         let result = host.withCString { getaddrinfo($0, nil, &hints, &head) }
