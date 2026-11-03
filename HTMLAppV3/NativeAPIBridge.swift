@@ -349,7 +349,19 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                         reject(id, code: "invalid_search", message: "Collection and text are required.")
                         return
                     }
-                    result = ["items": try HTMLAppDocumentDatabase.search(appID: appID, collection: collection, text: text, limit: args["limit"] as? Int ?? 50)]
+                    let matches: [[String: Any]]
+                    if args["mode"] as? String == "fts" {
+                        matches = try HTMLAppDocumentDatabase.fullTextSearch(
+                            appID: appID, collection: collection,
+                            text: text, limit: args["limit"] as? Int ?? 50
+                        )
+                    } else {
+                        matches = try HTMLAppDocumentDatabase.search(
+                            appID: appID, collection: collection,
+                            text: text, limit: args["limit"] as? Int ?? 50
+                        )
+                    }
+                    result = ["items": matches]
                 } else if method == "db.export" {
                     result = try HTMLAppDocumentDatabase.exportJSON(appID: appID)
                 } else if method == "db.import" {
@@ -3191,6 +3203,8 @@ enum HTMLNativeAPIScript {
           query: (collection, options = {}) => call('db.query', { collection, ...options }),
           count: (collection) => call('db.count', { collection }),
           search: (collection, text, limit = 50) => call('db.search', { collection, text, limit }),
+          searchFullText: (collection, text, limit = 50) =>
+            call('db.search', { collection, text, limit, mode: 'fts' }),
           export: () => call('db.export'),
           import: (payload) => call('db.import', { payload })
         },

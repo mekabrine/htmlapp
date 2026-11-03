@@ -868,3 +868,11 @@ assert 'validateConnectedAddresses()' in network
 assert "compression_decode_buffer" in archive and "CRC32.checksum(content)" in archive
 assert "archiveTooLarge" in archive and "Int(count) <= maxEntries" in archive
 assert "String(item.path.dropFirst(prefix.count))" in archive
+
+# On-demand SQLite FTS5 indexing and typed public SDK helper.
+database = source("HTMLAppV3/HTMLAppDocumentDatabase.swift")
+native = source("HTMLAppV3/NativeAPIBridge.swift")
+assert "CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts" in database
+assert "documents_fts_update" in database and "documents_fts_delete" in database
+assert "HTMLAppDocumentDatabase.fullTextSearch(" in native
+assert "searchFullText: (collection, text, limit = 50)" in native

@@ -40,6 +40,10 @@ jobs:
         run: |
           swiftc HTMLAppV3/HTMLAppPublicAddressGuard.swift scripts/test-public-address-guard.swift -o /tmp/htmlapp-address-guard-test
           /tmp/htmlapp-address-guard-test
+      - name: Test SQLite document full-text index on macOS
+        run: |
+          swiftc HTMLAppV3/HTMLAppDocumentDatabase.swift scripts/test-sqlite-fts.swift -o /tmp/htmlapp-fts-test
+          /tmp/htmlapp-fts-test
       - name: Install XcodeGen and generate project
         run: |
           HOMEBREW_NO_AUTO_UPDATE=1 brew list xcodegen >/dev/null 2>&1 || HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen

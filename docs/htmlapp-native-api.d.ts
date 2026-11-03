@@ -205,6 +205,10 @@ export interface HTMLAppNativeAPI {
     pause(): Promise<{ playing: boolean }>;
     stop(): Promise<{ playing: false }>;
   };
+  db: {
+    search(collection: string, text: string, limit?: number): Promise<{ items: { id: string; document: unknown }[] }>;
+    searchFullText(collection: string, text: string, limit?: number): Promise<{ items: { id: string; document: unknown; rank: number }[] }>;
+  };
   events: { on(name: string, handler: (detail: unknown) => void): () => void };
 }
 

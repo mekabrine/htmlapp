@@ -79,6 +79,76 @@ enum HTMLAppDocumentDatabase {
         return matches
     }
 
+    /// Token-ranked, on-device FTS5 search. The index is created lazily so
+    /// apps that only use ordinary CRUD do not pay for duplicate storage.
+    /// Existing records are backfilled when the feature is first requested.
+    static func fullTextSearch(appID: String, collection: String,
+                               text: String, limit: Int) throws -> [[String: Any]] {
+        guard valid(collection), !text.isEmpty, text.utf8.count <= 256 else {
+            throw NSError(domain: "HTMLAppDatabase", code: 40)
+        }
+        let tokens = text.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .prefix(12)
+        guard !tokens.isEmpty else { throw NSError(domain: "HTMLAppDatabase", code: 41) }
+        let expression = tokens.map { "\"" + String($0) + "\"" }.joined(separator: " AND ")
+        lock.lock()
+        defer { lock.unlock() }
+        let db = try open(appID: appID)
+        defer { sqlite3_close(db) }
+        let setup = """
+        CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts
+          USING fts5(collection UNINDEXED, id UNINDEXED, body, tokenize='unicode61');
+        CREATE TRIGGER IF NOT EXISTS documents_fts_insert AFTER INSERT ON documents BEGIN
+          DELETE FROM documents_fts WHERE collection=NEW.collection AND id=NEW.id;
+          INSERT INTO documents_fts(rowid, collection, id, body)
+             VALUES(NEW.rowid, NEW.collection, NEW.id, NEW.body);
+        END;
+        CREATE TRIGGER IF NOT EXISTS documents_fts_delete AFTER DELETE ON documents BEGIN
+          DELETE FROM documents_fts WHERE collection=OLD.collection AND id=OLD.id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS documents_fts_update AFTER UPDATE ON documents BEGIN
+          DELETE FROM documents_fts WHERE collection=OLD.collection AND id=OLD.id;
+          INSERT INTO documents_fts(rowid, collection, id, body)
+             VALUES(NEW.rowid, NEW.collection, NEW.id, NEW.body);
+        END;
+        INSERT INTO documents_fts(rowid,collection,id,body)
+          SELECT documents.rowid,documents.collection,documents.id,documents.body
+          FROM documents WHERE NOT EXISTS
+          (SELECT 1 FROM documents_fts WHERE documents_fts.rowid=documents.rowid);
+        """
+        guard sqlite3_exec(db, setup, nil, nil, nil) == SQLITE_OK else {
+            throw NSError(domain: "HTMLAppDatabase", code: 42,
+                userInfo: [NSLocalizedDescriptionKey: "SQLite FTS5 is unavailable on this device."])
+        }
+        let sql = """
+        SELECT documents.id, documents.body, bm25(documents_fts)
+        FROM documents_fts JOIN documents ON documents.rowid=documents_fts.rowid
+        WHERE documents_fts MATCH ? AND documents_fts.collection=?
+        ORDER BY bm25(documents_fts) LIMIT ?
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else { throw NSError(domain: "HTMLAppDatabase", code: 43) }
+        defer { sqlite3_finalize(statement) }
+        let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, expression, -1, destructor)
+        sqlite3_bind_text(statement, 2, collection, -1, destructor)
+        sqlite3_bind_int(statement, 3, Int32(max(1, min(100, limit))))
+        var hits: [[String: Any]] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let identifier = sqlite3_column_text(statement, 0),
+                  let body = sqlite3_column_text(statement, 1),
+                  let bytes = String(cString: body).data(using: .utf8),
+                  let document = try? JSONSerialization.jsonObject(with: bytes) else { continue }
+            hits.append([
+                "id": String(cString: identifier),
+                "document": document,
+                "rank": sqlite3_column_double(statement, 2)
+            ])
+        }
+        return hits
+    }
+
     static func portableSnapshot(appID: String) -> [String: Any]? {
         try? exportJSON(appID: appID)
     }

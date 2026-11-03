@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.62"
-    static let compiledBuild = "70"
+    static let compiledVersion = "1.6.63"
+    static let compiledBuild = "71"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.63" { return [
+            Entry(id: "sqlite-fts", title: "Fast on-device full-text search", description: "Saved HTML apps can search stored JSON documents with token-ranked SQLite FTS5 using HTMLAppNative.db.searchFullText(). Indexing is local, created on demand, and updates with documents.", symbol: "text.magnifyingglass", tint: .green),
+            Entry(id: "files-and-previews", title: "Files import and look previews improved", description: "Opening or sharing an HTML document now queues the root Import screen, while Forge's style previews use full-width mobile layouts instead of squeezed side-by-side views.", symbol: "rectangle.portrait", tint: .purple),
+            Entry(id: "network-and-backup", title: "Safer networking and backup files", description: "Native HTTPS checks nonpublic addresses and ZIP import validates checksums, sizes, and ordinary Deflate archives while preserving cache paths.", symbol: "lock.shield", tint: .blue)
+        ] }
         if version == "1.6.62" { return [
             Entry(id: "root-import-ui", title: "Files and shared HTML now open Import", description: "Incoming HTML files open the import destination screen from the app root, including cold launches and files shared from Files. The app also recognizes the .htmk file extension.", symbol: "doc.badge.arrow.up", tint: .green),
             Entry(id: "full-width-style-sketches", title: "Readable, full-width Forge previews", description: "Generated style mockups now use the full screen width with look choices below, correct mobile viewport scaling and responsive layout guidance, reducing tiny or clipped previews.", symbol: "rectangle.portrait", tint: .purple),
