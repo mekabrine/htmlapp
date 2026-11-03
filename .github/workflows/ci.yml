@@ -46,12 +46,15 @@ jobs:
               HTMLAppV3/ForgeEditSafetyGate.swift \
               HTMLAppV3/ForgeAppManifest.swift \
               HTMLAppV3/ForgeCapabilityResolver.swift \
+              HTMLAppV3/ForgeFocusedEditContext.swift \
               scripts/test-forge-contract.swift \
               -o "${RUNNER_TEMP:-/tmp}/htmlapp-forge-contract-tests"
             "${RUNNER_TEMP:-/tmp}/htmlapp-forge-contract-tests"
           else
             echo "::notice::Swift compiler unavailable; Forge semantic tests require Swift."
           fi
+      - name: Provider completion and atomic patch regression tests
+        run: python3 scripts/test-generation-reliability.py
       - name: Visual edit layout guard regression fixtures
         run: swiftc HTMLAppV3/ForgeVisualEditQualityGate.swift scripts/test-visual-edit-guard.swift -o "${RUNNER_TEMP:-/tmp}/htmlapp-visual-edit-tests" && "${RUNNER_TEMP:-/tmp}/htmlapp-visual-edit-tests"
       - name: Schema-generated native argument and availability tests
@@ -75,3 +78,4 @@ jobs:
           else
             echo "::notice::Swift compiler not on this runner; full device compilation remains in the manual IPA workflow."
           fi
+
