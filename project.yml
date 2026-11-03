@@ -259,6 +259,15 @@ targets:
         TEST_TARGET_NAME: HTMLApp
 
 schemes:
+  HTMLApp:
+    build:
+      targets:
+        HTMLApp: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
   HTMLAppUITests:
     build:
       targets:
