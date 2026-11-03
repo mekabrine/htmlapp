@@ -876,3 +876,11 @@ assert "CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts" in database
 assert "documents_fts_update" in database and "documents_fts_delete" in database
 assert "HTMLAppDocumentDatabase.fullTextSearch(" in native
 assert "searchFullText: (collection, text, limit = 50)" in native
+
+# Saved-app AI sessions have bounded memory and per-call native consent.
+native = source("HTMLAppV3/NativeAPIBridge.swift")
+assert "const createAISession = (settings = {}) =>" in native
+assert "createSession: (settings = {}) => createAISession(settings)" in native
+assert "Allow this AI tool call?" in native
+assert "The AI did not finish within its three-tool limit." in native
+assert "testAISessionTools" in source("scripts/test-native-bridge.js")

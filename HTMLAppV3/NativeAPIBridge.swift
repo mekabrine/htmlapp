@@ -3106,6 +3106,123 @@ enum HTMLNativeAPIScript {
         return readPickedPhoto(normalized, options);
       };
 
+      // In-memory, bounded tool-calling conversation over existing RPCs.
+      // Sensitive tool results require fresh consent before forwarding to AI.
+      const createAISession = (settings = {}) => {
+        const catalog = {
+          'calendar.events': ['Read calendar events', true],
+          'reminders.list': ['Read reminders', true],
+          'health.today': ['Read today health metrics', true],
+          'db.get': ['Read a stored app document', true],
+          'db.query': ['Read stored app documents', true],
+          'db.search': ['Search stored app documents', true],
+          'db.searchFullText': ['Full-text search stored app documents', true],
+          'device.battery': ['Read battery charge and device heat status', false],
+          'location.current': ['Read current device location', true],
+          'reminders.create': ['Create a reminder', true],
+          'calendar.createEvent': ['Create a calendar event', true]
+        };
+        const enabled = [...new Set(Array.isArray(settings.tools) ? settings.tools : [])]
+          .filter(key => typeof key === 'string' && Object.hasOwn(catalog, key))
+          .slice(0, 8);
+        const system = String(settings.system || 'Be accurate and concise.').slice(0, 600);
+        const history = [];
+        let inFlight = false;
+        const ask = async (question, options = {}) => {
+          const input = String(question || '').trim();
+          if (!input || input.length > 1800)
+            throw new RangeError('Use 1 to 1800 characters.');
+          if (inFlight) throw new Error('This AI session is already busy.');
+          if (options.signal?.aborted) throw new Error('AI session cancelled.');
+          inFlight = true;
+          const observations = [];
+          try {
+            for (let round = 0; round < 4; round++) {
+              if (options.signal?.aborted) throw new Error('AI session cancelled.');
+              const task = {
+                conversation: history.slice(-6).map(item => ({
+                  role: item.role, content: item.content.slice(0, 500)
+                })).concat([{ role: 'user', content: input }]),
+                tools: enabled.map(name => ({ name, description: catalog[name][0],
+                  args: 'JSON object matching native API arguments' })),
+                observations: observations.slice(-3)
+              };
+              const output = await call('ai.complete', {
+                system: system + '\nReply using JSON {"type":"answer","text":"..."} ' +
+                  'or {"type":"tool","name":"approved tool","arguments":{...}}. ' +
+                  'One tool per reply. Never invent methods or claim unverified results.',
+                prompt: JSON.stringify(task).slice(0, 6500),
+                maxTokens: 1000
+              }, { signal: options.signal });
+              const raw = String(output?.text || '');
+              let reply;
+              try { reply = JSON.parse(raw); }
+              catch (_) { reply = { type: 'answer', text: raw }; }
+              if (reply?.type !== 'tool') {
+                const text = String(reply?.text || raw).slice(0, 12000);
+                history.push({ role: 'user', content: input });
+                history.push({ role: 'assistant', content: text });
+                if (history.length > 12) history.splice(0, history.length - 12);
+                return { text, toolCalls: observations.length };
+              }
+              const name = reply.name;
+              if (!enabled.includes(name) || observations.length >= 3) {
+                observations.push({ error: 'Tool not enabled or limit reached.' });
+                continue;
+              }
+              const args = reply.arguments && typeof reply.arguments === 'object' &&
+                !Array.isArray(reply.arguments) ? reply.arguments : {};
+              if (catalog[name][1]) {
+                const approval = await call('ui.alert', {
+                  title: 'Allow this AI tool call?',
+                  message: catalog[name][0] + '. This may read personal data or ' +
+                    'change your records. Results will go to your configured AI ' +
+                    'provider. Approve this one call?',
+                  actions: [
+                    { id: 'deny', title: 'Not now', style: 'cancel' },
+                    { id: 'allow', title: 'Allow Once', style: 'default' }
+                  ]
+                }, { signal: options.signal });
+                if (approval?.cancelled || approval?.id !== 'allow') {
+                  observations.push({ name, error: 'User denied access.' });
+                  continue;
+                }
+              }
+              try {
+                let result;
+                if (name === 'location.current') {
+                  result = await new Promise((resolve, reject) => {
+                    if (!navigator.geolocation) return reject(new Error('Location unavailable.'));
+                    navigator.geolocation.getCurrentPosition(
+                      p => resolve({ latitude: p.coords.latitude,
+                        longitude: p.coords.longitude, accuracy: p.coords.accuracy }),
+                      reject, { enableHighAccuracy: false, timeout: 15000 });
+                  });
+                } else if (name === 'db.searchFullText') {
+                  result = await call('db.search', { ...args, mode: 'fts' },
+                    { signal: options.signal });
+                } else {
+                  result = await call(name, args, { signal: options.signal });
+                }
+                observations.push({ name, result: JSON.stringify(result).slice(0, 2000) });
+              } catch (error) {
+                observations.push({ name,
+                  error: String(error?.message || 'Unavailable').slice(0, 160) });
+              }
+            }
+            throw new Error('The AI did not finish within its three-tool limit.');
+          } finally {
+            inFlight = false;
+          }
+        };
+        return Object.freeze({
+          ask,
+          clear: () => { if (inFlight) throw new Error('AI busy.'); history.length = 0; },
+          get history() { return history.map(item => ({ ...item })); },
+          get tools() { return enabled.slice(); }
+        });
+      };
+
       const api = {
         call,
         capabilities: () => call('capabilities.list'),
@@ -3214,7 +3331,8 @@ enum HTMLNativeAPIScript {
           localComplete: (options = {}) => call('ai.localComplete', options),
           complete: (options = {}) => call('ai.complete', options),
           classify: (options = {}) => call('ai.classify', options),
-          cancel: (requestID) => call('ai.cancel', { requestID })
+          cancel: (requestID) => call('ai.cancel', { requestID }),
+          createSession: (settings = {}) => createAISession(settings)
         },
         motion: {
           pedometer: (days = 1) => call('motion.pedometer', { days: Number(days) }),

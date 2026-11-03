@@ -63,6 +63,48 @@ async function testNativeRPC() {
   listeners.get('pagehide')();
 }
 
+async function testAISessionTools() {
+  const sent = [];
+  const transcript = [
+    '{"type":"tool","name":"health.today","arguments":{}}',
+    '{"type":"answer","text":"Health data was read after your approval."}'
+  ];
+  const window = {
+    addEventListener() {},
+    webkit: { messageHandlers: { htmlappNative: { postMessage(message) {
+      sent.push(message);
+      queueMicrotask(() => {
+        const value = message.method === 'ai.complete'
+          ? { text: transcript.shift() }
+          : message.method === 'ui.alert'
+            ? { id: 'allow', cancelled: false }
+            : message.method === 'health.today'
+              ? { steps: 1234 } : {};
+        window.__htmlappNativeResolve(message.id, true, value);
+      });
+    } } } }
+  };
+  vm.runInNewContext(nativeScript, {
+    window, setTimeout, clearTimeout, queueMicrotask, console,
+    AbortController, DOMException, Response, Blob, atob
+  });
+  const api = window.HTMLAppNative;
+  assert.equal(typeof api.ai.createSession, 'function');
+  const session = api.ai.createSession({ tools: ['health.today', 'network.request'] });
+  assert.deepEqual(Array.from(session.tools), ['health.today']);
+  const answer = await session.ask('How active was I?');
+  assert.match(answer.text, /after your approval/);
+  const methods = sent.map(item => item.method);
+  assert.ok(methods.indexOf('ui.alert') > methods.indexOf('ai.complete'));
+  assert.ok(methods.indexOf('health.today') > methods.indexOf('ui.alert'));
+  assert.equal(methods.filter(name => name === 'ai.complete').length, 2);
+  assert.equal(session.history.length, 2);
+  assert.equal(session.history[0].content, 'How active was I?');
+  assert.equal(JSON.stringify(session.history).includes('1234'), false);
+  session.clear();
+  assert.equal(session.history.length, 0);
+}
+
 function testViewport() {
   const elements = {};
   const head = { appendChild(node) {
@@ -100,6 +142,7 @@ function testViewport() {
 
 (async () => {
   await testNativeRPC();
+  await testAISessionTools();
   testViewport();
   console.log('Native bridge and app viewport JS tests passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

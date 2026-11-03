@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.63"
-    static let compiledBuild = "71"
+    static let compiledVersion = "1.6.64"
+    static let compiledBuild = "72"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.64" { return [
+            Entry(id: "tool-calling-ai-sessions", title: "AI sessions with confirmed native tools", description: "Saved apps can now create short AI conversations that request selected calendar, reminders, health, battery, location, and private document tools. Every sensitive tool call requires a new user confirmation before private results can reach the AI provider.", symbol: "sparkles.rectangle.stack", tint: .blue),
+            Entry(id: "ai-private-conversation-memory", title: "Private, short-lived AI conversation context", description: "Each in-app AI session retains its recent messages only in the open WebView. Sessions include explicit clear and cancellation support and do not persist secrets or conversation history.", symbol: "bubble.left.and.bubble.right", tint: .purple),
+            Entry(id: "on-device-full-text-search", title: "Search locally saved documents", description: "Generated apps can search their own SQLite documents using indexed token search or the original substring search without sharing data with outside services.", symbol: "text.magnifyingglass", tint: .green)
+        ] }
         if version == "1.6.63" { return [
             Entry(id: "sqlite-fts", title: "Fast on-device full-text search", description: "Saved HTML apps can search stored JSON documents with token-ranked SQLite FTS5 using HTMLAppNative.db.searchFullText(). Indexing is local, created on demand, and updates with documents.", symbol: "text.magnifyingglass", tint: .green),
             Entry(id: "files-and-previews", title: "Files import and look previews improved", description: "Opening or sharing an HTML document now queues the root Import screen, while Forge's style previews use full-width mobile layouts instead of squeezed side-by-side views.", symbol: "rectangle.portrait", tint: .purple),
