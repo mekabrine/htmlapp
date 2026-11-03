@@ -372,6 +372,14 @@ final class AIGenerationSession: ObservableObject {
                 }
             }
 
+            let generationBrief = """
+            AUTHORITATIVE USER REQUEST (takes precedence over inferred defaults):
+            \(prompt)
+
+            IMPLEMENTATION BRIEF (advisory expansion; preserve the request's constraints):
+            \(improved)
+            """
+
             // Pre-design an icon while the coding model streams. An invalid
             // speculative icon is ignored in favor of the existing repair path.
             let iconWorker: Task<String?, Never>? = ForgeRunOptions.quick ? nil : Task {
@@ -400,7 +408,7 @@ final class AIGenerationSession: ObservableObject {
                 let stream = try await AIProviderClient.stream(
                     config: config,
                     system: systemPrompt,
-                    messages: [("user", improved)]
+                    messages: [("user", generationBrief)]
                 )
                 for try await piece in stream {
                     try Task.checkCancellation()
@@ -450,7 +458,7 @@ final class AIGenerationSession: ObservableObject {
                     full = try await AIProviderClient.complete(
                         config: config,
                         system: systemPrompt,
-                        messages: [("user", improved)]
+                        messages: [("user", generationBrief)]
                     )
                     apply(AIHTMLAgent.parsePartial(full), partial: true)
                 } else {
@@ -458,7 +466,7 @@ final class AIGenerationSession: ObservableObject {
                     // of discarding it and paying for a full non-streaming restart.
                     recoveredFromStream = try await recoverIncompleteGeneration(
                         fullResponse: &full,
-                        brief: improved,
+                        brief: generationBrief,
                         systemPrompt: systemPrompt,
                         config: config
                     )
@@ -469,7 +477,7 @@ final class AIGenerationSession: ObservableObject {
             if final.html.trimmed.isEmpty {
                 final = try await recoverIncompleteGeneration(
                     fullResponse: &full,
-                    brief: improved,
+                    brief: generationBrief,
                     systemPrompt: systemPrompt,
                     config: config
                 )
@@ -609,8 +617,11 @@ final class AIGenerationSession: ObservableObject {
             if !research.isEmpty { lastResearch = research }
 
             phase = "Patching the app"
-            let focusedSource = ForgeFocusedEditContext.make(source: streamedHTML, request: cleanChange,
-                                                           semanticTargets: editContract.targets)
+            let permitsFocusedContext = [ForgeEditScope.appearance, .copy, .component].contains(editContract.scope)
+                && editContract.interpretationConfidence >= 0.80
+            let focusedSource = permitsFocusedContext
+                ? ForgeFocusedEditContext.make(source: streamedHTML, request: cleanChange,
+                                               semanticTargets: editContract.targets) : nil
             let sourceContext = focusedSource ?? "<htmlapp_existing>\n" + streamedHTML + "\n</htmlapp_existing>"
             AIDebugTraceStore.shared.append("EDIT SOURCE CONTEXT",
                 focusedSource == nil ? "Full source included for safe patching." :
@@ -628,7 +639,10 @@ Semantic app model and preserved invariants:
 \(semanticModel.summary)
 \(checkpointExistingAppID.flatMap { ForgeAppManifestStore.load(for: $0)?.planningSummary } ?? "")
 
-Requested change:
+Authoritative original request (takes precedence over planner assumptions):
+\(cleanChange)
+
+Implementation guidance:
 \(improvedChange)
 
 \(styleInstruction ?? "")
@@ -1507,7 +1521,9 @@ enum AIProviderClient {
         var tokenParameterOverride: String?
         let maximumAttempts = retryOnTransient ? 3 : 1
         for attempt in 1...maximumAttempts {
+            try Task.checkCancellation()
             await AIRequestGate.shared.waitIfNeeded()
+            try Task.checkCancellation()
             do {
                 var request = makeRequest(config: config, endpoint: endpoint, timeout: timeout)
                 request.httpBody = try JSONSerialization.data(
@@ -1527,6 +1543,10 @@ enum AIProviderClient {
                     throw AIGenerationError.provider("The AI provider returned invalid JSON.")
                 }
 
+                try Task.checkCancellation()
+                if let failure = ForgeGenerationResponseGuard.failure(in: object) {
+                    throw AIProviderRequestError(statusCode: nil, message: failure, retryable: false, retryAfter: nil)
+                }
                 let text = responseText(object, type: config.compatibility)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else {
@@ -1577,7 +1597,7 @@ enum AIProviderClient {
                 }
                 if willRetry {
                     try Task.checkCancellation()
-                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                     continue
                 }
                 throw error
@@ -1610,12 +1630,15 @@ enum AIProviderClient {
 
     static func backgroundResponseText(_ data: Data, type: AIProviderConfiguration.Compatibility) -> String? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        guard ForgeGenerationResponseGuard.failure(in: object) == nil else { return nil }
         let text = responseText(object, type: type).trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : text
     }
 
     static func stream(config: AIProviderConfiguration, system: String, messages: [(String, String)], maxTokens: Int? = nil) async throws -> AsyncThrowingStream<String, Error> {
+        try Task.checkCancellation()
         await AIRequestGate.shared.waitIfNeeded()
+        try Task.checkCancellation()
         guard let endpoint = config.endpointURL() else { throw AIGenerationError.invalidEndpoint }
         await logRequest(kind: "STREAM", config: config, endpoint: endpoint, system: system, messages: messages)
         var request = makeRequest(config: config, endpoint: endpoint, timeout: 300)
@@ -1641,17 +1664,22 @@ enum AIProviderClient {
                     }
 
                     var wasTruncated = false
+                    var receivedTerminalEvent = false
                     for try await line in bytes.lines {
                         try Task.checkCancellation()
                         guard line.hasPrefix("data:") else { continue }
                         let payload = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
-                        if payload == "[DONE]" { break }
+                        if payload == "[DONE]" { receivedTerminalEvent = true; break }
                         await activity.markContent()
                         guard let data = payload.data(using: .utf8),
                               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
 
                         if let streamError = streamError(from: object, type: config.compatibility) {
                             throw streamError
+                        }
+                        receivedTerminalEvent = receivedTerminalEvent || ForgeGenerationResponseGuard.isTerminal(object)
+                        if let failure = ForgeGenerationResponseGuard.failure(in: object) {
+                            throw AIProviderRequestError(statusCode: nil, message: failure, retryable: false, retryAfter: nil)
                         }
                         if streamWasTruncated(object, type: config.compatibility) {
                             wasTruncated = true
@@ -1668,6 +1696,10 @@ enum AIProviderClient {
                     if wasTruncated {
                         throw AIProviderRequestError(statusCode: nil, message: "The AI stream reached the provider output-token limit.", retryable: false, retryAfter: nil)
                     }
+                    guard receivedTerminalEvent else {
+                        throw AIProviderRequestError(statusCode: nil, message: "The AI stream disconnected before completion. Partial code was not accepted.", retryable: true, retryAfter: nil)
+                    }
+                    try Task.checkCancellation()
                     await activity.markFinished()
                     let completedResponse = rawResponse
                     await MainActor.run { AIDebugTraceStore.shared.append("AI STREAM RESPONSE", completedResponse) }
@@ -2188,6 +2220,8 @@ Prefer the smallest complete product that already feels like a thoughtful first 
             let text = try await AIProviderClient.complete(config: config, system: system, messages: [("user", prompt)], timeout: 90, maxTokens: 6000, retryOnTransient: true)
             return value("brief", in: text).trimmed.isEmpty ? prompt : value("brief", in: text).trimmed
         } catch {
+            try Task.checkCancellation()
+            if error is CancellationError { throw error }
             await MainActor.run {
                 AIDebugTraceStore.shared.append("PLANNER FALLBACK", "Prompt refinement was unavailable; continuing with the original request. \(error.localizedDescription)")
             }
@@ -2207,6 +2241,8 @@ Return only <brief>...</brief>.
             let text = try await AIProviderClient.complete(config: config, system: system, messages: [("user", "Current brief: \(appBrief)\nRequested change: \(change)")], timeout: 90, maxTokens: 6000, retryOnTransient: true)
             return value("brief", in: text).trimmed.isEmpty ? change : value("brief", in: text).trimmed
         } catch {
+            try Task.checkCancellation()
+            if error is CancellationError { throw error }
             await MainActor.run {
                 AIDebugTraceStore.shared.append("CHANGE PLANNER FALLBACK", "Change planning was unavailable; applying the user's requested edit directly. \(error.localizedDescription)")
             }
@@ -2349,6 +2385,9 @@ introduce explicit grouped wrappers preserving all existing IDs/behaviors.
 Do not duplicate visible descriptive copy via ::before/::after content when
 the existing element can be styled instead. Ensure labels and inputs remain
 associated and tappable at 320pt width and tablet widths.
+
+EDIT ACCEPTANCE:
+Keep the original user request authoritative. Treat inferred targets and planner text as advisory; if they conflict with the actual DOM or request, inspect the full source and choose the smallest coherent change. For ambiguous requests preserve data, features and navigation. Trace the changed interaction from user action through state update and persistence to rendered result, then check its existing callers. Summarize only changes actually present in the patch. Never claim runtime tests were executed merely from reading source.
 
 RULES:
 \(designGuide)
@@ -2904,9 +2943,6 @@ Interrupted/malformed response:
         if let start = patch.range(of: "<<<<<<< SEARCH")?.lowerBound {
             patch = String(patch[start...])
         }
-        if let end = patch.range(of: ">>>>>>> REPLACE", options: [.backwards])?.upperBound {
-            patch = String(patch[..<end])
-        }
         return patch.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -3074,24 +3110,36 @@ enum HTMLPatchApplier {
     }
 
     private static func parseBlocks(_ patch: String) -> [Block]? {
-        let searchMarker = "<<<<<<< SEARCH"
-        let splitMarker = "======="
-        let replaceMarker = ">>>>>>> REPLACE"
-        var cursor = patch[...]
+        enum State { case outside, search, replacement }
+        var state = State.outside
+        var search: [String] = []
+        var replacement: [String] = []
         var blocks: [Block] = []
-
-        while let searchStart = cursor.range(of: searchMarker) {
-            let afterSearchMarker = cursor[searchStart.upperBound...]
-            guard let divider = afterSearchMarker.range(of: splitMarker) else { return nil }
-            let search = String(afterSearchMarker[..<divider.lowerBound]).trimmingCharacters(in: .newlines)
-            let afterDivider = afterSearchMarker[divider.upperBound...]
-            guard let replaceEnd = afterDivider.range(of: replaceMarker) else { return nil }
-            let replacement = String(afterDivider[..<replaceEnd.lowerBound]).trimmingCharacters(in: .newlines)
-            guard !search.isEmpty else { return nil }
-            blocks.append(Block(search: search, replacement: replacement))
-            cursor = afterDivider[replaceEnd.upperBound...]
+        for line in patch.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
+            switch line {
+            case "<<<<<<< SEARCH":
+                guard state == .outside else { return nil }
+                search = []; replacement = []; state = .search
+            case "=======":
+                guard state == .search else { return nil }
+                state = .replacement
+            case ">>>>>>> REPLACE":
+                guard state == .replacement else { return nil }
+                let original = search.joined(separator: "\n")
+                guard !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                blocks.append(Block(search: original, replacement: replacement.joined(separator: "\n")))
+                state = .outside
+            default:
+                switch state {
+                case .outside:
+                    guard line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+                case .search: search.append(line)
+                case .replacement: replacement.append(line)
+                }
+            }
         }
-        return blocks
+        // Reject the whole transaction if even the last block was cut off.
+        return state == .outside ? blocks : nil
     }
 
     private static func uniqueRange(of search: String, in source: String) -> MatchResult {
@@ -3334,3 +3382,4 @@ enum HTMLStreamRepair {
 private extension String {
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }
+

@@ -172,13 +172,19 @@ struct ForgeEditContract {
 
     static func make(request: String, model: ForgeSemanticAppModel, taste: String) -> ForgeEditContract {
         let lower = request.lowercased()
-        func has(_ terms: [String]) -> Bool { terms.contains { lower.contains($0) } }
+        func has(_ terms: [String]) -> Bool {
+            terms.contains { term in
+                let phrase = NSRegularExpression.escapedPattern(for: term.trimmingCharacters(in: .whitespaces))
+                return lower.range(of: "(?<![\\p{L}\\p{N}_])" + phrase + "(?![\\p{L}\\p{N}_])",
+                                   options: .regularExpression) != nil
+            }
+        }
         var goals: [String] = []
         var capabilities: [String] = []
         var intent = "Implement only the requested change, choosing reversible ordinary product expectations."
         var scope: ForgeEditScope = .component
 
-        if has(["clean", "simple", "minimal", "tidy", "declutter", "less busy", "less cluttered"]) {
+        if has(["clean", "cleaner", "simple", "simpler", "minimal", "tidy", "declutter", "less busy", "less cluttered"]) {
             scope = .appearance
             intent = "Improve visual hierarchy and reduce unnecessary UI noise without removing existing features."
             goals += ["Use consistent spacing, clearer priorities and fewer competing surfaces", "Move secondary options into accessible secondary UI"]
@@ -186,7 +192,7 @@ struct ForgeEditContract {
             scope = .appearance
             intent = "Make the existing app feel more like a native iOS application."
             goals += ["Respect safe areas, system-inspired type, meaningful sheets and touch feedback", "Use native tabs where documented and appropriate; preserve route IDs"]
-        } else if has(["modern", "premium", "polish", "prettier", "look better", "feel better", "make it better", "refine the design"]) {
+        } else if has(["modern", "premium", "polish", "prettier", "look better", "feel better", "make it better", "refine the design", "font", "spacing", "color", "colors", "theme", "shadow", "rounder"]) {
             scope = .appearance
             intent = "Polish the current visual identity without changing business logic."
             goals += ["Improve type hierarchy, color contrast, motion, spacing and interaction states"]
@@ -218,12 +224,12 @@ struct ForgeEditContract {
             scope = .bugFix
             goals += ["Identify the failing execution path", "Preserve unrelated behavior and add regression coverage"]
         }
-        if has(["remind", "notification", "alert me later"]) {
+        if has(["remind", "reminder", "reminders", "notification", "notifications", "alert me later"]) {
             scope = .nativeCapability
             capabilities += ["notifications.schedule", "notifications.cancel"]
             goals += ["Use documented native scheduled notifications, not setTimeout as background scheduling", "Handle permission denial and cancellation"]
         }
-        if has(["home screen", "widget"]) {
+        if has(["home screen", "widget", "widgets"]) {
             scope = .nativeCapability
             capabilities += ["widgets.configure", "widgets.reload"]
         }
@@ -246,22 +252,34 @@ struct ForgeEditContract {
             goals += ["Implement documented host functionality, not an ornamental mock"]
         }
         if goals.isEmpty { goals = ["Make the requested behavior work end-to-end", "Keep loading, empty, error, offline and permission states honest"] }
-        let words = lower.components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { $0.count >= 4 }
-        let targets = (model.components + (model.screenIDs ?? []) + (model.routeIDs ?? [])).filter { id in
+        // Generic UI words must not make every card/button a confident target.
+        let generic: Set<String> = ["card", "button", "screen", "view", "page", "app", "panel", "section", "the", "make", "more", "less"]
+        let words = Set(lower.components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 2 && !generic.contains($0) })
+        let candidates = Set(model.components + (model.screenIDs ?? []) + (model.routeIDs ?? []))
+        let scored = candidates.compactMap { id -> (String, Int)? in
+            let exactPattern = "(?<![\\p{L}\\p{N}_-])" + NSRegularExpression.escapedPattern(for: id.lowercased()) + "(?![\\p{L}\\p{N}_-])"
+            if lower.range(of: exactPattern, options: .regularExpression) != nil {
+                return (id, 100)
+            }
             let normalized = id.replacingOccurrences(of: #"([a-z0-9])([A-Z])"#,
                                                       with: "$1 $2", options: .regularExpression)
                 .lowercased()
-            let parts = normalized.components(separatedBy: CharacterSet.alphanumerics.inverted)
-            return parts.contains { words.contains($0) }
+            let parts = Set(normalized.components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count >= 2 && !generic.contains($0) })
+            let overlap = parts.intersection(words).count
+            return overlap > 0 ? (id, overlap * 10 + (parts.isSubset(of: words) ? 5 : 0)) : nil
         }
+        let ranked = scored.sorted { $0.1 == $1.1 ? $0.0 < $1.0 : $0.1 > $1.1 }
+        let targets = ranked.filter { $0.1 == ranked.first?.1 }.map { $0.0 }
         let nonGoals = [
             "Do not remove or rename existing storage keys, collections, component IDs, routes or permissions without an explicit migration",
             "Do not redesign unrelated screens or replace the whole HTML file for a local change",
             "Do not invent native APIs, network endpoints, entitlements, or simulated successful results",
             "Do not introduce page-level horizontal scrolling, pinch zoom or input-focus zoom"
         ]
-        let confidence: Double = !targets.isEmpty ? 0.88 : (lower.count <= 24 ? 0.58 : 0.74)
+        let confidence: Double = targets.count == 1 ? 0.88
+            : (!targets.isEmpty ? 0.62 : (lower.count <= 24 ? 0.58 : 0.74))
         return ForgeEditContract(literalRequest: request,
                                  intent: intent, scope: scope, goals: goals,
                                  nonGoals: nonGoals, targets: Array(targets.prefix(5)),
@@ -295,3 +313,4 @@ struct ForgeEditContract {
         """
     }
 }
+

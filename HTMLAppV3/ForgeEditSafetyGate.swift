@@ -45,18 +45,25 @@ enum ForgeEditSafetyGate {
         if !missingCollections.isEmpty {
             issues.append(Violation(kind: "native database collections", names: missingCollections))
         }
-        let cosmetic = ["cleaner", "simpler", "polish", "rounder", "font",
-                        "spacing", "colors", "theme", "more native", "apple-like"]
-            .contains { request.lowercased().contains($0) }
-        let intentionalRemoval = ["remove", "delete", "replace", "drop"]
-            .contains { request.lowercased().contains($0) }
-        if cosmetic && !intentionalRemoval {
+        let scope = ForgeEditContract.make(request: request, model: old, taste: "").scope
+        let cosmetic = [ForgeEditScope.appearance, .copy, .accessibility, .screenLayout].contains(scope)
+        // "Remove the shadow" is not permission to delete notifications or routes.
+        if cosmetic {
             let removedMethods = Set(old.nativeMethods).subtracting(new.nativeMethods).sorted()
             if !removedMethods.isEmpty {
                 issues.append(Violation(kind: "native integrations during a visual-only edit",
                                         names: removedMethods))
             }
+            let removedScreens = Set(old.screenIDs ?? []).subtracting(new.screenIDs ?? []).sorted()
+            let removedRoutes = Set(old.routeIDs ?? []).subtracting(new.routeIDs ?? []).sorted()
+            if !removedScreens.isEmpty {
+                issues.append(Violation(kind: "screens during a visual-only edit", names: removedScreens))
+            }
+            if !removedRoutes.isEmpty {
+                issues.append(Violation(kind: "routes during a visual-only edit", names: removedRoutes))
+            }
         }
         return issues
     }
 }
+

@@ -20,7 +20,6 @@ enum ForgeFocusedEditContext {
         let text = html as NSString
         var windows: [NSRange] = []
         for token in selectors {
-            let selector = token as NSString
             let scanRange = NSRange(location: 0, length: text.length)
             var cursor = scanRange.location
             var occurrences = 0
@@ -28,6 +27,7 @@ enum ForgeFocusedEditContext {
             let anchors = clean.isEmpty ? [token] : [
                 token, "id=\"" + clean + "\"", "id='" + clean + "'",
                 "data-forge-id=\"" + clean + "\"", "data-forge-id='" + clean + "'",
+                "data-forge-screen=\"" + clean + "\"", "data-forge-screen='" + clean + "'",
                 "data-screen=\"" + clean + "\"", "data-screen='" + clean + "'",
                 "data-view=\"" + clean + "\"", "data-view='" + clean + "'",
                 "data-page=\"" + clean + "\"", "data-page='" + clean + "'",
@@ -71,3 +71,4 @@ match verbatim source; never assume omitted code is absent.
 """
     }
 }
+

@@ -66,7 +66,8 @@ struct ForgeCapabilityPlan {
         if mentions(["recognize text", "ocr", "text from image"]) {
             methods += ["vision.recognizeText"]
         }
-        if mentions(["bluetooth", "ble ", "gatt", "nearby sensor"]) {
+        if mentions(["bluetooth", "gatt", "nearby sensor"]) ||
+            lower.range(of: #"\bble\b"#, options: .regularExpression) != nil {
             methods.append("bluetooth.scan")
             if mentions(["read characteristic", "gatt", "ble data", "sensor reading",
                          "notify", "subscribe", "peripheral"]) {
@@ -187,3 +188,4 @@ struct ForgeCapabilityPlan {
                                    permissions: permissions, constraints: constraints)
     }
 }
+

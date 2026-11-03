@@ -68,6 +68,23 @@ struct ForgeContractTests {
                                               model: model, taste: "")
         precondition(cosmetic.scope == .appearance)
         precondition(cosmetic.targets.contains("stats"))
+        let readable = ForgeEditContract.make(request: "make text readable please", model: model, taste: "")
+        precondition(!readable.recommendedCapabilities.contains { $0.hasPrefix("bluetooth.") })
+        precondition(ForgeCapabilityPlan.infer("readable text").nativeMethods.isEmpty)
+        precondition(ForgeCapabilityPlan.infer("use BLE").nativeMethods.contains("bluetooth.scan"))
+        var targetsModel = model
+        targetsModel.components = ["weekly-card", "monthly-card", "weekly-card", "ui", "weekly-summary"]
+        targetsModel.screenIDs = []
+        targetsModel.routeIDs = []
+        let exact = ForgeEditContract.make(request: "make #weekly-card smaller", model: targetsModel, taste: "")
+        precondition(exact.targets == ["weekly-card"])
+        let ambiguous = ForgeEditContract.make(request: "make weekly smaller", model: targetsModel, taste: "")
+        precondition(ambiguous.targets == ["weekly-card", "weekly-summary"])
+        precondition(ambiguous.interpretationConfidence < 0.70)
+        precondition(ForgeEditContract.make(request: "make the card smaller", model: targetsModel, taste: "").targets.isEmpty)
+        precondition(ForgeEditContract.make(request: "fix UI", model: targetsModel, taste: "").targets == ["ui"])
+        let large = String(repeating: "<!-- padding -->", count: 1500) + "<section data-forge-screen='stats'>Stats</section>"
+        precondition(ForgeFocusedEditContext.make(source: large, request: "fix stats", semanticTargets: ["stats"]) != nil)
 
         let afterRemovingKey = html.replacingOccurrences(
             of: #"HTMLAppData.kv.set("settings-v1", {});"#, with: "")
@@ -91,6 +108,15 @@ struct ForgeContractTests {
         precondition(bridgeViolations.contains {
             $0.kind == "native integrations during a visual-only edit"
         })
+        precondition(ForgeEditSafetyGate.violations(before: html, after: withoutNative,
+            request: "remove the shadow and make it cleaner").contains {
+                $0.kind == "native integrations during a visual-only edit"
+            })
+        let missingScreen = html.replacingOccurrences(of: "data-screen=\"stats\"", with: "")
+            .replacingOccurrences(of: "data-route=\"progress\"", with: "")
+        let screenViolations = ForgeEditSafetyGate.violations(before: html, after: missingScreen, request: "make it more native")
+        precondition(screenViolations.contains { $0.kind == "screens during a visual-only edit" })
+        precondition(screenViolations.contains { $0.kind == "routes during a visual-only edit" })
         let oldSchema = #"""
         {"version":1,"purpose":"Legacy","components":[],"storageKeys":[],
          "databaseCollections":[],"nativeMethods":[],"acceptance":[],"recentEdits":[]}
@@ -101,3 +127,4 @@ struct ForgeContractTests {
         print("Forge semantic app model, short prompt and edit safety checks passed.")
     }
 }
+

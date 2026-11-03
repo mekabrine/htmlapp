@@ -9,6 +9,8 @@ on:
       - 'HTMLAppWidgets/**'
       - 'HTMLApp/**'
       - 'project.yml'
+      - 'scripts/test-forge-contract.swift'
+      - 'scripts/test-generation-reliability.*'
       - '.github/workflows/verify-ios.yml'
   pull_request:
     branches: [main]
@@ -36,6 +38,12 @@ jobs:
       - name: Ensure iOS device SDK
         run: |
           xcrun --sdk iphoneos --show-sdk-path || xcodebuild -downloadPlatform iOS
+      - name: Test Forge prompt interpretation and edit preservation
+        run: |
+          swiftc HTMLAppV3/ForgeSemanticAppModel.swift HTMLAppV3/ForgeAppManifest.swift HTMLAppV3/ForgeCapabilityResolver.swift HTMLAppV3/ForgeEditSafetyGate.swift HTMLAppV3/ForgeFocusedEditContext.swift scripts/test-forge-contract.swift -o "$RUNNER_TEMP/htmlapp-forge-contract-test"
+          "$RUNNER_TEMP/htmlapp-forge-contract-test"
+      - name: Test provider completion and atomic patch application
+        run: python3 scripts/test-generation-reliability.py
       - name: Test public-address safety rules on macOS
         run: |
           swiftc HTMLAppV3/HTMLAppPublicAddressGuard.swift scripts/test-public-address-guard.swift -o /tmp/htmlapp-address-guard-test
@@ -83,3 +91,4 @@ jobs:
           name: ios-compile-log
           path: ios-build.log
           if-no-files-found: warn
+
