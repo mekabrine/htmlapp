@@ -68,7 +68,6 @@ struct AIGenerationView: View {
     @State private var unsavedEditHistory: [String] = []
     @State private var rewriteApprovalPending = false
     @State private var rewriteApproved = false
-    @State private var rewriteCheckedPrompt: String?
     @State private var showingChange = false
     @State private var saving = false
     @State private var showCancelConfirmation = false
@@ -109,9 +108,12 @@ struct AIGenerationView: View {
     let importedDraft: RemoteHTMLImportDraft?
     private var isWidgetVoiceEntry: Bool { shortcutSource == "widgetMic" && existingApp == nil }
 
+    private let initialEdit: String
+
     init(existingApp: SavedHTMLApp? = nil, initialPrompt: String = "",
          shortcutGenerationNonce: Int = 0, shortcutSource: String = "siri",
-         importedDraft: RemoteHTMLImportDraft? = nil, demoMode: Bool = false) {
+         importedDraft: RemoteHTMLImportDraft? = nil, demoMode: Bool = false, initialEdit: String = "") {
+        self.initialEdit = initialEdit
         self.existingApp = existingApp
         self.shortcutGenerationNonce = shortcutGenerationNonce
         self.shortcutSource = shortcutSource
@@ -142,10 +144,9 @@ struct AIGenerationView: View {
                 }
                 Button("Cancel", role: .cancel) {
                     rewriteApproved = false
-                    rewriteCheckedPrompt = nil
                 }
             } message: {
-                Text("The AI determined this overhaul cannot be completed safely with patches. A complete rewrite will replace the current unsaved HTML. You can undo it afterward.")
+                Text("You asked for a full rewrite. This will replace the current draft. You can undo it afterward.")
             }
             .alert(practiceStep >= 5 ? "Practice complete!" : "Practice edit", isPresented: $showPracticeEditNotice) {
                 Button("Continue Practicing", role: .cancel) {}
@@ -347,10 +348,11 @@ struct AIGenerationView: View {
                 didLoadExisting = true
                 session.load(existing: existingApp)
                 selectedStyle = ForgeStyleReferenceStore.load(for: existingApp.id)
-                if shortcutSource == "runnerMic" {
+                if !initialEdit.isEmpty {
+                    changePrompt = initialEdit
                     showingChange = true
-                    dictationForEdit = true
-                    await dictation.start(tapToStop: true)
+                    applyAIChange()
+                    return
                 }
             }
             if !demoMode && recoverableDraft == nil,
@@ -1882,6 +1884,7 @@ struct AIGenerationView: View {
         uiPolishNotice = nil
         AIDebugTraceStore.shared.begin(originalPrompt: originalPrompt, config: AISettingsStore.configuration)
         session.beginDraft(prompt: originalPrompt)
+        session.phase = "Preparing your edit"
         session.isWorking = true
         let activityJob = forgeActivityJobID
         generationTask = Task {
@@ -2007,28 +2010,9 @@ struct AIGenerationView: View {
               !browserResearch.isBrowsing else { return }
         if requestOfflineForgeIfNeeded(edit: true) { return }
         let requestedEdit = changePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !rewriteApproved && rewriteCheckedPrompt != requestedEdit {
-            rewriteCheckedPrompt = requestedEdit
-            Task {
-                let system = """
-                You are assessing an edit to an existing standalone HTML app.
-                Answer only REWRITE or PATCH. REWRITE is permitted ONLY when a massive
-                architectural overhaul makes patching objectively impossible or unsafe.
-                Minor, moderate, visual, feature, and ordinary navigation edits are PATCH.
-                When uncertain, answer PATCH.
-                """
-                let request = "Current app summary: \(session.refinedBrief.prefix(1000))\nEdit request: \(requestedEdit)"
-                let result = try? await AIProviderClient.complete(
-                    config: AISettingsStore.configuration(for: .planner),
-                    system: system, messages: [("user", request)],
-                    timeout: 25, maxTokens: 16, retryOnTransient: false)
-                guard requestedEdit == changePrompt.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
-                if result?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == "REWRITE" {
-                    rewriteApprovalPending = true
-                } else {
-                    applyAIChange()
-                }
-            }
+        guard !requestedEdit.isEmpty else { return }
+        if !rewriteApproved && AIHTMLAgent.requestsFullRewrite(requestedEdit) {
+            rewriteApprovalPending = true
             return
         }
         runtimeErrors = []
@@ -2063,7 +2047,7 @@ Requested edit:
 \(change)
 """
             let webReport: String
-            if !ForgeRunOptions.quick && AIHTMLAgent.needsWebResearch(for: researchRequest) {
+            if !ForgeRunOptions.quick && AIHTMLAgent.needsWebResearch(for: change) {
                 session.phase = "Planning web research"
                 webReport = await browserResearch.research(for: researchRequest)
                 AIDebugTraceStore.shared.append("WEB RESEARCH", webReport.isEmpty ? "No browser research result." : webReport)
@@ -2073,8 +2057,9 @@ Requested edit:
                 AIDebugTraceStore.shared.append("WEB RESEARCH", "Skipped because this edit does not require public-web research; the internal device API catalog remains available.")
             }
             guard !Task.isCancelled else { return }
-            let privacyReport = await AIPrivacyToolRunner.research(
-                researchRequest, config: AISettingsStore.configuration(for: .research))
+            let privacyReport = AIHTMLAgent.needsCapabilityResearch(for: change)
+                ? await AIPrivacyToolRunner.research(researchRequest, config: AISettingsStore.configuration(for: .research))
+                : ""
             guard !Task.isCancelled else { return }
             let combinedResearch = [webReport, privacyReport].filter { !$0.isEmpty }.joined(separator: "\n\n")
             if rewriteApproved {

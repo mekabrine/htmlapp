@@ -97,6 +97,12 @@ struct WebRunner: View {
     @State private var carWindow = false
     @AppStorage("htmlapp.alwaysShowEditMicrophone") private var alwaysShowEditMicrophone = false
     @State private var showingVoiceEditor = false
+    @StateObject private var editDictation = ForgeDictation()
+    @State private var micDrag: CGFloat = 0
+    @State private var micArmed = false
+    @State private var awaitingEdit = false
+    @State private var spokenEdit = ""
+    @State private var recordingTask: Task<Void, Never>?
 
     private var liveHTML: String { store.apps.first(where: { $0.id == app.id })?.html ?? app.html }
 
@@ -141,25 +147,33 @@ struct WebRunner: View {
         }
             .overlay(alignment: .leading) {
                 if alwaysShowEditMicrophone && !carDisplay && !carWindow {
-                    Button { showingVoiceEditor = true } label: {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .frame(width: 44, height: 60, alignment: .trailing)
-                            .padding(.trailing, 3)
-                            .frame(width: 60, height: 60)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    }
-                    .buttonStyle(.plain)
-                    .offset(x: -40)
-                    .accessibilityLabel("Open voice editor")
-                    .simultaneousGesture(DragGesture(minimumDistance: 20).onEnded { value in
-                        if value.translation.width > 20 { showingVoiceEditor = true }
-                    })
+                    runnerEditMic
                 }
+            }
+            .overlay(alignment: .top) {
+                if awaitingEdit && (editDictation.transcribingOffline || editDictation.canRetryTranscription) {
+                    VStack {
+                        Text(editDictation.status)
+                        if editDictation.canRetryTranscription {
+                            Button("Retry transcription") { editDictation.retryTranscription() }
+                        }
+                    }
+                    .font(.footnote)
+                    .padding(12)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    .padding()
+                }
+            }
+            .onChange(of: editDictation.transcribingOffline) { processing in
+                if !processing && awaitingEdit { submitSpokenEdit() }
+            }
+            .onDisappear {
+                recordingTask?.cancel()
+                editDictation.cancel()
             }
             .sheet(isPresented: $showingVoiceEditor) {
                 AIGenerationView(existingApp: store.apps.first(where: { $0.id == app.id }) ?? app,
-                                 shortcutSource: "runnerMic")
+                                 initialEdit: spokenEdit)
                     .environmentObject(store)
             }
             .background(HTMLAppCarWindowProbe(isCarWindow: $carWindow))
@@ -168,6 +182,58 @@ struct WebRunner: View {
             .onAppear { HTMLAppFirstUseTips.show("open") }
 
     }
+
+    private var runnerEditMic: some View {
+        Image(systemName: "mic.fill")
+            .font(.system(size: micArmed ? 25 : 15, weight: .semibold))
+            .foregroundStyle(editDictation.recording ? Color.white : Color.primary)
+            .frame(width: 60, height: 60, alignment: micArmed ? .center : .trailing)
+            .padding(.trailing, micArmed ? 0 : 3)
+            .background(editDictation.recording ? Color.red : Color(uiColor: .systemGray4),
+                        in: RoundedRectangle(cornerRadius: 18))
+            .offset(x: -42 + micDrag)
+            .accessibilityLabel("Drag microphone inward, speak, then release to edit")
+            .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
+                .onChanged { value in
+                    guard !awaitingEdit else { return }
+                    micDrag = max(0, value.translation.width)
+                    let inside = micDrag >= 42
+                    if inside && !micArmed {
+                        micArmed = true
+                        editDictation.transcript = ""
+                        recordingTask = Task { await editDictation.start(tapToStop: true) }
+                    } else if !inside && micArmed {
+                        micArmed = false
+                        recordingTask?.cancel()
+                        editDictation.cancel()
+                    }
+                }
+                .onEnded { value in
+                    let shouldSubmit = micArmed && value.translation.width >= 42
+                    micArmed = false
+                    micDrag = 0
+                    recordingTask?.cancel()
+                    if shouldSubmit {
+                        awaitingEdit = true
+                        editDictation.stop()
+                        if !editDictation.transcribingOffline { submitSpokenEdit() }
+                    } else if !awaitingEdit {
+                        editDictation.cancel()
+                    }
+                })
+    }
+
+    private func submitSpokenEdit() {
+        let words = editDictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else {
+            if !editDictation.canRetryTranscription { awaitingEdit = false }
+            return
+        }
+        awaitingEdit = false
+        spokenEdit = words
+        showingVoiceEditor = true
+    }
+
 }
 
 /// Saved HTMLApps are app surfaces rather than zoomable websites.

@@ -30,8 +30,42 @@ final class ForgeDictation: ObservableObject {
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var generation = UUID()
+    private var completedSpeech: [String] = []
+    private var currentSpeech = ""
+    private var firstSpeechTimestamp: TimeInterval?
+    private var lastSpeechEnd: TimeInterval?
+
     private var tapped = false
     private var timeout: Task<Void, Never>?
+
+    private func acceptAppleTranscription(_ transcription: SFTranscription) {
+        let words = transcription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return }
+        let first = transcription.segments.first?.timestamp
+        let last = transcription.segments.last.map { $0.timestamp + $0.duration }
+        let oldCount = currentSpeech.split(whereSeparator: \.isWhitespace).count
+        let newCount = words.split(whereSeparator: \.isWhitespace).count
+        let movedToNewAudio = first.map { start in
+            guard let previous = firstSpeechTimestamp, let end = lastSpeechEnd else { return false }
+            return start > previous + 0.5 && start >= end - 0.3
+        } ?? false
+        let restartedClock = last.map { end in
+            guard let oldEnd = lastSpeechEnd else { return false }
+            return end > 0 && oldEnd - end > 2 && newCount * 2 < oldCount
+        } ?? false
+        if !currentSpeech.isEmpty && (movedToNewAudio || restartedClock) {
+            completedSpeech.append(currentSpeech)
+            currentSpeech = ""
+            lastSpeechEnd = nil
+        }
+        // A partial result can briefly shrink while Apple revises the tail.
+        // Keep the fuller text until a complete replacement or new segment arrives.
+        guard currentSpeech.isEmpty || newCount >= oldCount else { return }
+        currentSpeech = words
+        if let first, first > 0 || firstSpeechTimestamp == nil { firstSpeechTimestamp = first }
+        if let last, last > 0 { lastSpeechEnd = last }
+        transcript = (completedSpeech + [currentSpeech]).joined(separator: " ")
+    }
 
     func start(tapToStop: Bool = false) async {
         guard !recording, !requestingPermission, !transcribingOffline else { return }
@@ -82,6 +116,10 @@ final class ForgeDictation: ObservableObject {
             ]
             request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
             self.request = request
+            completedSpeech = []
+            currentSpeech = ""
+            firstSpeechTimestamp = nil
+            lastSpeechEnd = nil
             transcript = ""
             let input = engine.inputNode
             let format = input.outputFormat(forBus: 0)
@@ -92,12 +130,7 @@ final class ForgeDictation: ObservableObject {
             task = recognizer.recognitionTask(with: request) { [weak self] result, error in
                 Task { @MainActor in
                     guard let self, self.generation == generation else { return }
-                    if let result {
-                        let words = result.bestTranscription.formattedString
-                        if !words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            self.transcript = words
-                        }
-                    }
+                    if let result { self.acceptAppleTranscription(result.bestTranscription) }
                     if error != nil || result?.isFinal == true {
                         if error != nil { self.preferWhisperWhenAppleUnavailable = true }
                         self.stop()

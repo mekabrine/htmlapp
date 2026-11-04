@@ -2166,6 +2166,13 @@ Resolve ambiguity with ordinary reversible defaults. Do not expose hidden reason
         }
     }
 
+    static func requestsFullRewrite(_ request: String) -> Bool {
+        let text = request.lowercased()
+        return ["rebuild from scratch", "rewrite the entire app", "redo the entire app",
+                "redo entire app", "change the architecture", "change architecture"]
+            .contains { containsSignal($0, in: text) }
+    }
+
     static func needsWebResearch(for prompt: String) -> Bool {
         let lower = prompt.lowercased()
         return webResearchSignals.contains(where: { containsSignal($0, in: lower) })

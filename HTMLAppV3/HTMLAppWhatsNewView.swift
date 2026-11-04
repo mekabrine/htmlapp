@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.80"
-    static let compiledBuild = "88"
+    static let compiledVersion = "1.6.81"
+    static let compiledBuild = "89"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,7 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
-        if version == "1.6.80" || version == "1.6.79" { return [
+        let micFixes: [Entry] = version == "1.6.81" ? [
+            Entry(id: "drag-edit-mic", title: "Drag, speak, then release", description: "Drag the edge mic inward, hold it while you speak, and release to start the edit. Long dictation keeps earlier words when Apple Speech starts a new segment.", symbol: "mic.fill", tint: .blue),
+            Entry(id: "faster-edit-start", title: "Edits start sooner", description: "Apply Change and voice edits skip the extra planning check for ordinary edits. Full rewrites still ask you first.", symbol: "bolt.fill", tint: .orange)
+        ] : []
+        if ["1.6.81", "1.6.80", "1.6.79"].contains(version) { return micFixes + [
             Entry(id: "forge-edits", title: "AI edits are easier to follow", description: "Edit summaries tell you what changed in a short sentence. Forge uses the app around your edit to better understand short requests and protect features you want to keep.", symbol: "pencil", tint: .blue),
             Entry(id: "forge-generation", title: "More reliable app generation", description: "Forge catches cut-off answers and incomplete edits before using them. Stopping a request also stops its retries.", symbol: "checkmark.shield", tint: .green),
             Entry(id: "forge-style", title: "More variety in app designs", description: "Forge can try more creative layouts and add motion where it helps. Compare previews with the numbered buttons on the right. The text below the preview is gone.", symbol: "paintpalette", tint: .purple),
@@ -38,7 +42,7 @@ enum HTMLAppReleaseNotes {
             Entry(id: "web-glass", title: "A glass look for app controls", description: "Apps can give toolbars and other controls a see-through, frosted look. The effect respects your Reduce Transparency setting.", symbol: "sparkles", tint: .purple),
             Entry(id: "session-restore", title: "Pick up where you left off", description: "Opening a different app saves the previous app’s screen. When you return, it restores automatically. If you close HTMLApp from the app switcher, the app you had open starts fresh next time.", symbol: "arrow.uturn.backward", tint: .green),
             Entry(id: "speech-engine", title: "Your voice setting works in saved apps", description: "Apps that use dictation follow your choice of Apple Speech or Whisper in Settings. Whisper prepares while you speak, and Forge can retry a failed transcription using the same recording.", symbol: "waveform", tint: .blue),
-            Entry(id: "edit-mic", title: "Keep the edit mic within reach", description: "Turn on Show edit microphone at all times in Settings. A small part of the mic stays visible at the edge of your phone screen. Tap it or drag it inward to start a voice edit.", symbol: "mic.fill", tint: .orange),
+            Entry(id: "edit-mic", title: "Keep the edit mic within reach", description: "Turn on Show edit microphone at all times in Settings. A small part of the mic stays visible at the edge of your phone screen. Drag it fully inward, speak while holding, then release to edit.", symbol: "mic.fill", tint: .orange),
             Entry(id: "widget-switch", title: "Widgets follow the app you open", description: "When you open an app with widgets, its widgets become the default. The change appears when iOS refreshes them.", symbol: "square.stack", tint: .green),
             Entry(id: "car-launcher", title: "Find recent apps faster in car display", description: "The launcher shows app icons with the most recently opened apps first.", symbol: "car.fill", tint: .orange)
         ] }
