@@ -1,18 +1,7 @@
 name: HTMLApp Simulator UI Matrix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'HTMLAppV3/**'
-      - 'HTMLAppShared/**'
-      - 'HTMLAppShareExtension/**'
-      - 'HTMLAppUITests/**'
-      - 'project.yml'
-      - '.github/workflows/verify-ui.yml'
   workflow_dispatch:
-  schedule:
-    - cron: '17 7 * * 1'
 
 concurrency:
   group: htmlapp-simulator-ui-${{ github.ref }}
