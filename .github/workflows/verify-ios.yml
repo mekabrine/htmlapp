@@ -1,19 +1,6 @@
 name: Verify HTMLApp iOS Compilation
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'HTMLAppV3/**'
-      - 'HTMLAppShared/**'
-      - 'HTMLAppWidgets/**'
-      - 'HTMLApp/**'
-      - 'project.yml'
-      - 'scripts/test-forge-contract.swift'
-      - 'scripts/test-generation-reliability.*'
-      - '.github/workflows/verify-ios.yml'
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
