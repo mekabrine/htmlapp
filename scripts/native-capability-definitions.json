@@ -1685,6 +1685,36 @@
       "result": "unknown"
     },
     {
+      "method": "ui.glassShow",
+      "permission": null,
+      "minimumIOS": "26.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "x": "number",
+        "y": "number",
+        "width": "number",
+        "height": "number"
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "result": "unknown"
+    },
+    {
+      "method": "ui.glassHide",
+      "permission": null,
+      "minimumIOS": "26.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "required": [],
+      "result": "unknown"
+    },
+    {
       "method": "ui.listDismiss",
       "permission": null,
       "minimumIOS": "16.0",
@@ -1837,3 +1867,4 @@
     }
   ]
 }
+

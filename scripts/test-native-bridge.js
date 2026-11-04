@@ -94,6 +94,10 @@ async function testNativeRPC() {
   await assert.rejects(request, err => err.code === 'cancelled');
   assert.ok(sent.some(msg => msg.method === 'bridge.cancel' && msg.args.targetID));
   listeners.get('pagehide')();
+  await api.ui.glassShow({ x: 20, y: 16, width: 140, height: 46 });
+  assert.ok(sent.some(msg => msg.method === 'ui.glassShow' && msg.args.width === 140 && msg.args.y === 16));
+  await api.ui.glassHide();
+  assert.ok(sent.some(msg => msg.method === 'ui.glassHide'));
   await api.screens.configure({ items: [{ id: 'home' }, { id: 'settings' }] });
   assert.equal(home.hidden, false);
   assert.equal(settings.hidden, true);

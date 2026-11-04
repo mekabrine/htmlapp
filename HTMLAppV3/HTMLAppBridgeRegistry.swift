@@ -143,6 +143,8 @@ enum HTMLAppBridgeRegistry {
         "ui.alert",
         "ui.colorPicker",
         "ui.datePicker",
+        "ui.glassHide",
+        "ui.glassShow",
         "ui.list",
         "ui.listDismiss",
         "ui.listUpdate",
@@ -231,6 +233,8 @@ enum HTMLAppBridgeRegistry {
         "liveActivities.list": "16.2",
         "liveActivities.start": "16.2",
         "liveActivities.update": "16.2",
+        "ui.glassHide": "26.0",
+        "ui.glassShow": "26.0",
     ]
     private static let userInitiatedMethods: Set<String> = [
         "audio.record",
@@ -327,6 +331,7 @@ enum HTMLAppBridgeRegistry {
         "ui.alert": ["actions": "array", "message": "string", "title": "string"],
         "ui.colorPicker": ["alpha": "boolean", "hex": "string"],
         "ui.datePicker": ["mode": "string", "timestampMS": "number", "title": "string", "value": "string"],
+        "ui.glassShow": ["height": "number", "width": "number", "x": "number", "y": "number"],
         "ui.list": ["allowsRefresh": "boolean", "items": "array", "title": "string"],
         "ui.listUpdate": ["items": "array", "sessionID": "string"],
         "ui.menu": ["actions": "array", "message": "string", "title": "string"],
@@ -390,6 +395,7 @@ enum HTMLAppBridgeRegistry {
         "tabs.configure": ["items"],
         "tabs.select": ["id"],
         "tabs.update": ["id"],
+        "ui.glassShow": ["x", "y", "width", "height"],
         "ui.list": ["items"],
         "ui.listUpdate": ["items"],
         "ui.menu": ["actions"],

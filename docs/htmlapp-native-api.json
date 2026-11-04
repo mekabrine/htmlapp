@@ -139,6 +139,8 @@
     "ui.alert",
     "ui.colorPicker",
     "ui.datePicker",
+    "ui.glassHide",
+    "ui.glassShow",
     "ui.list",
     "ui.listDismiss",
     "ui.listUpdate",
@@ -1681,6 +1683,34 @@
         "timestampMS": "number"
       },
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "ui.glassHide": {
+      "minimumIOS": "26.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "ui.glassShow": {
+      "minimumIOS": "26.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "x": "number",
+        "y": "number",
+        "width": "number",
+        "height": "number"
+      },
+      "requiredArguments": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
       "resultType": "unknown"
     },
     "ui.list": {

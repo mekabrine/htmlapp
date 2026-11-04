@@ -1567,17 +1567,7 @@ struct AIGenerationView: View {
         let origin = CGPoint(x: -24 + microphoneTranslation.width, y: 68 + microphoneTranslation.height)
         let fullyVisible = origin.x >= 0 && origin.y >= 0 &&
             origin.x + side <= size.width && origin.y + side <= size.height
-        return Image(systemName: "mic.fill")
-            .font(.system(size: 25, weight: .semibold))
-            .foregroundStyle((microphoneArmed && dictation.recording) ? Color.white : Color.primary.opacity(0.85))
-            .frame(width: side, height: side)
-            .background((microphoneArmed && dictation.recording) ? Color.red : Color(.systemGray4),
-                        in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18)
-                .strokeBorder(.white.opacity(0.55), lineWidth: 1))
-            .rotationEffect(.degrees(microphoneArmed ? 0 : -16))
-            .scaleEffect(microphoneArmed ? 1.25 : 1)
-            .shadow(color: .black.opacity(0.18), radius: 9, y: 3)
+        return ForgeEditMicrophoneFace(armed: microphoneArmed, recording: microphoneArmed && dictation.recording)
             .offset(x: origin.x, y: origin.y)
             .animation(.spring(response: 0.22, dampingFraction: 0.72), value: microphoneArmed)
             .gesture(
@@ -2443,3 +2433,34 @@ private enum HTMLAppForgeBackgroundNotice {
 }
 
 
+
+
+/// Shared appearance for the drag microphone in the editor and saved apps.
+struct ForgeEditMicrophoneFace: View {
+    let armed: Bool
+    let recording: Bool
+    private let shape = RoundedRectangle(cornerRadius: 18)
+
+    var body: some View {
+        material
+            .overlay(shape.strokeBorder(.white.opacity(0.55), lineWidth: 1))
+            .rotationEffect(.degrees(armed ? 0 : -16))
+            .scaleEffect(armed ? 1.25 : 1)
+            .shadow(color: .black.opacity(0.18), radius: 9, y: 3)
+    }
+
+    private var icon: some View {
+        Image(systemName: "mic.fill")
+            .font(.system(size: 25, weight: .semibold))
+            .foregroundStyle(recording ? Color.white : Color.primary.opacity(0.85))
+            .frame(width: 63, height: 63)
+    }
+
+    @ViewBuilder private var material: some View {
+        if #available(iOS 26.0, *) {
+            icon.glassEffect(recording ? .regular.tint(.red).interactive() : .regular.interactive(), in: shape)
+        } else {
+            icon.background(recording ? Color.red : Color(uiColor: .systemGray4), in: shape)
+        }
+    }
+}

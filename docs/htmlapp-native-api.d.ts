@@ -135,6 +135,8 @@ export type HTMLAppNativeMethod =
   | 'ui.alert'
   | 'ui.colorPicker'
   | 'ui.datePicker'
+  | 'ui.glassHide'
+  | 'ui.glassShow'
   | 'ui.list'
   | 'ui.listDismiss'
   | 'ui.listUpdate'

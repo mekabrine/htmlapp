@@ -47,6 +47,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private var networkStatusObserver: NSObjectProtocol?
     private let pedometer = CMPedometer()
     private let altimeter = CMAltimeter()
+    private var liquidGlassView: UIVisualEffectView?
     private var nativeTabBar: HTMLAppNativeTabBar?
     private let bluetoothDiscovery = HTMLAppBluetoothDiscovery()
     private var previousBrightness: CGFloat?
@@ -69,7 +70,13 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         }
     }
 
+    func clearLiquidGlass() {
+        liquidGlassView?.removeFromSuperview()
+        liquidGlassView = nil
+    }
+
     func shutdown() {
+        clearLiquidGlass()
         HTMLAppNativeListService.dismiss(appID: appID)
         nativeTabBar?.remove()
         nativeTabBar = nil
@@ -1027,6 +1034,40 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                     "systemAuthorization": "unknown"
                 ])
             }
+        case "ui.glassShow":
+            guard #available(iOS 26.0, *), let webView else {
+                reject(id, code: "unsupported_os", message: "Native Liquid Glass requires iOS 26.")
+                return
+            }
+            guard let x = (args["x"] as? NSNumber)?.doubleValue,
+                  let y = (args["y"] as? NSNumber)?.doubleValue,
+                  let width = (args["width"] as? NSNumber)?.doubleValue,
+                  let height = (args["height"] as? NSNumber)?.doubleValue,
+                  [x, y, width, height].allSatisfy({ $0.isFinite }),
+                  width >= 1, height >= 1, width <= 1200, height <= 240,
+                  abs(x) <= 2000, abs(y) <= 2000 else {
+                reject(id, code: "invalid_glass_bounds", message: "Provide a small, finite viewport rectangle.")
+                return
+            }
+            let frame = CGRect(x: x, y: y, width: width, height: height).intersection(webView.bounds)
+            guard !frame.isEmpty else {
+                clearLiquidGlass()
+                resolve(id, value: ["visible": false])
+                return
+            }
+            let glass = liquidGlassView ?? UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+            glass.frame = frame
+            glass.layer.cornerRadius = min(22, frame.height / 2)
+            glass.layer.cornerCurve = .continuous
+            glass.clipsToBounds = true
+            glass.isUserInteractionEnabled = false
+            glass.accessibilityElementsHidden = true
+            if glass.superview == nil { webView.addSubview(glass) }
+            liquidGlassView = glass
+            resolve(id, value: ["visible": true])
+        case "ui.glassHide":
+            clearLiquidGlass()
+            resolve(id, value: ["visible": false])
         case "ui.alert", "ui.menu":
             let shown = HTMLAppNativeUIService.alert(args: args, appID: appID,
                                                      menu: method == "ui.menu") { [weak self] selection in
@@ -3636,6 +3677,8 @@ enum HTMLNativeAPIScript {
           list: (options = {}) => call('ui.list', options),
           listUpdate: (items = [], sessionID) =>
             call('ui.listUpdate', sessionID ? { items, sessionID } : { items }),
+          glassShow: ({x, y, width, height}) => call('ui.glassShow', {x, y, width, height}),
+          glassHide: () => call('ui.glassHide'),
           listDismiss: () => call('ui.listDismiss')
         },
         events: {

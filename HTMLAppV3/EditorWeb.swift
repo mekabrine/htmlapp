@@ -145,7 +145,7 @@ struct WebRunner: View {
                 HTMLWebView(html: liveHTML, appID: app.id, restoresSession: true).ignoresSafeArea()
             }
         }
-            .overlay(alignment: .leading) {
+            .overlay(alignment: .topLeading) {
                 if alwaysShowEditMicrophone && !carDisplay && !carWindow {
                     runnerEditMic
                 }
@@ -184,20 +184,15 @@ struct WebRunner: View {
     }
 
     private var runnerEditMic: some View {
-        Image(systemName: "mic.fill")
-            .font(.system(size: micArmed ? 25 : 15, weight: .semibold))
-            .foregroundStyle(editDictation.recording ? Color.white : Color.primary)
-            .frame(width: 60, height: 60, alignment: micArmed ? .center : .trailing)
-            .padding(.trailing, micArmed ? 0 : 3)
-            .background(editDictation.recording ? Color.red : Color(uiColor: .systemGray4),
-                        in: RoundedRectangle(cornerRadius: 18))
-            .offset(x: -42 + micDrag)
+        ForgeEditMicrophoneFace(armed: micArmed, recording: editDictation.recording)
+            .offset(x: -24 + micDrag, y: 68)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: micArmed)
             .accessibilityLabel("Drag microphone inward, speak, then release to edit")
             .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
                 .onChanged { value in
                     guard !awaitingEdit else { return }
                     micDrag = max(0, value.translation.width)
-                    let inside = micDrag >= 42
+                    let inside = micDrag >= 24
                     if inside && !micArmed {
                         micArmed = true
                         editDictation.transcript = ""
@@ -209,7 +204,7 @@ struct WebRunner: View {
                     }
                 }
                 .onEnded { value in
-                    let shouldSubmit = micArmed && value.translation.width >= 42
+                    let shouldSubmit = micArmed && value.translation.width >= 24
                     micArmed = false
                     micDrag = 0
                     recordingTask?.cancel()
@@ -564,6 +559,10 @@ struct HTMLWebView: UIViewRepresentable {
             webView.evaluateJavaScript(
                 "document.documentElement.style.setProperty('--htmlapp-text-scale', '\(scale)');"
             )
+        }
+
+        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            nativeBridge?.clearLiquidGlass()
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

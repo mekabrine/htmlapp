@@ -755,7 +755,7 @@ assert 'recorder.prepareToRecord()' in dictation_source
 assert 'try await Task.sleep(nanoseconds: 250_000_000)' in dictation_source
 assert 'dictation.recording ? Color.red : Color(.systemGray4)' in forge_source
 assert '.scaleEffect(promptMicHeld ? 1.25 : 1)' in forge_source
-assert '.scaleEffect(microphoneArmed ? 1.25 : 1)' in forge_source
+assert '.scaleEffect(armed ? 1.25 : 1)' in forge_source
 assert 'Experimental silent audio is optional' not in release_notes
 assert 'BackgroundKeepAlive.shared.start()' in forge_source
 assert 'BackgroundKeepAlive.shared.stop()' in forge_source
