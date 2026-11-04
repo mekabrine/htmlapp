@@ -98,7 +98,11 @@ struct WebRunner: View {
     @AppStorage("htmlapp.alwaysShowEditMicrophone") private var alwaysShowEditMicrophone = false
     @State private var showingVoiceEditor = false
     @StateObject private var editDictation = ForgeDictation()
-    @State private var micDrag: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMicMotion
+    @State private var micDrag: CGSize = .zero
+    @State private var micStretch: CGSize = CGSize(width: 1, height: 1)
+    @State private var micReturnTask: Task<Void, Never>?
+    @State private var editorPresentationTask: Task<Void, Never>?
     @State private var micArmed = false
     @State private var awaitingEdit = false
     @State private var spokenEdit = ""
@@ -147,7 +151,7 @@ struct WebRunner: View {
         }
             .overlay(alignment: .topLeading) {
                 if alwaysShowEditMicrophone && !carDisplay && !carWindow {
-                    runnerEditMic
+                    GeometryReader { proxy in runnerEditMic(in: proxy.size) }
                 }
             }
             .overlay(alignment: .top) {
@@ -169,6 +173,8 @@ struct WebRunner: View {
             }
             .onDisappear {
                 recordingTask?.cancel()
+                micReturnTask?.cancel()
+                editorPresentationTask?.cancel()
                 editDictation.cancel()
             }
             .sheet(isPresented: $showingVoiceEditor) {
@@ -183,16 +189,28 @@ struct WebRunner: View {
 
     }
 
-    private var runnerEditMic: some View {
+    private func isMicInside(_ translation: CGSize, in size: CGSize) -> Bool {
+        let x = -24 + translation.width
+        let y = 68 + translation.height
+        return x >= 0 && y >= 0 && x + 63 <= size.width && y + 63 <= size.height
+    }
+
+    private func runnerEditMic(in size: CGSize) -> some View {
         ForgeEditMicrophoneFace(armed: micArmed, recording: editDictation.recording)
-            .offset(x: -24 + micDrag, y: 68)
-            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: micArmed)
+            .scaleEffect(x: micStretch.width, y: micStretch.height)
+            .offset(x: -24 + micDrag.width, y: 68 + micDrag.height)
             .accessibilityLabel("Drag microphone inward, speak, then release to edit")
             .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
                 .onChanged { value in
-                    guard !awaitingEdit else { return }
-                    micDrag = max(0, value.translation.width)
-                    let inside = micDrag >= 24
+                    guard !awaitingEdit, editorPresentationTask == nil else { return }
+                    if let returning = micReturnTask {
+                        returning.cancel()
+                        micReturnTask = nil
+                        micArmed = false
+                    }
+                    micStretch = CGSize(width: 1, height: 1)
+                    micDrag = value.translation
+                    let inside = isMicInside(micDrag, in: size)
                     if inside && !micArmed {
                         micArmed = true
                         editDictation.transcript = ""
@@ -204,9 +222,9 @@ struct WebRunner: View {
                     }
                 }
                 .onEnded { value in
-                    let shouldSubmit = micArmed && value.translation.width >= 24
-                    micArmed = false
-                    micDrag = 0
+                    guard !awaitingEdit, editorPresentationTask == nil else { return }
+                    let shouldSubmit = micArmed && isMicInside(value.translation, in: size)
+                    returnEditMic(from: value.translation)
                     recordingTask?.cancel()
                     if shouldSubmit {
                         awaitingEdit = true
@@ -218,6 +236,31 @@ struct WebRunner: View {
                 })
     }
 
+    private func returnEditMic(from translation: CGSize) {
+        micReturnTask?.cancel()
+        let restingScale = CGSize(width: 1, height: 1)
+        guard !reduceMicMotion else {
+            micArmed = false
+            micDrag = .zero
+            micStretch = restingScale
+            return
+        }
+        let horizontal = abs(translation.width) >= abs(translation.height)
+        withAnimation(.easeOut(duration: 0.07)) {
+            micStretch = horizontal ? CGSize(width: 1.24, height: 0.86)
+                : CGSize(width: 0.86, height: 1.24)
+        }
+        micReturnTask = Task { @MainActor in
+            do { try await Task.sleep(nanoseconds: 70_000_000) } catch { return }
+            micReturnTask = nil
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
+                micDrag = .zero
+                micStretch = restingScale
+                micArmed = false
+            }
+        }
+    }
+
     private func submitSpokenEdit() {
         let words = editDictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty else {
@@ -226,7 +269,15 @@ struct WebRunner: View {
         }
         awaitingEdit = false
         spokenEdit = words
-        showingVoiceEditor = true
+        if reduceMicMotion {
+            showingVoiceEditor = true
+        } else {
+            editorPresentationTask = Task { @MainActor in
+                defer { editorPresentationTask = nil }
+                do { try await Task.sleep(nanoseconds: 160_000_000) } catch { return }
+                showingVoiceEditor = true
+            }
+        }
     }
 
 }

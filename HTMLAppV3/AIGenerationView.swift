@@ -2458,9 +2458,35 @@ struct ForgeEditMicrophoneFace: View {
 
     @ViewBuilder private var material: some View {
         if #available(iOS 26.0, *) {
-            icon.glassEffect(recording ? .regular.tint(.red).interactive() : .regular.interactive(), in: shape)
+            icon.background {
+                ForgeMicrophoneGlass(recording: recording)
+                    .allowsHitTesting(false)
+            }
         } else {
             icon.background(recording ? Color.red : Color(uiColor: .systemGray4), in: shape)
         }
+    }
+}
+
+/// Bound the native effect to the same surface as the visible outline.
+@available(iOS 26.0, *)
+private struct ForgeMicrophoneGlass: UIViewRepresentable {
+    let recording: Bool
+
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        let view = UIVisualEffectView(effect: nil)
+        view.isUserInteractionEnabled = false
+        view.clipsToBounds = true
+        view.layer.cornerRadius = 18
+        view.layer.cornerCurve = .continuous
+        return view
+    }
+
+    func updateUIView(_ view: UIVisualEffectView, context: Context) {
+        let tint = recording ? UIColor.systemRed.withAlphaComponent(0.28) : nil
+        if let current = view.effect as? UIGlassEffect, current.tintColor == tint { return }
+        let glass = UIGlassEffect(style: .regular)
+        glass.tintColor = tint
+        view.effect = glass
     }
 }
