@@ -20,21 +20,14 @@ struct HTMLAppRuntimeSnapshot: Codable {
 
 enum HTMLAppProcessSession {
     static let id = UUID().uuidString
-    private static var coldRestoreDecisions = Set<String>()
 
-    static func hasDecidedColdRestore(appID: String) -> Bool {
-        coldRestoreDecisions.contains(appID)
-    }
-
-    static func markColdRestoreDecision(appID: String) {
-        coldRestoreDecisions.insert(appID)
-    }
 }
 
 enum HTMLAppRuntimeStateStore {
     private static let maxHTMLBytes = 3_500_000
     private static let queue = DispatchQueue(label: "com.mekabrine.htmlapp.runtime-state")
     private static let memoryLock = NSLock()
+    private static var activeAppID: String?
     private static var memory: [String: HTMLAppRuntimeSnapshot] = [:]
 
     private static func safeID(_ appID: String) -> String {
@@ -96,31 +89,38 @@ enum HTMLAppRuntimeStateStore {
             focusedSelector: body["focusedSelector"] as? String
         )
         memoryLock.lock()
-        memory[appID] = snapshot
+        if activeAppID == appID { memory[appID] = snapshot }
         memoryLock.unlock()
-        queue.async {
+    }
+
+    // Keep the running app's checkpoint in memory. Only switching to a
+    // different app makes the previous checkpoint survive process death.
+    static func opened(appID: String) {
+        memoryLock.lock()
+        let previous = activeAppID
+        activeAppID = appID
+        let snapshot = previous.flatMap { $0 == appID ? nil : memory.removeValue(forKey: $0) }
+        memoryLock.unlock()
+        guard let snapshot else { return }
+        queue.sync {
             guard let data = try? JSONEncoder().encode(snapshot) else { return }
-            try? data.write(to: url(appID: appID), options: .atomic)
+            try? data.write(to: url(appID: snapshot.appID), options: .atomic)
         }
     }
 
-    static func load(appID: String) -> HTMLAppRuntimeSnapshot? {
+    static func consume(appID: String) -> HTMLAppRuntimeSnapshot? {
         memoryLock.lock()
-        let cached = memory[appID]
+        memory.removeValue(forKey: appID)
         memoryLock.unlock()
-        if let cached { return cached }
-        let disk: HTMLAppRuntimeSnapshot? = queue.sync {
-            guard let data = try? Data(contentsOf: url(appID: appID)),
+        return queue.sync {
+            let file = url(appID: appID)
+            let data = try? Data(contentsOf: file)
+            try? FileManager.default.removeItem(at: file)
+            guard let data,
                   let snapshot = try? JSONDecoder().decode(HTMLAppRuntimeSnapshot.self, from: data),
                   snapshot.appID == appID else { return nil }
             return snapshot
         }
-        if let disk {
-            memoryLock.lock()
-            memory[appID] = disk
-            memoryLock.unlock()
-        }
-        return disk
     }
 
     static func remove(appID: String) {
@@ -714,3 +714,4 @@ enum HTMLAppOfflineDiscoveryScript {
     })();
     """#
 }
+

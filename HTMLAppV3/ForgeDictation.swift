@@ -19,6 +19,13 @@ final class ForgeDictation: ObservableObject {
     private var offlineURL: URL?
     private var retainedAudioURL: URL?
     private var offlineMode = false
+    var offlineCompletion: ((Result<String, Error>) -> Void)?
+
+    private func finishOffline(_ result: Result<String, Error>) {
+        let completion = offlineCompletion
+        offlineCompletion = nil
+        completion?(result)
+    }
     private var preferWhisperWhenAppleUnavailable = false
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
@@ -119,6 +126,7 @@ final class ForgeDictation: ObservableObject {
         }
     }
     private func startOffline(tapToStop: Bool = false) async {
+        HTMLAppOfflineSpeech.shared.preloadIfSelected()
         appleSpeechActive = false
         let requestedGeneration = generation
         requestingPermission = true
@@ -139,7 +147,7 @@ final class ForgeDictation: ObservableObject {
             var candidateURL: URL?
             do {
                 let audio = AVAudioSession.sharedInstance()
-                try audio.setCategory(.record, mode: .default, options: .duckOthers)
+                try audio.setCategory(.record, mode: .default)
                 try audio.setActive(true)
                 let url = FileManager.default.temporaryDirectory
                     .appendingPathComponent("htmlapp-dictation-" + UUID().uuidString + ".wav")
@@ -187,6 +195,7 @@ final class ForgeDictation: ObservableObject {
     }
 
     func cancel() {
+        offlineCompletion = nil
         discardRetainedAudio()
         appleSpeechActive = false
         generation = UUID()
@@ -230,12 +239,13 @@ final class ForgeDictation: ObservableObject {
                 guard currentGeneration == generation, !Task.isCancelled else { return }
                 do {
                     let words = try await HTMLAppOfflineSpeech.shared.transcribe(
-                        fileURL: url, resetModel: attempt > 1
+                        fileURL: url, resetModel: attempt == 3
                     )
                     guard currentGeneration == generation, !Task.isCancelled else { return }
                     transcript = words
                     status = "Whisper transcription is ready."
                     discardRetainedAudio()
+                    finishOffline(.success(words))
                     return
                 } catch {
                     guard currentGeneration == generation, !Task.isCancelled else { return }
@@ -247,6 +257,7 @@ final class ForgeDictation: ObservableObject {
                         // to retry from the UI without another recording.
                         status = "Transcription needs another try. Your recording is saved."
                         canRetryTranscription = true
+                        finishOffline(.failure(error))
                     }
                 }
             }
@@ -267,6 +278,7 @@ final class ForgeDictation: ObservableObject {
             let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
             let bytes = (attributes?[.size] as? NSNumber)?.intValue ?? 0
             guard bytes > 1024 else {
+                finishOffline(.failure(CocoaError(.fileReadCorruptFile)))
                 status = "No microphone audio was recorded. Check microphone access and hold the mic longer."
                 try? FileManager.default.removeItem(at: url)
                 return
@@ -292,3 +304,4 @@ final class ForgeDictation: ObservableObject {
         }
     }
 }
+

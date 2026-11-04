@@ -31,6 +31,9 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private let eventStore = EKEventStore()
     private let speechSynthesizer = AVSpeechSynthesizer()
     private let speechRecognition = HTMLAppSpeechRecognition()
+    private let offlineSpeech = ForgeDictation()
+    private var offlineSpeechID: String?
+    private var offlineSpeechLimit: Task<Void, Never>?
     private let nfcReader = HTMLAppNFCReader()
     private let coreHaptics = HTMLAppCoreHapticsService()
     private let gamepads = HTMLAppGamepadService()
@@ -71,6 +74,9 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         nativeTabBar?.remove()
         nativeTabBar = nil
         speechRecognition.stop()
+        offlineSpeechLimit?.cancel()
+        offlineSpeech.cancel()
+        offlineSpeechID = nil
         speechSynthesizer.stopSpeaking(at: .immediate)
         coreHaptics.stop()
         gamepads.stop()
@@ -452,6 +458,10 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 let locale = args["locale"] as? String ?? Locale.current.identifier
                 Task { @MainActor [weak self] in
                     guard let self else { return }
+                    if UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
+                        await self.startOfflineSpeech(id: id)
+                        return
+                    }
                     do {
                         try await self.speechRecognition.start(locale: locale) { [weak self] result in
                             guard let self else { return }
@@ -468,7 +478,15 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 }
             }
         case "speech.listenStop", "speech.stopRecognizing":
-            speechRecognition.stop()
+            if offlineSpeech.recording {
+                offlineSpeech.stop()
+            } else if let pending = offlineSpeechID, !offlineSpeech.transcribingOffline {
+                offlineSpeech.cancel()
+                offlineSpeechID = nil
+                reject(pending, code: "speech_cancelled", message: "Recording was stopped before it started.")
+            } else {
+                speechRecognition.stop()
+            }
             resolve(id, value: ["stopped": true])
         case "ai.cancel":
             guard let requestID = args["requestID"] as? String, let task = aiTasks.removeValue(forKey: requestID) else {
@@ -865,7 +883,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 let badge = entry["badge"] as? String
                 guard badge == nil || badge!.count <= 5 else { return nil }
                 return .init(id: id, title: label,
-                             symbol: HTMLAppSymbolCatalog.names.contains(symbol) ? symbol : "square",
+                             symbol: UIImage(systemName: symbol) != nil ? symbol : "app.fill",
                              badge: badge)
             }
             guard labels.count == entries.count, Set(labels.map(\.id)).count == labels.count else {
@@ -890,7 +908,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             let symbol = args["symbol"] as? String
             let valid = (badge?.count ?? 0) <= 5 && (title?.count ?? 0) <= 24
             guard valid, nativeTabBar?.update(id: tab, badge: badge, title: title,
-                symbol: symbol.flatMap { HTMLAppSymbolCatalog.names.contains($0) ? $0 : nil }) == true else {
+                symbol: symbol.flatMap { UIImage(systemName: $0) != nil ? $0 : nil }) == true else {
                 reject(id, code: "invalid_tab", message: "Tab not found or change invalid.")
                 return
             }
@@ -1218,12 +1236,12 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             }
         case "symbols.search":
             let query = (args["query"] as? String ?? "").lowercased()
-            let names = HTMLAppSymbolCatalog.names.filter { query.isEmpty || $0.contains(query) }
-            resolve(id, value: ["names": Array(names.prefix(100))])
+            let names = HTMLAppSymbolCatalog.names.filter { (query.isEmpty || $0.contains(query)) && UIImage(systemName: $0) != nil }
+            let exact = !query.isEmpty && UIImage(systemName: query) != nil ? [query] : []
+            resolve(id, value: ["names": Array((exact + names.filter { !exact.contains($0) }).prefix(100))])
         case "symbols.render":
             let name = args["name"] as? String ?? ""
-            guard HTMLAppSymbolCatalog.names.contains(name),
-                  let image = UIImage(systemName: name)?.withTintColor(.black, renderingMode: .alwaysOriginal),
+            guard let image = UIImage(systemName: name)?.withTintColor(.black, renderingMode: .alwaysOriginal),
                   let data = image.pngData() else {
                 reject(id, code: "unsupported_symbol", message: "This SF Symbol is unavailable on this iOS version.")
                 return
@@ -1831,6 +1849,36 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
 
     private func portableDataAll(id: String) {
         resolve(id, value: ["values": HTMLAppPortableDataStore.all(appID: appID)])
+    }
+
+    private func startOfflineSpeech(id: String) async {
+        guard offlineSpeechID == nil else {
+            reject(id, code: "speech_busy", message: "A transcription is already in progress.")
+            return
+        }
+        offlineSpeechID = id
+        await offlineSpeech.start(tapToStop: true)
+        guard offlineSpeechID == id else { return }
+        guard offlineSpeech.recording else {
+            offlineSpeechID = nil
+            reject(id, code: "speech_unavailable", message: offlineSpeech.status)
+            return
+        }
+        offlineSpeech.offlineCompletion = { [weak self] result in
+            guard let self, self.offlineSpeechID == id else { return }
+            self.offlineSpeechID = nil
+            self.offlineSpeechLimit?.cancel()
+            switch result {
+            case .success(let text): self.resolve(id, value: ["text": text, "final": true])
+            case .failure: self.reject(id, code: "speech_error", message: self.offlineSpeech.status)
+            }
+        }
+        offlineSpeechLimit = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 90_000_000_000) }
+            catch { return }
+            guard let self, self.offlineSpeechID == id, self.offlineSpeech.recording else { return }
+            self.offlineSpeech.stop()
+        }
     }
 
     private func validWidgetAction(_ value: Any?) -> HTMLAppWidgetAction? {

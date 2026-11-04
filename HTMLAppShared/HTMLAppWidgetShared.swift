@@ -326,6 +326,17 @@ enum HTMLAppWidgetStore {
     }
 
     static func definition(compositeID: String) -> HTMLAppWidgetDefinition? { all().first { $0.id == compositeID } }
+    @discardableResult
+    static func activate(appID: String) -> Bool {
+        do {
+            guard let repository = try? repository(),
+                  let candidate = try repository.all().first(where: { $0.appID == appID }) else { return false }
+            try setPrimaryVerified(compositeID: candidate.id)
+            return true
+        } catch {
+            return false
+        }
+    }
     static func preferredDefinition() -> HTMLAppWidgetDefinition? { all().first(where: { $0.primary }) }
     @discardableResult
     static func saveVerified(_ definition: HTMLAppWidgetDefinition) throws -> HTMLAppWidgetDefinition { try repository().save(definition) }
@@ -423,7 +434,13 @@ enum HTMLAppWidgetResolver {
         let definition: HTMLAppWidgetDefinition?
         if let id = selectedID, id != primaryID {
             definition = values.first { $0.id == id }
-        } else { definition = values.first { $0.primary } }
+        } else {
+            let primary = values.first { $0.primary }
+            definition = primary.flatMap { preferred in
+                preferred.families.contains(family) ? preferred
+                    : values.first { $0.appID == preferred.appID && $0.families.contains(family) } ?? preferred
+            }
+        }
         guard let definition else { throw HTMLAppWidgetStoreError(code: "widget_not_found", message: "Publish a widget in HTMLApp, then select it in Widgets & Background or Edit Widget.") }
         guard definition.families.contains(family) else { throw HTMLAppWidgetStoreError(code: "widget_family_mismatch", message: "Republish this widget for this size or add one of its published sizes.") }
         return definition
@@ -655,4 +672,5 @@ enum HTMLAppWidgetNetwork {
         }
     }
 }
+
 

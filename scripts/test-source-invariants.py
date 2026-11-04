@@ -167,7 +167,7 @@ assert 'if demoMode {' in source("HTMLAppV3/AIGenerationView.swift")
 assert 'Advanced model names' not in source("HTMLAppV3/AISettingsView.swift")
 assert 'AISettingsStore.usesSpecialistProvider' in source("HTMLAppV3/AISettingsView.swift")
 assert 'static func shouldHideStatusBar(in html: String)' in source("HTMLAppV3/EditorWeb.swift")
-assert 'statusBarHidden(carDisplay || carWindow || Self.shouldHideStatusBar(in: app.html))' in source("HTMLAppV3/EditorWeb.swift")
+assert 'statusBarHidden(carDisplay || carWindow || Self.shouldHideStatusBar(in: liveHTML))' in source("HTMLAppV3/EditorWeb.swift")
 assert 'DisclosureGroup("Built-in Forge system prompt")' not in source("HTMLAppV3/AISettingsView.swift")
 assert 'get { defaultSystemPrompt }' in source("HTMLAppV3/AIConfiguration.swift")
 assert 'systemSmall, systemMedium, and systemLarge' in ai
@@ -183,8 +183,8 @@ assert "} // Developer Mode" in settings_source
 assert settings_source.index("} // Developer Mode") < settings_source.index('Label(saved ? "Saved"')
 styles = source("HTMLAppV3/ForgeStylePreview.swift")
 assert all(direction in styles for direction in ("Editorial", "Workbench", "Playful"))
-assert "Mandatory composition:" in styles
-assert "Keep the interface specific to this product rather than chasing novelty." in styles
+assert "Optional creative starting point:" in styles
+assert "Invent a distinct visual metaphor" in styles
 assert 'No fake iPhone frame' in styles
 assert 'FUNCTIONALITY FIRST:' in source("HTMLAppV3/ForgeProductContract.swift")
 assert 'LOADING UX:' in source("HTMLAppV3/ForgeProductContract.swift")
@@ -273,7 +273,7 @@ assert 'import MediaPlayer' in music and 'MPNowPlayingInfoCenter' in music
 # Regression coverage for divergent AI looks and in-preview JavaScript errors.
 assert 'styleRegenerationRound += 1' in forge
 assert 'regeneration: regenerationRound' in forge
-assert 'Mandatory composition:' in styles and 'let archetypes:' in styles, "Initial looks must retain the restored structured composition"
+assert "Optional creative starting point:" in styles and "let archetypes:" in styles
 assert 'freeform = index >= 3' in styles and 'no style presets' in styles.lower(), "Additional AI looks must remain freeform"
 assert 'onJavaScriptError:' in forge and 'JavaScript errors detected' in forge
 assert 'Button("Ask AI to Fix")' in forge
@@ -804,7 +804,8 @@ assert 'data.count <= 15_000_000' in continuity
 assert 'case "htmlappState":' in editor_web
 assert 'case "htmlappOfflineCache":' in editor_web
 assert 'title: "Experimental Offline Copy"' in editor_web
-assert 'title: "Restore previous app session?"' in editor_web
+assert 'HTMLAppRuntimeStateStore.consume(appID: appID)' in editor_web
+assert 'HTMLAppRuntimeStateStore.opened(appID: app.id)' in app_core
 assert 'HTMLAppCaptureRuntimeState' in editor_web
 assert 'HTMLAppOfflineCache.shared.shouldRefreshOnOpen' in app_core
 assert 'HTMLAppRuntimeStateStore.remove(appID: app.id)' in app_core
@@ -843,7 +844,7 @@ assert "grid-template-columns" in visual_guard and "sibling labels" in visual_gu
 assert "ForgeVisualEditQualityGate.issue(" in forge_source
 assert "VISUAL EDIT REPAIR" in forge_source
 assert "transcribeRetainedAudio()" in dictation and "retryTranscription()" in dictation
-assert "resetModel: attempt > 1" in dictation
+assert "resetModel: attempt == 3" in dictation
 assert "canRetryTranscription" in source("HTMLAppV3/AIGenerationView.swift")
 assert "resetModel: Bool = false" in speech
 
@@ -993,3 +994,4 @@ assert 'HTMLAppNetworkDomainConsent.request(host: host, appID: self.appID)' in n
 assert 'didReceiveRemoteNotification userInfo:' in pushDelegate and '"htmlapp_refresh"' in pushDelegate
 assert '- remote-notification' in source("project.yml")
 assert '"permission": "network"' in source("scripts/native-capability-definitions.json")
+

@@ -126,19 +126,25 @@ struct HTMLAppDisplayRoot: View {
                     .padding(.horizontal, 12)
                     .frame(minHeight: 52)
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 12)], spacing: 12) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 12)], spacing: 12) {
                             ForEach(store.apps.sorted {
-                                if ($0.isFavorite == true) != ($1.isFavorite == true) {
-                                    return $0.isFavorite == true
-                                }
+                                let left = $0.lastOpenedAt ?? .distantPast
+                                let right = $1.lastOpenedAt ?? .distantPast
+                                if left != right { return left > right }
                                 return $0.name.localizedStandardCompare($1.name) == .orderedAscending
                             }) { app in
                                 Button { store.launch(app) } label: {
-                                    Label(app.name, systemImage: app.isFavorite == true ? "star.fill" : "app")
-                                        .font(.title3.weight(.semibold))
-                                        .lineLimit(2)
-                                        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                                    Group {
+                                        if let data = app.favicon, let icon = UIImage(data: data) {
+                                            Image(uiImage: icon).resizable().scaledToFit()
+                                        } else {
+                                            Image(systemName: "app.fill").font(.largeTitle)
+                                        }
+                                    }
+                                    .frame(width: 58, height: 58)
+                                    .clipShape(RoundedRectangle(cornerRadius: 13))
                                 }
+                                .accessibilityLabel(app.name)
                                 .buttonStyle(.bordered)
                             }
                         }
@@ -159,3 +165,4 @@ struct HTMLAppDisplayRoot: View {
         .background(HTMLAppCarWindowProbe(isCarWindow: $carWindow))
     }
 }
+

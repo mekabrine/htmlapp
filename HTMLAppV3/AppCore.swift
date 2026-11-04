@@ -687,6 +687,8 @@ final class AppStore: ObservableObject {
         }
         // Loading an app must not synchronously re-encode, validate and
         // backup the entire library before its WebView can appear.
+        HTMLAppRuntimeStateStore.opened(appID: app.id)
+        if HTMLAppWidgetStore.activate(appID: app.id) { HTMLAppWidgetReloadCoordinator.request() }
         runningApp = apps[index]
         deferredLaunchSave?.cancel()
         deferredLaunchSave = Task { [weak self] in
@@ -1670,4 +1672,5 @@ final class AppStore: ObservableObject {
         }
     }
 }
+
 

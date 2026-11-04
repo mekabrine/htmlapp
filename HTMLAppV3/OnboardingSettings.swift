@@ -412,6 +412,7 @@ struct OnboardingView: View {
 }
 
 struct SettingsView: View {
+    @AppStorage("htmlapp.alwaysShowEditMicrophone") private var alwaysShowEditMicrophone = false
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
     @AppStorage("onboardingComplete") private var onboardingComplete = true
@@ -450,6 +451,7 @@ struct SettingsView: View {
                     } label: {
                         Label("AI Connection & Generation", systemImage: "sparkles")
                     }
+                    Toggle("Show edit microphone at all times", isOn: $alwaysShowEditMicrophone)
                     Picker("Voice Dictation", selection: $dictationEngine) {
                         Label("Apple Speech — Live", systemImage: "waveform").tag("apple")
                         Label("Whisper Offline", systemImage: "mic").tag("whisper")
@@ -651,3 +653,4 @@ struct SettingsView: View {
         }
     }
 }
+

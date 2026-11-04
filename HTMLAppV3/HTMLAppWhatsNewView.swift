@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.78"
-    static let compiledBuild = "86"
+    static let compiledVersion = "1.6.79"
+    static let compiledBuild = "87"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,12 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.79" { return [
+            Entry(id: "forge-style", title: "More expressive previews", description: "Compare designs with numbered controls and read shorter AI edit summaries.", symbol: "paintpalette", tint: .purple),
+            Entry(id: "speech-and-edit", title: "Dictation where you need it", description: "Saved apps follow your dictation setting, and you can pin a voice edit shortcut to the edge.", symbol: "mic.fill", tint: .blue),
+            Entry(id: "app-switch", title: "Smoother app switching", description: "Switching apps saves the previous screen for automatic restoration and makes the opened app’s widgets the default.", symbol: "square.stack", tint: .green)
+        ] }
+
         if version == "1.6.78" { return [
             Entry(id: "managed-tab-screens", title: "Screens and tabs stay in sync", description: "Generated apps can use a built-in screen router so opening a tab destination from a button also selects its native tab.", symbol: "rectangle.on.rectangle", tint: .blue)
         ] }

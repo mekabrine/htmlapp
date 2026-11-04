@@ -347,6 +347,11 @@ struct AIGenerationView: View {
                 didLoadExisting = true
                 session.load(existing: existingApp)
                 selectedStyle = ForgeStyleReferenceStore.load(for: existingApp.id)
+                if shortcutSource == "runnerMic" {
+                    showingChange = true
+                    dictationForEdit = true
+                    await dictation.start(tapToStop: true)
+                }
             }
             if !demoMode && recoverableDraft == nil,
                let draft = ForgeDraftCheckpointStore.load(),
@@ -913,10 +918,7 @@ struct AIGenerationView: View {
                     .padding(.top, 8)
 
                     if !styleOptions.isEmpty {
-                        // Give the preview the FULL available width. The old
-                        // side-by-side 88-point look selector squeezed WebKit
-                        // into an unusable phone viewport and clipped columns.
-                        VStack(spacing: 10) {
+                        HStack(alignment: .top, spacing: 4) {
                             ForgeStyleSketchView(
                                 html: styleOptions[min(selectedStyleIndex, styleOptions.count - 1)].previewHTML
                             )
@@ -943,17 +945,17 @@ struct AIGenerationView: View {
                                 }
                             }
                             .allowsHitTesting(!exploringStyles)
-                            .padding(.horizontal, 12)
+                            .padding(.leading, 12)
 
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 9) {
+                            ScrollView(.vertical, showsIndicators: false) {
+                                VStack(spacing: 8) {
                                     ForEach(0..<max(3, (styleOptions.map(\.id).max() ?? -1) + 1), id: \.self) { slot in
                                         let available = styleOptions.firstIndex(where: { $0.id == slot })
                                         Button {
                                             if let available { selectedStyleIndex = available }
                                         } label: {
                                             HStack(spacing: 5) {
-                                                Text("Look \(slot + 1)")
+                                                Text("\(slot + 1)")
                                                 if available == nil {
                                                     Image(systemName: "hourglass").font(.caption2)
                                                 } else if available == selectedStyleIndex {
@@ -961,8 +963,7 @@ struct AIGenerationView: View {
                                                 }
                                             }
                                             .font(.subheadline.weight(.semibold))
-                                            .padding(.horizontal, 15)
-                                            .frame(height: 46)
+                                            .frame(width: 49, height: 46)
                                             .foregroundStyle(available == nil ? .secondary : .primary)
                                             .background(
                                                 available == selectedStyleIndex
@@ -978,17 +979,15 @@ struct AIGenerationView: View {
                                     Button {
                                         generateAdditionalStyles()
                                     } label: {
-                                        Label("More looks", systemImage: "plus.circle.fill")
+                                        Image(systemName: "plus.circle.fill").accessibilityLabel("More styles")
                                             .font(.subheadline.weight(.semibold))
-                                            .padding(.horizontal, 13)
                                             .frame(height: 46)
                                     }
                                     .buttonStyle(.bordered)
                                     .disabled(exploringStyles || styleOptions.isEmpty)
                                 }
-                                .padding(.horizontal, 14)
                             }
-                            .frame(height: 54)
+                            .frame(width: 62, height: min(max(235, geometry.size.height * 0.52), 610))
                         }
                     } else if exploringStyles {
                         Spacer()
@@ -1019,11 +1018,6 @@ struct AIGenerationView: View {
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
-                        Text(styleOptions[selectedStyleIndex].summary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         HStack(spacing: 8) {
                             Button {
                                 exploreStyleOptions()
@@ -2462,4 +2456,5 @@ private enum HTMLAppForgeBackgroundNotice {
         UNUserNotificationCenter.current().add(request)
     }
 }
+
 

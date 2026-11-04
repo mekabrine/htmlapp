@@ -657,7 +657,7 @@ Implementation guidance:
             // Fall back to a meaningful description of the requested change.
             let concise = AIHTMLAgent.value("edit_summary", in: response)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            lastEditSummary = concise.isEmpty ? "Applied AI edit: " + String(cleanChange.prefix(160)) : concise
+            lastEditSummary = AIHTMLAgent.shortEditSummary(concise)
             AIDebugTraceStore.shared.append("EDIT SUMMARY", lastEditSummary)
             wantsUIPolish = AIHTMLAgent.editNeedsPolish(response: response, requestedChange: cleanChange)
             let changedSource = initialOutput.patch.isEmpty ? initialOutput.html : initialOutput.patch
@@ -724,9 +724,7 @@ Implementation guidance:
                 }
                 let repairedSummary = AIHTMLAgent.value("edit_summary", in: retryResponse)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                lastEditSummary = repairedSummary.isEmpty
-                    ? "Corrected the requested visual layout."
-                    : repairedSummary
+                lastEditSummary = AIHTMLAgent.shortEditSummary(repairedSummary)
                 AIDebugTraceStore.shared.append("VISUAL EDIT REPAIR", "Applied corrected visual patch.")
             }
             let dataSafety = ForgeEditSafetyGate.violations(
@@ -2319,7 +2317,9 @@ DEVICE CHROME AND STATUS BAR RULES:
 - Do not render a fake CSS bottom tab strip when native tabs are available. A true iOS 26 Liquid Glass tab bar requires the host's UITabBarController; it cannot be recreated reliably with CSS.
 - Do not put native status bar or Dynamic Island graphics inside previewHTML/mockups either.
 
-- All apps that need animations should include animations wherever appropriate.\n\nHTMLAPP GESTURES AND REAL NATIVE TAB BARS:
+- For a web glass surface in HTMLApp, use data-htmlapp-glass on a small toolbar, floating control or sheet. This is a translucent WebKit material with a reduced-transparency fallback. Ensure readable foreground contrast; avoid using glass behind dense text.
+- Animate meaningful changes: tab and screen transitions, sheets opening and closing, expanding controls, reordering, and save feedback. Use short transform or opacity transitions and honor prefers-reduced-motion. Keep the interaction responsive while animation runs.
+- Use real SF Symbol names appropriate to each tab. The host validates names against the installed iOS catalog; prefer familiar symbols with broad OS availability. In web fallback navigation use inline SVG or text.\n\nHTMLAPP GESTURES AND REAL NATIVE TAB BARS:
 - Use gestures when appropriate: swipe between cards and views, pinch-to-zoom photos/maps where applicable, long-press for contextual options, pull-to-refresh where data can refresh, drag-to-reorder, and tactile feedback. Provide accessible buttons as equivalent actions and avoid accidental destructive gestures.
 - For EVERY app with 2–7 top-level destinations, ALWAYS call HTMLAppNative.tabs.configure to create its real native navigation in the installed app. Never use a CSS tab bar as the primary navigation. Implement a working HTML navigation fallback ONLY for editing/preview or when the native bridge is unavailable; hide that fallback immediately when native tabs configure successfully. On real iOS 26, native tab bars can receive the system's Liquid Glass styling; fake HTML tab bars cannot. Bind every tab ID to a working section. Keep a CSS fallback only if capabilities() says the native API is missing and hide it when native tabs are active.
 - For new apps with native tabs, prefer the built-in screen router: give each destination a unique <section data-htmlapp-screen="home"> with an ID value matching its native tab item. Initialize once after the DOM is ready with await HTMLAppNative.screens.configure({items, selected:"home"}). Put data-htmlapp-go="settings" on any in-app button that opens Settings and use HTMLAppNative.screens.go("settings") for scripted navigation. The router switches the section and selected native tab together. Do not mix managed screens with a separate tabs.configure/onSelect router. Mark fallback navigation with data-htmlapp-tab-fallback, use the same data-htmlapp-go controls, and enforce [data-htmlapp-screen][hidden], [data-htmlapp-tab-fallback][hidden] { display:none !important; }. Feature-detect screens.configure and keep a local shared route function for browser preview or older hosts, where the native script may be absent. Keep existing route IDs and storage when migrating an app.
@@ -2352,6 +2352,15 @@ HTMLAPP FACT-CHECK OVERRIDES:
 """
     }
 
+    static func shortEditSummary(_ text: String) -> String {
+        let summary = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard !summary.isEmpty else { return "Updated your app." }
+        guard summary.count > 160 else { return summary }
+        let prefix = String(summary.prefix(157))
+        if let space = prefix.lastIndex(of: " ") { return String(prefix[..<space]) + "…" }
+        return prefix + "…"
+    }
+
     static func patchSystemPrompt(research: String) -> String {
         """
 You are HTMLApp's code-editing agent. Preserve the existing HTML title unless the user asks for a rename. Edit the existing single-file HTML app with the smallest safe patch that satisfies the requested change. Preserve all unrelated behavior, IDs, storage keys, API integrations, permissions, navigation and working code. Prefer patching over rewriting.
@@ -2360,7 +2369,7 @@ Keep the saved app's real iOS status bar visible by default. When an immersive r
 
 Return these sections with no Markdown fences:
 <ui_polish_needed>yes or no</ui_polish_needed>
-<edit_summary>Exactly one plain-language sentence about the changes actually made.</edit_summary>
+<edit_summary>One short sentence, ideally 6–15 words, saying what users can see or do now. Start with a simple verb. Example: Added a button to reopen your last workout. Skip code terms, file names, process details, and filler.</edit_summary>
 <build_summary>short updated implementation plan; conclusions only, not hidden reasoning</build_summary>
 <description>updated one-sentence description if materially changed, otherwise repeat the current purpose</description>
 <icon_script>updated icon script only if the app identity changed; otherwise leave empty</icon_script>
@@ -2388,6 +2397,7 @@ the existing element can be styled instead. Ensure labels and inputs remain
 associated and tappable at 320pt width and tablet widths.
 
 EDIT ACCEPTANCE:
+Animate meaningful new or changed interactions, including navigation, sheets, and state changes. Honor prefers-reduced-motion.
 When asked to fix tab selection after opening a destination from a button, route every entry point through the same navigation function. Prefer HTMLAppNative.screens for matching tab destinations when available, with a local fallback. Preserve existing IDs and state.
 Keep the original user request authoritative. Treat inferred targets and planner text as advisory; if they conflict with the actual DOM or request, inspect the full source and choose the smallest coherent change. For ambiguous requests preserve data, features and navigation. Trace the changed interaction from user action through state update and persistence to rendered result, then check its existing callers. Summarize only changes actually present in the patch. Never claim runtime tests were executed merely from reading source.
 

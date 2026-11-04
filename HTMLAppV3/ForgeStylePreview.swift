@@ -149,8 +149,8 @@ enum ForgeStylePreviewService {
         let user = """
         App idea: \(String(request.prefix(2300)))
         Requested changes: \(String(feedback.prefix(650)))
-        \(freeform ? "Choose your own entirely original visual style, layout, interaction pattern and design language. Do not follow any predefined aesthetic or archetype." : "Design: \(variant.0) — \(variant.1). Mandatory composition: \(variant.2). Avoid the other two looks: \(competing).")
-        Style regeneration round: \(regeneration). Keep the interface specific to this product rather than chasing novelty.
+        \(freeform ? "Choose your own entirely original visual style, layout, interaction pattern and design language. Do not follow any predefined aesthetic or archetype." : "Design: \(variant.0) — \(variant.1). Optional creative starting point: \(variant.2). Avoid the other two looks: \(competing).")
+        Style regeneration round: \(regeneration). Invent a distinct visual metaphor, typography pairing and composition grounded in the main task.
         System appearance: \(appearance). Design in this light/dark mode unless the user explicitly requested another mode.
         Every visible element MUST be relevant to the described app.
         Invent a concrete brand name, realistic starter records, and a meaningful
@@ -162,7 +162,7 @@ enum ForgeStylePreviewService {
         "Overview", "Make progress your way", "Recent activity" or fake tabs.
         Style \(slot + 1) must differ in layout, section order, hierarchy,
         map prominence, button placement and navigation — not merely colors.
-        \(freeform ? "The AI must invent the design freely; no style presets." : "The selected layout archetype is mandatory.")
+        \(freeform ? "The AI must invent the design freely; no style presets." : "Invent the composition for this product. Borrow at most one idea from the starting point, and give the core interaction its own distinctive visual treatment.")
         """
         let system = """
         Return ONLY a complete standalone HTML document starting with <!DOCTYPE html>.
@@ -344,4 +344,5 @@ struct ForgeStyleSketchView: UIViewRepresentable {
         }
     }
 }
+
 

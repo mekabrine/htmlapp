@@ -95,6 +95,10 @@ struct WebRunner: View {
     @State private var flipShakeCloser = FlipShakeClose()
     @AppStorage("htmlapp.carDisplay") private var carDisplay = false
     @State private var carWindow = false
+    @AppStorage("htmlapp.alwaysShowEditMicrophone") private var alwaysShowEditMicrophone = false
+    @State private var showingVoiceEditor = false
+
+    private var liveHTML: String { store.apps.first(where: { $0.id == app.id })?.html ?? app.html }
 
     static func shouldHideStatusBar(in html: String) -> Bool {
         // The tag may use single/double quotes and either attribute order.
@@ -112,7 +116,7 @@ struct WebRunner: View {
     var body: some View {
         Group {
             if carDisplay || carWindow {
-                HTMLWebView(html: app.html, appID: app.id)
+                HTMLWebView(html: liveHTML, appID: app.id, restoresSession: true)
                     .safeAreaInset(edge: .top, spacing: 0) {
                         HStack {
                             Button {
@@ -132,11 +136,34 @@ struct WebRunner: View {
                         .background(.bar)
                     }
             } else {
-                HTMLWebView(html: app.html, appID: app.id).ignoresSafeArea()
+                HTMLWebView(html: liveHTML, appID: app.id, restoresSession: true).ignoresSafeArea()
             }
         }
+            .overlay(alignment: .leading) {
+                if alwaysShowEditMicrophone && !carDisplay && !carWindow {
+                    Button { showingVoiceEditor = true } label: {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(width: 44, height: 60, alignment: .trailing)
+                            .padding(.trailing, 3)
+                            .frame(width: 60, height: 60)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
+                    .offset(x: -40)
+                    .accessibilityLabel("Open voice editor")
+                    .simultaneousGesture(DragGesture(minimumDistance: 20).onEnded { value in
+                        if value.translation.width > 20 { showingVoiceEditor = true }
+                    })
+                }
+            }
+            .sheet(isPresented: $showingVoiceEditor) {
+                AIGenerationView(existingApp: store.apps.first(where: { $0.id == app.id }) ?? app,
+                                 shortcutSource: "runnerMic")
+                    .environmentObject(store)
+            }
             .background(HTMLAppCarWindowProbe(isCarWindow: $carWindow))
-            .statusBarHidden(carDisplay || carWindow || Self.shouldHideStatusBar(in: app.html))
+            .statusBarHidden(carDisplay || carWindow || Self.shouldHideStatusBar(in: liveHTML))
             .htmlAppFirstUseToasts()
             .onAppear { HTMLAppFirstUseTips.show("open") }
 
@@ -159,6 +186,9 @@ enum HTMLAppResponsiveViewport {
         '*,*::before,*::after{box-sizing:border-box}',
         'img,video,canvas,svg{max-width:100%}',
         'input,select,textarea{font-size:max(16px,1rem)}',
+        '[data-htmlapp-glass]{background:rgba(255,255,255,.72);border:1px solid rgba(128,128,128,.32);border-radius:var(--htmlapp-glass-radius,20px);-webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4);box-shadow:0 6px 22px rgba(0,0,0,.12)}',
+        '@media(prefers-color-scheme:dark){[data-htmlapp-glass]{background:rgba(32,32,36,.78)}}',
+        '@media(prefers-reduced-transparency:reduce){[data-htmlapp-glass]{background:Canvas;-webkit-backdrop-filter:none;backdrop-filter:none}}',
         '[data-htmlapp-horizontal-scroll="true"]{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}'
       ].join(' ');
       const enforce = () => {
@@ -198,9 +228,10 @@ enum HTMLAppResponsiveViewport {
 struct HTMLWebView: UIViewRepresentable {
     let html: String
     let appID: String
+    var restoresSession = false
     var onJavaScriptError: ((String) -> Void)? = nil
 
-    func makeCoordinator() -> Coordinator { Coordinator(appID: appID, onJavaScriptError: onJavaScriptError) }
+    func makeCoordinator() -> Coordinator { Coordinator(appID: appID, restoresSession: restoresSession, onJavaScriptError: onJavaScriptError) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -381,25 +412,23 @@ struct HTMLWebView: UIViewRepresentable {
         private var launchObserver: NSObjectProtocol?
         private var lifecycleObservers: [NSObjectProtocol] = []
         private var pendingStateRestore: HTMLAppRuntimeSnapshot?
-        private var coldRestoreSnapshot: HTMLAppRuntimeSnapshot?
         private var offlineNoticePending = false
         private var offlineNoticeShown = false
 
-        init(appID: String, onJavaScriptError: ((String) -> Void)?) {
+        private let restoresSession: Bool
+
+        init(appID: String, restoresSession: Bool, onJavaScriptError: ((String) -> Void)?) {
             self.appID = appID
+            self.restoresSession = restoresSession
             self.onJavaScriptError = onJavaScriptError
         }
 
         func initialDocument(originalHTML: String) -> String {
             guard appID != "PREVIEW" else { return originalHTML }
             var document = originalHTML
-            if let snapshot = HTMLAppRuntimeStateStore.load(appID: appID) {
-                if snapshot.processSessionID == HTMLAppProcessSession.id {
-                    pendingStateRestore = snapshot
-                    document = snapshot.html
-                } else if !HTMLAppProcessSession.hasDecidedColdRestore(appID: appID) {
-                    coldRestoreSnapshot = snapshot
-                }
+            if restoresSession, let snapshot = HTMLAppRuntimeStateStore.consume(appID: appID) {
+                pendingStateRestore = snapshot
+                document = snapshot.html
             }
             if HTMLAppOfflineCache.shared.isOffline {
                 let rewritten = HTMLAppOfflineCache.shared.rewriteHTMLForOffline(appID: appID, html: document)
@@ -482,50 +511,8 @@ struct HTMLWebView: UIViewRepresentable {
                 return
             }
 
-            if let snapshot = coldRestoreSnapshot,
-               !HTMLAppProcessSession.hasDecidedColdRestore(appID: appID) {
-                offerColdRestore(snapshot, in: webView)
-                return
-            }
-
             webView.evaluateJavaScript("window.__htmlappStateCaptureEnabled = true;")
             showOfflineNoticeIfNeeded()
-        }
-
-        private func offerColdRestore(_ snapshot: HTMLAppRuntimeSnapshot, in webView: WKWebView) {
-            guard let presenter = topViewController(from: webView.window?.rootViewController) else {
-                HTMLAppProcessSession.markColdRestoreDecision(appID: appID)
-                coldRestoreSnapshot = nil
-                webView.evaluateJavaScript("window.__htmlappStateCaptureEnabled = true;")
-                showOfflineNoticeIfNeeded()
-                return
-            }
-            let alert = UIAlertController(
-                title: "Restore previous app session?",
-                message: "HTMLApp was closed since this app state was captured. Restore the last screen, scroll position, typed values and saved web state?",
-                preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "Start Fresh", style: .cancel) { [weak self, weak webView] _ in
-                guard let self, let webView else { return }
-                HTMLAppProcessSession.markColdRestoreDecision(appID: self.appID)
-                self.coldRestoreSnapshot = nil
-                webView.evaluateJavaScript("window.__htmlappStateCaptureEnabled = true;")
-                self.showOfflineNoticeIfNeeded()
-            })
-            alert.addAction(UIAlertAction(title: "Restore", style: .default) { [weak self, weak webView] _ in
-                guard let self, let webView else { return }
-                HTMLAppProcessSession.markColdRestoreDecision(appID: self.appID)
-                self.coldRestoreSnapshot = nil
-                self.pendingStateRestore = snapshot
-                var document = snapshot.html
-                if HTMLAppOfflineCache.shared.isOffline {
-                    let rewritten = HTMLAppOfflineCache.shared.rewriteHTMLForOffline(
-                        appID: self.appID, html: document)
-                    document = rewritten.0
-                    self.offlineNoticePending = self.offlineNoticePending || rewritten.1 > 0
-                }
-                webView.loadHTMLString(document, baseURL: SourceCache.shared.baseURL(appID: self.appID))
-            })
-            presenter.present(alert, animated: true)
         }
 
         private func showOfflineNoticeIfNeeded() {
@@ -607,7 +594,7 @@ struct HTMLWebView: UIViewRepresentable {
             }
             switch message.name {
             case "htmlappState":
-                HTMLAppRuntimeStateStore.save(appID: appID, body: body)
+                if restoresSession { HTMLAppRuntimeStateStore.save(appID: appID, body: body) }
 
             case "htmlappOfflineCache":
                 if body["offlineActivated"] as? Bool == true,
@@ -1465,4 +1452,5 @@ private final class HTMLAppFaceDownShakeExit {
         darkness = nil
     }
 }
+
 
