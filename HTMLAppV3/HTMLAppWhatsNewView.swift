@@ -31,6 +31,7 @@ enum HTMLAppReleaseNotes {
 
     static func entries(for version: String) -> [Entry] {
         let dragUpdates: [Entry] = version == "1.6.83" ? [
+            Entry(id: "library-create-mic", title: "Speak an app idea from Library", description: "Drag the Library microphone inward, speak, and release. If style previews are on, Forge shows designs first. If they are off, Forge starts building.", symbol: "sparkles", tint: .purple),
             Entry(id: "finger-tracking-mic", title: "The edit mic follows your finger", description: "Drag the mic in any direction. When you release it, it stretches and springs back as the editor opens. On iOS 26, the glass fits inside the outline and turns a translucent red while recording.", symbol: "mic.fill", tint: .blue)
         ] : []
         let glassUpdates: [Entry] = version == "1.6.82" ? [

@@ -362,6 +362,10 @@ struct AIGenerationView: View {
                 recoverableDraft = draft
                 if shortcutGenerationNonce == 0 { showDraftRecovery = true }
             }
+            if shortcutSource == "libraryMic" {
+                acceptShortcutRequest(shortcutGenerationNonce, incoming: prompt)
+                return
+            }
             acceptShortcutRequest(shortcutGenerationNonce, incoming: UserDefaults.standard.string(forKey: "htmlapp.shortcut.activeIdea") ?? prompt)
             restoreCompletedBackgroundDraft()
         }
@@ -853,7 +857,7 @@ struct AIGenerationView: View {
         }
         guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         if requestOfflineForgeIfNeeded(edit: false) { return }
-        if existingApp == nil && !demoMode {
+        if stylePickerEnabled && existingApp == nil && !demoMode {
             exploreStyleOptions()
         } else {
             selectedStyle = nil
@@ -1694,10 +1698,8 @@ struct AIGenerationView: View {
         activeShortcutPrompt = idea
         prompt = idea
         UserDefaults.standard.removeObject(forKey: "htmlapp.shortcut.activeIdea")
-        // Other shortcuts provide a finished text prompt and can still
-        // start generation directly; the Lock Screen microphone path above
-        // intentionally waits for the user to finish dictating.
-        generateApp()
+        if shortcutSource == "libraryMic" { nextRequestFromVoice = true }
+        submitPromptGeneration()
     }
 
     private func startForgeActivity(edit: Bool) {

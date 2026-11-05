@@ -87,6 +87,16 @@ struct LibraryView: View {
                     libraryPage(folderID: folder.id)
                 }
         }
+        .overlay(alignment: .topLeading) {
+            if folderPath.isEmpty {
+                LibraryCreateMicrophone { words in
+                    shortcutPrompt = words
+                    shortcutSource = "libraryMic"
+                    shortcutGenerationNonce += 1
+                    showGenerator = true
+                }
+            }
+        }
         // Present from the navigation container, not the root page. This keeps
         // dialogs/sheets active while a nested folder destination is on screen.
         .htmlAppFirstUseToasts()
@@ -1121,3 +1131,113 @@ struct ContentUnavailableViewCompat: View {
     }
 }
 
+
+
+// The Library uses the same microphone face as saved apps and the editor.
+private struct LibraryCreateMicrophone: View {
+    let onPrompt: (String) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @StateObject private var dictation = ForgeDictation()
+    @State private var translation = CGSize.zero
+    @State private var stretch = CGSize(width: 1, height: 1)
+    @State private var armed = false
+    @State private var awaitingTranscript = false
+    @State private var recordingTask: Task<Void, Never>?
+    @State private var returnTask: Task<Void, Never>?
+
+    var body: some View {
+        GeometryReader { proxy in
+            ForgeEditMicrophoneFace(armed: armed, recording: dictation.recording)
+                .scaleEffect(x: stretch.width, y: stretch.height)
+                .offset(x: -24 + translation.width, y: 68 + translation.height)
+                .accessibilityLabel("Drag microphone inward, speak, then release to create an app")
+                .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
+                    .onChanged { value in
+                        guard !awaitingTranscript, returnTask == nil else { return }
+                        translation = value.translation
+                        let inside = isInside(translation, size: proxy.size)
+                        if inside && !armed {
+                            armed = true
+                            dictation.transcript = ""
+                            recordingTask = Task { await dictation.start(tapToStop: true) }
+                        } else if !inside && armed {
+                            armed = false
+                            recordingTask?.cancel()
+                            dictation.cancel()
+                        }
+                    }
+                    .onEnded { value in
+                        guard !awaitingTranscript, returnTask == nil else { return }
+                        awaitingTranscript = armed && isInside(value.translation, size: proxy.size)
+                        recordingTask?.cancel()
+                        if awaitingTranscript { dictation.stop() } else { dictation.cancel() }
+                        if reduceMotion {
+                            resetPosition()
+                            finishIfReady()
+                            return
+                        }
+                        let horizontal = abs(translation.width) >= abs(translation.height)
+                        withAnimation(.easeOut(duration: 0.07)) {
+                            stretch = horizontal ? CGSize(width: 1.24, height: 0.86)
+                                : CGSize(width: 0.86, height: 1.24)
+                        }
+                        returnTask = Task { @MainActor in
+                            do { try await Task.sleep(nanoseconds: 70_000_000) } catch { return }
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) { resetPosition() }
+                            do { try await Task.sleep(nanoseconds: 90_000_000) } catch { return }
+                            returnTask = nil
+                            finishIfReady()
+                        }
+                    })
+        }
+        .overlay(alignment: .top) {
+            if awaitingTranscript && (dictation.transcribingOffline || dictation.canRetryTranscription) {
+                VStack {
+                    Text(dictation.status)
+                    if dictation.canRetryTranscription {
+                        Button("Retry transcription") { dictation.retryTranscription() }
+                        Button("Cancel") {
+                            awaitingTranscript = false
+                            dictation.cancel()
+                        }
+                    }
+                }
+                .font(.footnote)
+                .padding(12)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                .padding()
+            }
+        }
+        .onChange(of: dictation.transcribingOffline) { processing in
+            if !processing { finishIfReady() }
+        }
+        .onDisappear {
+            recordingTask?.cancel()
+            returnTask?.cancel()
+            returnTask = nil
+            awaitingTranscript = false
+            resetPosition()
+            dictation.cancel()
+        }
+    }
+
+    private func isInside(_ drag: CGSize, size: CGSize) -> Bool {
+        let x = -24 + drag.width
+        let y = 68 + drag.height
+        return x >= 0 && y >= 0 && x + 63 <= size.width && y + 63 <= size.height
+    }
+
+    private func resetPosition() {
+        armed = false
+        translation = .zero
+        stretch = CGSize(width: 1, height: 1)
+    }
+
+    private func finishIfReady() {
+        guard awaitingTranscript, returnTask == nil, !dictation.transcribingOffline else { return }
+        let words = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if words.isEmpty && dictation.canRetryTranscription { return }
+        awaitingTranscript = false
+        if !words.isEmpty { onPrompt(words) }
+    }
+}

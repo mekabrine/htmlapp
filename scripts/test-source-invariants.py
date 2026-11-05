@@ -774,9 +774,8 @@ assert 'CFBundleDocumentTypes:' in project and 'public.html' in project
 assert f'MARKETING_VERSION: "{version}"' in project
 assert f'CURRENT_PROJECT_VERSION: "{build}"' in project
 
-# Every normal new-app generation starts with three previews; the old setting
-# may remain for preference migration but no longer bypasses the first three.
-assert 'if existingApp == nil && !demoMode {' in forge
+# New app creation offers three previews when the preference is enabled.
+assert 'if stylePickerEnabled && existingApp == nil && !demoMode {' in forge
 assert '(existingApp == nil && !demoMode ? "Start Generating" : "Make My App")' in forge
 assert 'for index in 0..<3 {' in forge
 
