@@ -359,8 +359,8 @@ struct HTMLAppBackendView: View {
                         }
                         if HTMLAppBackendProvisioning.template(in: app.html) != nil {
                             Text(HTMLAppBackendProvisioning.isPaired
-                                 ? "HTMLApp sets up this app’s backend automatically. Use Retry if setup could not finish."
-                                 : "Pair your VPS in Settings → AI & Voice → Automatic backends, then reopen this screen.")
+                                 ? "This app connects automatically. Use Retry if setup could not finish."
+                                 : "Enter your secret in Settings → AI & Voice → Automatic backends.")
                         } else {
                             Text("This app does not declare a supported backend. Ask Forge to add cloud storage or notifications.")
                         }
@@ -520,9 +520,8 @@ struct HTMLAppBackendView: View {
 }
 
 
-// Forge saves opt into provisioning. Existing apps can also request setup
-// when the user opens their native Backend panel. Importing alone does not
-// provision a backend, and shared copies receive their own credentials.
+// Pairing opts saved apps into automatic setup. Each local app gets its own
+// credentials, including imported and transferred copies.
 @MainActor
 enum HTMLAppBackendProvisioning {
     private struct Pending: Codable {
@@ -536,7 +535,7 @@ enum HTMLAppBackendProvisioning {
 
     private static let account = "backend-provision-key"
     private static let queue = "htmlapp.backend.pendingProvision"
-    private static var running = false
+    private static var runningTask: Task<Void, Never>?
     static let didFinish = Notification.Name("HTMLAppBackendProvisioningDidFinish")
     static var isPaired: Bool { KeychainValueStore.read(account: account) != nil }
 
@@ -577,10 +576,10 @@ enum HTMLAppBackendProvisioning {
         return job.error ?? (isPaired ? "Waiting for automatic backend setup." : "Pair your VPS once in Settings to finish setup.")
     }
 
-    static func enqueue(_ app: SavedHTMLApp, template: String) {
+    static func enqueue(_ app: SavedHTMLApp, template: String, startImmediately: Bool = true) {
         guard HTMLAppBackendStore.link(for: app.id) == nil, jobs[app.id] == nil else { return }
         jobs[app.id] = Pending(name: String(app.name.prefix(40)), template: template)
-        Task { await flush() }
+        if startImmediately { Task { await flush() } }
     }
 
     static func cancel(_ appID: String) {
@@ -594,13 +593,24 @@ enum HTMLAppBackendProvisioning {
     }
 
     static func flush() async {
-        guard !running, let key = KeychainValueStore.read(account: account) else { return }
-        running = true
-        defer {
-            running = false
-            NotificationCenter.default.post(name: didFinish, object: nil)
+        if let runningTask {
+            await runningTask.value
+            return
         }
-        for appID in jobs.keys.sorted() {
+        guard let key = KeychainValueStore.read(account: account) else { return }
+        let task = Task { await processPending(key: key) }
+        runningTask = task
+        await task.value
+        runningTask = nil
+        NotificationCenter.default.post(name: didFinish, object: nil)
+    }
+
+    private static func processPending(key: String) async {
+        // Include jobs added while a request is in flight, and attempt failures
+        // only once per pass so a network error cannot create a retry loop.
+        var attempted = Set<String>()
+        while let appID = jobs.keys.sorted().first(where: { !attempted.contains($0) }) {
+            attempted.insert(appID)
             guard var job = jobs[appID] else { continue }
             if HTMLAppBackendStore.link(for: appID) != nil {
                 if job.deleted { HTMLAppBackendDeletionQueue.enqueue(appID) }
@@ -629,7 +639,7 @@ enum HTMLAppBackendProvisioning {
             }
         }
     }
-    private static func registerPhoneIfReady(_ link: HTMLAppBackendLink) async throws {
+    static func registerPhoneIfReady(_ link: HTMLAppBackendLink) async throws {
         let details = try await HTMLAppBackendAPI.status(link)
         guard details.pushConfigured, !details.deviceRegistered else { return }
         let token: String = try await withCheckedThrowingContinuation { continuation in
@@ -643,6 +653,7 @@ enum HTMLAppBackendProvisioning {
 
 @MainActor
 struct HTMLAppBackendPairingView: View {
+    @EnvironmentObject private var store: AppStore
     @State private var key = ""
     @State private var busy = false
     @State private var paired = HTMLAppBackendProvisioning.isPaired
@@ -651,28 +662,40 @@ struct HTMLAppBackendPairingView: View {
     var body: some View {
         Form {
             Section {
-                Text(paired ? "VPS paired. Forge apps can set up their backends when saved."
-                     : "Pair this device once. Forge apps that need a backend will link automatically when saved.")
-                SecureField("VPS provisioning key", text: $key)
+                Text(paired ? "Connected. Apps that need a backend connect automatically."
+                     : "Enter your secret once. HTMLApp handles backend setup for your apps.")
+                SecureField("Secret", text: $key)
+                    .disabled(busy)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                Button(paired ? "Update pairing" : "Pair with VPS") {
-                    busy = true
-                    error = nil
-                    Task { @MainActor in
-                        defer { busy = false }
-                        do {
-                            try await HTMLAppBackendProvisioning.pair(key)
-                            paired = true
-                            key = ""
-                        } catch { self.error = error.localizedDescription }
+                    .onSubmit { connect() }
+                    .onChange(of: key) { value in
+                        let secret = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if secret.utf8.count == 64 { connect() }
                     }
-                }
+                Button(paired ? "Update secret" : "Connect") { connect() }
                 .disabled(busy || key.isEmpty)
                 if busy { ProgressView() }
                 if let error { Text(error).foregroundStyle(.secondary) }
             }
         }
         .navigationTitle("Automatic backends")
+    }
+
+    private func connect() {
+        guard !busy, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let secret = key
+        busy = true
+        error = nil
+        Task { @MainActor in
+            defer { busy = false }
+            do {
+                try await HTMLAppBackendProvisioning.pair(secret)
+                paired = true
+                key = ""
+                store.prepareAutomaticBackends()
+                await HTMLAppBackendProvisioning.flush()
+            } catch { self.error = error.localizedDescription }
+        }
     }
 }

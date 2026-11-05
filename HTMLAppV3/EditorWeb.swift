@@ -180,7 +180,7 @@ struct WebRunner: View {
                 }
             }
             .alert("Pause music before using the microphone", isPresented: $editDictation.blockedByOtherAudio) {
-                Button("OK", role: .cancel) {}
+                Button("OK", role: .cancel) { editDictation.dismissAudioWarning() }
             }
             .forgeTranscriptReview($transcriptReview) { words, _ in
                 editDictation.transcript = words

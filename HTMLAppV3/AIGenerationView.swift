@@ -459,7 +459,7 @@ struct AIGenerationView: View {
             else { transcriptReview = words }
         }
         .alert("Pause music before using the microphone", isPresented: $dictation.blockedByOtherAudio) {
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel) { dictation.dismissAudioWarning() }
         }
         .forgeTranscriptReview($transcriptReview) { words, send in
             finishWhisperPrompt(words, send: send)

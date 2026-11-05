@@ -1,12 +1,18 @@
-# Automatic Hostish backends in HTMLApp 1.7.2
+# Automatic Hostish backends in HTMLApp 1.7.3
 
-Upgrade the gateway with the matching auto-link package, then paste its VPS
-provisioning key once in **Settings → AI & Voice → Automatic backends**.
-Forge apps that need an approved document or notification backend provision
-and link on save. For existing apps, including imports and transferred copies,
-opening **Developer → Backend** also creates and links the declared backend.
-Importing alone does not create a backend. Retrying uses the same backend,
-and transferred copies get separate credentials. Keep the owner key on the VPS.
+Upgrade the gateway with the matching auto-link package, then enter its secret
+once in **Settings → AI & Voice → Automatic backends**. A complete secret
+connects automatically. HTMLApp scans existing saved apps and connects those
+declaring an approved document or notification backend. Opening or saving an
+eligible app also queues setup. Offline requests retry when the app returns
+online. No Developer panel or provisioning JSON is needed for automatic setup.
+
+Transferred and imported copies receive their own backend and credentials.
+Their data starts separately from the original app. Entering the secret enables
+automatic provisioning for these copies too. Keep the owner key on the VPS.
+Notifications still require APNs configured on the VPS and iOS permission.
+HTMLApp registers the phone automatically when available, and retries
+registration when checking a notification backend or sending a notification.
 
 The steps below are a fallback for existing backends or older builds.
 

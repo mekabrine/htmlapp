@@ -114,6 +114,7 @@ struct HTMLAppMain: App {
                 .task {
                     await HTMLAppOfflineSpeech.shared.preloadIfSelected()
                     await store.syncICloud()
+                    store.prepareAutomaticBackends()
                     await HTMLAppBackendProvisioning.flush()
                     await HTMLAppBackendDeletionQueue.flush()
                 }
@@ -130,6 +131,7 @@ struct HTMLAppMain: App {
                     if phase == .active {
                         Task { await HTMLAppOfflineSpeech.shared.preloadIfSelected() }
                         Task {
+                            store.prepareAutomaticBackends()
                             await HTMLAppBackendProvisioning.flush()
                             await HTMLAppBackendDeletionQueue.flush()
                         }
@@ -680,6 +682,15 @@ final class AppStore: ObservableObject {
         notice = "Updated icon for \(apps[index].name)."
     }
 
+    func prepareAutomaticBackends() {
+        guard HTMLAppBackendProvisioning.isPaired else { return }
+        for app in apps {
+            if let template = HTMLAppBackendProvisioning.template(in: app.html) {
+                HTMLAppBackendProvisioning.enqueue(app, template: template, startImmediately: false)
+            }
+        }
+    }
+
     func launch(_ app: SavedHTMLApp) {
         guard var index = apps.firstIndex(where: { $0.id == app.id }) else { return }
 
@@ -696,6 +707,9 @@ final class AppStore: ObservableObject {
 
         apps[index].lastOpenedAt = Date()
         let launchedApp = apps[index]
+        if let template = HTMLAppBackendProvisioning.template(in: launchedApp.html) {
+            HTMLAppBackendProvisioning.enqueue(launchedApp, template: template)
+        }
         if HTMLAppOfflineCache.shared.shouldRefreshOnOpen(appID: launchedApp.id),
            !HTMLAppOfflineCache.shared.isOffline {
             Task(priority: .utility) {

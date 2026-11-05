@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.7.2"
-    static let compiledBuild = "97"
+    static let compiledVersion = "1.7.3"
+    static let compiledBuild = "98"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.7.3" { return [
+            Entry(id: "secret-only-backends", title: "Enter your secret and you’re connected", description: "Backend setup starts as soon as you enter your secret. Existing apps connect automatically, and new apps connect when you open or save them.", symbol: "server.rack", tint: .blue),
+            Entry(id: "music-warning-once", title: "The microphone warning appears once", description: "Dismiss the music warning once to keep using the microphone. HTMLApp remembers your choice after you close it.", symbol: "mic", tint: .purple)
+        ] }
+
         if version == "1.7.2" { return [
             Entry(id: "existing-backend-setup", title: "Connect existing apps automatically", description: "Open Developer → Backend for an app that needs cloud storage or notifications. HTMLApp uses your paired VPS to create and link its backend, including for imported apps.", symbol: "server.rack", tint: .blue)
         ] }

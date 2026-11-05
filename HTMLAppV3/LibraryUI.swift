@@ -1249,7 +1249,7 @@ private struct LibraryCreateMicrophone: View {
             }
         }
         .alert("Pause music before using the microphone", isPresented: $dictation.blockedByOtherAudio) {
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel) { dictation.dismissAudioWarning() }
         }
         .forgeTranscriptReview($transcriptReview) { words, _ in
             onPrompt(words)

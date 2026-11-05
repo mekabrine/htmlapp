@@ -69,12 +69,17 @@ final class ForgeDictation: ObservableObject {
     }
 
     private func microphoneCanStart() -> Bool {
-        guard !AVAudioSession.sharedInstance().isOtherAudioPlaying else {
-            status = "Pause music or other audio, then try the microphone again."
-            blockedByOtherAudio = true
-            return false
-        }
-        return true
+        guard !UserDefaults.standard.bool(forKey: "htmlapp.dismissedMusicMicrophoneWarning"),
+              AVAudioSession.sharedInstance().isOtherAudioPlaying else { return true }
+        status = "Pause music or other audio, then try the microphone again."
+        blockedByOtherAudio = true
+        return false
+    }
+
+    func dismissAudioWarning() {
+        UserDefaults.standard.set(true, forKey: "htmlapp.dismissedMusicMicrophoneWarning")
+        blockedByOtherAudio = false
+        status = "Try the microphone again to start recording."
     }
 
     func start(tapToStop: Bool = false) async {
