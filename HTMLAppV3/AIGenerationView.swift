@@ -867,7 +867,7 @@ struct AIGenerationView: View {
             defer { session.isWorking = false }
             do {
                 let result = try await HTMLAppOfflineForge.generate(
-                    request: text, existingHTML: edit ? originalHTML : nil, effort: effort
+                    request: text, existingHTML: edit ? ForgeEditIconContext(originalHTML).html : nil, effort: effort
                 ) { phase in session.phase = phase }
                 try Task.checkCancellation()
                 // Only publish an edited app after the entire document passes
@@ -878,7 +878,7 @@ struct AIGenerationView: View {
                     changePrompt = ""
                     showingChange = true
                 }
-                session.acceptExternalHTML(result)
+                session.acceptExternalHTML(edit ? ForgeEditIconContext(originalHTML).restoringIcons(in: result) : result)
                 session.phase = "Ready to review — offline"
                 session.errorMessage = nil
             } catch is CancellationError {
@@ -2130,20 +2130,23 @@ Requested edit:
             guard !Task.isCancelled else { return }
             let combinedResearch = [webReport, privacyReport].filter { !$0.isEmpty }.joined(separator: "\n\n")
             if rewriteApproved {
-                let oldHTML = session.streamedHTML
+                let oldHTML = ForgeEditIconContext(session.streamedHTML)
                 let fullBrief = """
                 Rebuild this HTMLApp as a complete standalone HTML document. This is a
                 user-approved major overhaul. Preserve the existing working features
                 and data contracts unless the user explicitly asks to change them.
 
                 Existing HTML:
-                \(String(oldHTML.prefix(90_000)))
+                \(String(oldHTML.html.prefix(90_000)))
 
                 Mandatory changes:
                 \(change)
                 """
                 await session.generate(prompt: fullBrief, originalUserPrompt: change,
-                                       researchReport: combinedResearch)
+                                       researchReport: combinedResearch, preserveIcon: true)
+                if session.errorMessage == nil && !Task.isCancelled {
+                    session.acceptExternalHTML(oldHTML.restoringIcons(in: session.streamedHTML))
+                }
                 rewriteApproved = false
             } else {
                 await session.revise(change: change, researchReport: combinedResearch,
@@ -2162,7 +2165,7 @@ Requested edit:
             changePrompt = ""
             showingChange = true
             if session.wantsUIPolish && selectedStyle == nil && polishThisRun {
-                await runOptionalUIPolish(originalPrompt: session.refinedBrief.isEmpty ? change : session.refinedBrief)
+                await runOptionalUIPolish(originalPrompt: session.refinedBrief.isEmpty ? change : session.refinedBrief, edit: true)
             } else {
                 uiPolishNotice = "This was a focused edit; no additional UI redesign was needed."
             }
@@ -2174,28 +2177,30 @@ Requested edit:
         }
     }
 
-    private func runOptionalUIPolish(originalPrompt: String) async {
+    private func runOptionalUIPolish(originalPrompt: String, edit: Bool = false) async {
         guard AISettingsStore.isUIOverhaulEnabled, polishThisRun, !ForgeRunOptions.quick else { return }
         let functionalHTML = session.streamedHTML
+        let iconContext = ForgeEditIconContext(edit ? functionalHTML : "")
+        let polishSource = edit ? iconContext.html : functionalHTML
         session.isWorking = true
         session.phase = "Polishing the interface"
         skipUIPolish = false
         let worker = Task {
-            try await UIOverhaulService.polish(html: functionalHTML, originalPrompt: originalPrompt)
+            try await UIOverhaulService.polish(html: polishSource, originalPrompt: originalPrompt)
         }
         polishTask = worker
         defer { polishTask = nil }
         do {
             let result = try await worker.value
             if skipUIPolish { throw CancellationError() }
-            session.acceptExternalHTML(result.html)
+            session.acceptExternalHTML(iconContext.restoringIcons(in: result.html))
             session.isWorking = false
-            if result.html == functionalHTML {
+            if result.html == polishSource {
                 session.phase = "Ready to review"
                 uiPolishNotice = "UI Redesign found no safe change worth applying."
             } else {
                 uiPolishNotice = "Checking the redesigned app's navigation, rendering and logic…"
-                await session.verifyCurrent()
+                await session.verifyCurrent(omitIcon: edit)
                 if session.errorMessage == nil {
                     uiPolishNotice = result.changedOnlyCSS
                         ? "Refined the interface and rechecked the finished app."
@@ -2229,6 +2234,8 @@ Requested edit:
             var html = session.streamedHTML
             if let icon = session.renderedIconData {
                 html = injectIcon(icon, into: html)
+            } else if let existingApp {
+                html = ForgeEditIconContext(existingApp.html).restoringIcons(in: html)
             }
             if let existingApp {
                 await store.updateFromAI(existingApp, html: html, summary: session.description.isEmpty ? existingApp.summary : session.description, note: session.lastEditSummary.isEmpty ? "AI changed this app." : session.lastEditSummary)
@@ -2362,7 +2369,7 @@ Requested edit:
             message = """
             CURRENT APP:
             <htmlapp_existing>
-            \(session.streamedHTML)
+            \(ForgeEditIconContext(session.streamedHTML).html)
             </htmlapp_existing>
             REQUESTED CHANGE:
             \(changePrompt)
@@ -2429,12 +2436,7 @@ Requested edit:
 
     private func injectIcon(_ data: Data, into html: String) -> String {
         let tag = "<link rel=\"apple-touch-icon icon\" href=\"data:image/png;base64,\(data.base64EncodedString())\">"
-        if let range = html.range(of: "</head>", options: .caseInsensitive) {
-            var result = html
-            result.insert(contentsOf: tag + "\n", at: range.lowerBound)
-            return result
-        }
-        return tag + "\n" + html
+        return ForgeEditIconContext.inserting(tag, into: ForgeEditIconContext(html).html)
     }
 }
 

@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.85"
-    static let compiledBuild = "93"
+    static let compiledVersion = "1.6.86"
+    static let compiledBuild = "94"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,10 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.86" { return [
+            Entry(id: "smaller-ai-edits", title: "Large icons stay out of AI edits", description: "HTMLApp keeps embedded app icons out of edit requests, leaving more room for your app code. Your saved icon is kept.", symbol: "app", tint: .blue)
+        ] }
+
         if version == "1.6.85" { return [
             Entry(id: "direct-edit-prompt", title: "Edits use your own words", description: "Forge sends your edit as you wrote or spoke it. New app ideas can still be refined before building.", symbol: "pencil", tint: .blue),
             Entry(id: "clean-app-switch", title: "Tabs stay with their app", description: "Opening a different saved app from the Home Screen clears the previous app’s tab bar.", symbol: "square.stack", tint: .green)

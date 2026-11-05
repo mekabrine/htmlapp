@@ -30,6 +30,18 @@ struct GenerationReliabilityTests {
         precondition(HTMLPatchApplier.apply(patch("const x = '=======';", "const x = 'ok';"),
                                           to: "const x = '=======';") == "const x = 'ok';")
         precondition(HTMLPatchApplier.apply(first.replacingOccurrences(of: "\n", with: "\r\n"), to: "alpha") == "one")
+        let icon = "<link href='data:image/png;base64," + String(repeating: "A", count: 200_000)
+            + "' rel='apple-touch-icon icon'>"
+        let photo = "<img src='data:image/png;base64,appPhoto'>"
+        let stylesheet = "<link rel='stylesheet' href='data:text/css,body{}'>"
+        let original = "<html><head>" + icon + stylesheet + "</head><body>" + photo + "</body></html>"
+        let context = ForgeEditIconContext(original)
+        precondition(!context.html.contains(icon))
+        precondition(context.html.contains(photo) && context.html.contains(stylesheet))
+        let patched = context.html.replacingOccurrences(of: "<body>", with: "<body><p>Edited</p>")
+        let restored = context.restoringIcons(in: patched)
+        precondition(restored.contains(icon) && restored.contains("<p>Edited</p>"))
+        precondition(ForgeEditIconContext(restored).html == patched.replacingOccurrences(of: "</head>", with: "\n</head>"))
         print("Provider completion and atomic patch regressions passed.")
     }
 }

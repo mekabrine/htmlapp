@@ -118,11 +118,12 @@ final class ForgeBackgroundUpload: NSObject, URLSessionDataDelegate {
         }
 
         let result = AIHTMLAgent.parse(text)
+        let editIcons = ForgeEditIconContext(task.taskDescription == "HTMLApp AI edit" ? draft.html : "")
         let reconstructed: String?
         if !result.html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             reconstructed = result.html
         } else if !result.patch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            reconstructed = HTMLPatchApplier.apply(result.patch, to: draft.html)
+            reconstructed = HTMLPatchApplier.apply(result.patch, to: task.taskDescription == "HTMLApp AI edit" ? editIcons.html : draft.html)
         } else {
             reconstructed = nil
         }
@@ -133,7 +134,7 @@ final class ForgeBackgroundUpload: NSObject, URLSessionDataDelegate {
         }
 
         var updated = draft
-        updated.html = html
+        updated.html = editIcons.restoringIcons(in: html)
         updated.savedAt = Date()
         updated.streamedByteCount = html.utf8.count
         updated.description = result.description.isEmpty ? draft.description : result.description
@@ -242,3 +243,4 @@ final class HTMLAppBackgroundURLSessionDelegate: NSObject, UIApplicationDelegate
             identifier: identifier, completionHandler: completionHandler)
     }
 }
+

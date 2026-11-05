@@ -10,7 +10,8 @@ start = source.index("struct HTMLPatchApplication {")
 end = source.index("\nenum HTMLQualityChecks {", start)
 with tempfile.TemporaryDirectory(prefix="htmlapp-generation-") as directory:
     extracted = Path(directory) / "Patch.swift"
-    extracted.write_text("import Foundation\n" + source[start:end])
+    icon_context = source.index("struct ForgeEditIconContext {")
+    extracted.write_text("import Foundation\n" + source[start:end] + "\n" + source[icon_context:])
     binary = Path(directory) / "tests"
     subprocess.run(["swiftc", str(extracted),
                     str(root / "HTMLAppV3/ForgeGenerationResponseGuard.swift"),

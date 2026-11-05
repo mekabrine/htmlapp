@@ -281,12 +281,16 @@ final class AIGenerationSession: ObservableObject {
         }
     }
 
-    func generate(prompt: String, originalUserPrompt: String? = nil, researchReport: String = "", preplanned: AIPlanningResult? = nil, fromVoice: Bool = false) async {
+    func generate(prompt: String, originalUserPrompt: String? = nil, researchReport: String = "", preplanned: AIPlanningResult? = nil, fromVoice: Bool = false, preserveIcon: Bool = false) async {
         let config = AISettingsStore.configuration
         guard config.isConfigured else { errorMessage = AIGenerationError.notConfigured.localizedDescription; return }
-        editingExistingApp = false
-        iconRefreshAllowed = true
-        checkpointExistingAppID = nil
+        let savedIconScript = iconScript
+        if !preserveIcon {
+            editingExistingApp = false
+            checkpointExistingAppID = nil
+        }
+        iconRefreshAllowed = !preserveIcon
+        defer { if preserveIcon { iconScript = savedIconScript } }
         originalPrompt = originalUserPrompt ?? prompt
         isWorking = true
         errorMessage = nil
@@ -295,7 +299,9 @@ final class AIGenerationSession: ObservableObject {
         do {
             let suppliedResearch = researchReport.trimmingCharacters(in: .whitespacesAndNewlines)
             let improved: String
-            if !fromVoice && (ForgeRunOptions.quick || AIHTMLAgent.canSkipPreflight(for: originalUserPrompt ?? prompt)) {
+            if preserveIcon {
+                improved = prompt
+            } else if !fromVoice && (ForgeRunOptions.quick || AIHTMLAgent.canSkipPreflight(for: originalUserPrompt ?? prompt)) {
                 improved = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
                 refinedBrief = improved
                 let semanticCapabilities = ForgeCapabilityPlan.infer(originalPrompt)
@@ -382,7 +388,7 @@ final class AIGenerationSession: ObservableObject {
 
             // Pre-design an icon while the coding model streams. An invalid
             // speculative icon is ignored in favor of the existing repair path.
-            let iconWorker: Task<String?, Never>? = ForgeRunOptions.quick ? nil : Task {
+            let iconWorker: Task<String?, Never>? = (preserveIcon || ForgeRunOptions.quick) ? nil : Task {
                 do {
                     return try await AIHTMLAgent.generateIconScript(
                         html: "", originalPrompt: self.originalPrompt,
@@ -496,15 +502,17 @@ final class AIGenerationSession: ObservableObject {
                 speculativeIconAccepted = true
                 AIDebugTraceStore.shared.append("ICON", "Used an icon generated alongside the app.")
             }
-            _ = try await optionalStage("App icon") {
-                try await self.ensureValidIcon(
-                    config: AISettingsStore.configuration(for: .icon),
-                    // Reuse a valid coding-agent draft unless a separate icon artist is selected.
-                    forceRegenerate: !ForgeRunOptions.quick && !speculativeIconAccepted && (AISettingsStore.usesSpecialistProvider(for: .icon) ||
-                        AISettingsStore.iconModel != AISettingsStore.model)
-                )
+            if !preserveIcon {
+                _ = try await optionalStage("App icon") {
+                    try await self.ensureValidIcon(
+                        config: AISettingsStore.configuration(for: .icon),
+                        // Reuse a valid coding-agent draft unless a separate icon artist is selected.
+                        forceRegenerate: !ForgeRunOptions.quick && !speculativeIconAccepted && (AISettingsStore.usesSpecialistProvider(for: .icon) ||
+                            AISettingsStore.iconModel != AISettingsStore.model)
+                    )
+                }
             }
-            try await verifyAndRepair(config: config)
+            try await verifyAndRepair(config: config, omitIcon: preserveIcon)
             try Task.checkCancellation()
             phase = "Ready to review"
         } catch is CancellationError {
@@ -528,6 +536,7 @@ final class AIGenerationSession: ObservableObject {
         guard config.isConfigured else { errorMessage = AIGenerationError.notConfigured.localizedDescription; return }
         lastEditSummary = ""
         let beforeEditHTML = streamedHTML
+        let editSource = ForgeEditIconContext(beforeEditHTML)
         let beforeEditDescription = description
         let beforeEditIconScript = iconScript
         let beforeEditIcon = renderedIconData
@@ -537,6 +546,7 @@ final class AIGenerationSession: ObservableObject {
         verificationReport = ""
         wantsUIPolish = false
         do {
+            streamedHTML = editSource.html
             let cleanChange = change.trimmingCharacters(in: .whitespacesAndNewlines)
             var semanticModel = ForgeSemanticAppModel.build(html: streamedHTML, purpose: description)
             if let appID = checkpointExistingAppID,
@@ -653,14 +663,14 @@ Requested edit:
                 // layer on top of it.
                 AIDebugTraceStore.shared.append("VISUAL EDIT REPAIR", issue)
                 phase = "Correcting the popup layout"
-                streamedHTML = beforeEditHTML
+                streamedHTML = editSource.html
                 let retryUser = """
                 Your prior visual patch was rejected because it creates a broken layout:
                 \(issue)
 
                 ORIGINAL APP SOURCE (authoritative):
                 <htmlapp_existing>
-                \(beforeEditHTML)
+                \(editSource.html)
                 </htmlapp_existing>
 
                 USER REQUEST:
@@ -719,7 +729,7 @@ Requested edit:
             } else if editingExistingApp {
                 AIDebugTraceStore.shared.append("ICON", "Preserved the existing app icon because this edit did not request an icon or identity change.")
             }
-            try await verifyAndRepair(config: config)
+            try await verifyAndRepair(config: config, omitIcon: true)
             // The verification repair may also edit HTML; protect the final
             // artifact after that pass, not only the first patch candidate.
             let finalSafety = ForgeEditSafetyGate.violations(
@@ -737,7 +747,9 @@ Requested edit:
                 throw AIGenerationError.invalidPatch
             }
             try Task.checkCancellation()
+            streamedHTML = editSource.restoringIcons(in: streamedHTML)
             phase = "Ready to review"
+            persistCheckpoint()
         } catch is CancellationError {
             failedPhase = phase
             streamedHTML = beforeEditHTML
@@ -937,17 +949,17 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
         persistCheckpoint()
     }
 
-    func verifyCurrent() async {
+    func verifyCurrent(omitIcon: Bool = false) async {
         let config = AISettingsStore.configuration
         guard config.isConfigured, !streamedHTML.trimmed.isEmpty else { return }
         isWorking = true
         errorMessage = nil
         failedPhase = nil
         do {
-            if !editingExistingApp || !iconScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if !omitIcon && !editingExistingApp {
                 try await ensureValidIcon(config: config)
             }
-            try await verifyAndRepair(config: config)
+            try await verifyAndRepair(config: config, omitIcon: omitIcon || editingExistingApp)
             try Task.checkCancellation()
             phase = "Ready to review"
         } catch is CancellationError {
@@ -1217,7 +1229,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         return warnings
     }
 
-    private func verifyAndRepair(config: AIProviderConfiguration) async throws {
+    private func verifyAndRepair(config: AIProviderConfiguration, omitIcon: Bool = false) async throws {
         try Task.checkCancellation()
         phase = "Testing the app"
         verificationReport = ""
@@ -1282,11 +1294,12 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         // Exactly one focused remote patch request. Do not recursively invoke
         // the patch applier's separate multi-call recovery chain.
         phase = "Repairing confirmed app error"
-        let baseline = streamedHTML
+        let iconContext = ForgeEditIconContext(omitIcon ? streamedHTML : "")
+        let baseline = omitIcon ? iconContext.html : streamedHTML
         do {
             let response = try await AIHTMLAgent.reviewArtifact(
-                html: streamedHTML,
-                iconScript: iconScript,
+                html: baseline,
+                iconScript: omitIcon ? "" : iconScript,
                 originalPrompt: originalPrompt,
                 research: lastResearch,
                 localIssues: blocking,
@@ -1297,9 +1310,9 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             let patch = AIHTMLAgent.patch(from: response)
             let proposed = AIHTMLAgent.parse(response)
             if !patch.trimmed.isEmpty, let fixed = HTMLPatchApplier.apply(patch, to: baseline) {
-                streamedHTML = fixed
+                streamedHTML = iconContext.restoringIcons(in: fixed)
             } else if !proposed.html.trimmed.isEmpty {
-                streamedHTML = proposed.html
+                streamedHTML = iconContext.restoringIcons(in: proposed.html)
             } else {
                 AIDebugTraceStore.shared.append("QA PATCH", "Reviewer did not return an applicable patch; retaining existing source.")
             }
@@ -3352,3 +3365,51 @@ private extension String {
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }
 
+
+
+// Hold embedded favicon bytes locally; the editor only needs the app source.
+struct ForgeEditIconContext {
+    let html: String
+    private let tags: [String]
+    private static let link = try! NSRegularExpression(
+        pattern: #"<link\b(?:[^>"']|"[^"]*"|'[^']*')*>"#, options: .caseInsensitive)
+    private static let rel = try! NSRegularExpression(
+        pattern: #"\srel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#, options: .caseInsensitive)
+    private static let inlineImage = try! NSRegularExpression(
+        pattern: #"\shref\s*=\s*["']?data:image/"#, options: .caseInsensitive)
+
+    init(_ source: String) {
+        let matches = Self.link.matches(in: source, range: NSRange(source.startIndex..., in: source))
+        let original = source as NSString
+        let icons = matches.filter { match in
+            let tag = original.substring(with: match.range) as NSString
+            let range = NSRange(location: 0, length: tag.length)
+            guard Self.inlineImage.firstMatch(in: tag as String, range: range) != nil,
+                  let rel = Self.rel.firstMatch(in: tag as String, range: range) else { return false }
+            return (1...3).contains { index in
+                let attribute = rel.range(at: index)
+                guard attribute.location != NSNotFound else { return false }
+                return tag.substring(with: attribute).lowercased().split(whereSeparator: \.isWhitespace)
+                    .contains { ["icon", "apple-touch-icon", "apple-touch-icon-precomposed", "mask-icon"].contains(String($0)) }
+            }
+        }
+        tags = icons.map { original.substring(with: $0.range) }
+        let stripped = NSMutableString(string: source)
+        for icon in icons.reversed() { stripped.deleteCharacters(in: icon.range) }
+        html = stripped as String
+    }
+
+    func restoringIcons(in revised: String) -> String {
+        guard !tags.isEmpty else { return revised }
+        return Self.inserting(tags.joined(separator: "\n"), into: Self(revised).html)
+    }
+
+    static func inserting(_ tags: String, into html: String) -> String {
+        guard let end = html.range(of: "</head>", options: .caseInsensitive) else {
+            return tags + "\n" + html
+        }
+        var result = html
+        result.insert(contentsOf: tags + "\n", at: end.lowerBound)
+        return result
+    }
+}
