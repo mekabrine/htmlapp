@@ -775,7 +775,8 @@ assert f'MARKETING_VERSION: "{version}"' in project
 assert f'CURRENT_PROJECT_VERSION: "{build}"' in project
 
 # New app creation offers three previews when the preference is enabled.
-assert 'if stylePickerEnabled && existingApp == nil && !demoMode {' in forge
+assert 'shortcutSource == "libraryMic" ? libraryVoiceStylePreviews : stylePickerEnabled' in forge
+assert 'if showStyles && existingApp == nil && !demoMode {' in forge
 assert '(existingApp == nil && !demoMode ? "Start Generating" : "Make My App")' in forge
 assert 'for index in 0..<3 {' in forge
 

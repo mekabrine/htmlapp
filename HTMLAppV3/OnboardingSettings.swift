@@ -412,6 +412,7 @@ struct OnboardingView: View {
 }
 
 struct SettingsView: View {
+    @AppStorage("ai.libraryVoiceStylePreviews") private var libraryVoiceStylePreviews = false
     @AppStorage("htmlapp.alwaysShowEditMicrophone") private var alwaysShowEditMicrophone = false
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
@@ -451,6 +452,7 @@ struct SettingsView: View {
                     } label: {
                         Label("AI Connection & Generation", systemImage: "sparkles")
                     }
+                    Toggle("Show styles for Library voice creation", isOn: $libraryVoiceStylePreviews)
                     Toggle("Show edit microphone at all times", isOn: $alwaysShowEditMicrophone)
                     Picker("Voice Dictation", selection: $dictationEngine) {
                         Label("Apple Speech — Live", systemImage: "waveform").tag("apple")

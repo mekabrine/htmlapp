@@ -41,6 +41,9 @@ struct AIGenerationView: View {
     @ObservedObject private var debugTrace = AIDebugTraceStore.shared
     @AppStorage("developerMode") private var developerMode = false
     @AppStorage("forgeTestMode") private var forgeTestMode = ForgeTestMode.fast.rawValue
+    @AppStorage("ai.libraryVoiceStylePreviews") private var libraryVoiceStylePreviews = false
+    @State private var libraryPromptRequested = false
+    @State private var transcriptReview: String?
     @AppStorage("ai.stylePickerEnabled") private var stylePickerEnabled = true
     @AppStorage("ai.quickMode.policy") private var quickModePolicy = "automatic"
     @State private var quickMode = false
@@ -131,7 +134,14 @@ struct AIGenerationView: View {
                 } else if existingApp == nil && (exploringStyles || !styleOptions.isEmpty || styleFailure != nil) {
                     styleSelectionView
                 } else if session.streamedHTML.isEmpty && !session.isWorking && !browserResearch.isBrowsing {
-                    promptView
+                    if shortcutSource == "libraryMic" && !libraryPromptRequested {
+                        VStack(spacing: 16) {
+                            if let error = session.errorMessage { Text(error) }
+                            else { ProgressView("Starting your app…") }
+                            Button("Edit prompt") { libraryPromptRequested = true }
+                        }
+                        .padding()
+                    } else { promptView }
                 } else {
                     studioView
                 }
@@ -402,7 +412,7 @@ struct AIGenerationView: View {
             if !demoMode && session.isWorking { session.persistCheckpoint() }
         }
         .onChange(of: scenePhase) { value in
-            if value == .active {
+            if value == .active && shortcutSource != "libraryMic" {
                 restoreCompletedBackgroundDraft()
             }
             if value != .active {
@@ -443,47 +453,16 @@ struct AIGenerationView: View {
             }
         }
         .onChange(of: dictation.transcribingOffline) { processing in
-            if !processing && generateAfterVoiceTranscription {
-                generateAfterVoiceTranscription = false
-                let words = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !words.isEmpty {
-                    prompt = dictationPrefix + (dictationPrefix.isEmpty ? "" : "\n") + words
-                    nextRequestFromVoice = true
-                }
-                submitPromptGeneration()
-            }
             guard !processing else { return }
             let words = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            if pendingInlineVoiceEdit {
-                if !words.isEmpty {
-                    changePrompt = dictationPrefix +
-                        (dictationPrefix.isEmpty ? "" : "\n") + words
-                    pendingInlineVoiceEdit = false
-                } else if !dictation.canRetryTranscription {
-                    pendingInlineVoiceEdit = false
-                }
-            }
-            guard let forFeedback = pendingFloatingVoiceFeedback else { return }
-            guard !words.isEmpty else {
-                microphoneEditNotice = dictation.canRetryTranscription
-                    ? "Your speech was saved. Retry transcription without recording again."
-                    : "No audio was available for transcription."
-                if !dictation.canRetryTranscription {
-                    pendingFloatingVoiceFeedback = nil
-                }
-                if forFeedback { showingStyleFeedback = true } else { showingChange = true }
-                return
-            }
-            pendingFloatingVoiceFeedback = nil
-            if forFeedback {
-                styleFeedback = words
-                styleFeedbackNotice = "Regenerating all looks from spoken feedback."
-                exploreStyleOptions()
-            } else {
-                changePrompt = words
-                showingChange = true
-                applyAIChange()
-            }
+            if words.isEmpty { finishWhisperPrompt(words, send: false) }
+            else { transcriptReview = words }
+        }
+        .alert("Pause music before using the microphone", isPresented: $dictation.blockedByOtherAudio) {
+            Button("OK", role: .cancel) {}
+        }
+        .forgeTranscriptReview($transcriptReview) { words, send in
+            finishWhisperPrompt(words, send: send)
         }
         .onChange(of: dictation.recording) { recording in
             if isWidgetVoiceEntry && !recording && !dictation.requestingPermission {
@@ -772,6 +751,70 @@ struct AIGenerationView: View {
     }
 
 
+    private func finishWhisperPrompt(_ text: String, send: Bool) {
+        if generateAfterVoiceTranscription {
+            if text.isEmpty && dictation.canRetryTranscription { return }
+            generateAfterVoiceTranscription = false
+            let words = text
+            if !words.isEmpty {
+                prompt = dictationPrefix + (dictationPrefix.isEmpty ? "" : "\n") + words
+                nextRequestFromVoice = true
+            }
+            if !words.isEmpty { submitPromptGeneration() }
+            return
+        }
+        let words = text
+        if pendingInlineVoiceEdit {
+            if !words.isEmpty {
+                changePrompt = dictationPrefix +
+                    (dictationPrefix.isEmpty ? "" : "\n") + words
+                pendingInlineVoiceEdit = false
+                if send { applyAIChange() }
+                return
+            } else if !dictation.canRetryTranscription {
+                pendingInlineVoiceEdit = false
+            }
+        }
+        if !send && !words.isEmpty && pendingFloatingVoiceFeedback == nil
+            && existingApp == nil && session.streamedHTML.isEmpty {
+            prompt = dictationPrefix + (dictationPrefix.isEmpty ? "" : "\n") + words
+            nextRequestFromVoice = true
+        }
+        guard let forFeedback = pendingFloatingVoiceFeedback else {
+            if send && !words.isEmpty && !session.isWorking && !exploringStyles {
+                if existingApp != nil || !session.streamedHTML.isEmpty {
+                    changePrompt = words
+                    applyAIChange()
+                } else {
+                    prompt = dictationPrefix + (dictationPrefix.isEmpty ? "" : "\n") + words
+                    nextRequestFromVoice = true
+                    submitPromptGeneration()
+                }
+            }
+            return
+        }
+        guard !words.isEmpty else {
+            microphoneEditNotice = dictation.canRetryTranscription
+                ? "Your speech was saved. Retry transcription without recording again."
+                : "No audio was available for transcription."
+            if !dictation.canRetryTranscription {
+                pendingFloatingVoiceFeedback = nil
+            }
+            if forFeedback { showingStyleFeedback = true } else { showingChange = true }
+            return
+        }
+        pendingFloatingVoiceFeedback = nil
+        if forFeedback {
+            styleFeedback = words
+            styleFeedbackNotice = "Regenerating all looks from spoken feedback."
+            exploreStyleOptions()
+        } else {
+            changePrompt = words
+            showingChange = true
+            applyAIChange()
+        }
+    }
+
     private func startPromptRecording() {
         guard !dictation.recording && !dictation.requestingPermission && !dictation.transcribingOffline else { return }
         promptMicHeld = true
@@ -852,13 +895,15 @@ struct AIGenerationView: View {
         if isWidgetVoiceEntry && (promptMicHeld || dictation.recording || dictation.requestingPermission) {
             stopPromptRecording()
         }
-        if isWidgetVoiceEntry && dictation.transcribingOffline {
+        if transcriptReview != nil && !isWidgetVoiceEntry { return }
+        if isWidgetVoiceEntry && (dictation.transcribingOffline || transcriptReview != nil) {
             generateAfterVoiceTranscription = true
             return
         }
         guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         if requestOfflineForgeIfNeeded(edit: false) { return }
-        if stylePickerEnabled && existingApp == nil && !demoMode {
+        let showStyles = shortcutSource == "libraryMic" ? libraryVoiceStylePreviews : stylePickerEnabled
+        if showStyles && existingApp == nil && !demoMode {
             exploreStyleOptions()
         } else {
             selectedStyle = nil
@@ -901,6 +946,7 @@ struct AIGenerationView: View {
                             exploringStyles = false
                             styleOptions = []
                             styleFailure = nil
+                            libraryPromptRequested = true
                         } label: {
                             Label("Back", systemImage: "chevron.left")
                         }
@@ -1603,6 +1649,7 @@ struct AIGenerationView: View {
             .gesture(
                 DragGesture(minimumDistance: 3, coordinateSpace: .named("forgeEditSurface"))
                     .onChanged { gesture in
+                        if microphoneTranslation == .zero { HTMLAppOfflineSpeech.shared.preloadIfSelected() }
                         microphoneTranslation = gesture.translation
                         let x = -24 + gesture.translation.width
                         let y = 68 + gesture.translation.height
@@ -1903,7 +1950,7 @@ struct AIGenerationView: View {
         uiPolishNotice = nil
         AIDebugTraceStore.shared.begin(originalPrompt: originalPrompt, config: AISettingsStore.configuration)
         session.beginDraft(prompt: originalPrompt)
-        session.phase = "Preparing your edit"
+        session.phase = "Reading your request"
         session.isWorking = true
         let activityJob = forgeActivityJobID
         generationTask = Task {
@@ -2009,6 +2056,7 @@ struct AIGenerationView: View {
     }
 
     private func applyAIChange() {
+        guard transcriptReview == nil else { return }
         if demoMode {
             let words = changePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !words.isEmpty else { return }
@@ -2517,5 +2565,66 @@ private struct ForgeMicrophoneGlass: UIViewRepresentable {
         let glass = UIGlassEffect(style: .regular)
         glass.tintColor = tint
         view.effect = glass
+    }
+}
+
+
+extension View {
+    func forgeTranscriptReview(_ transcript: Binding<String?>,
+                               onSubmit: @escaping (String, Bool) -> Void) -> some View {
+        overlay(alignment: .top) {
+            if let words = transcript.wrappedValue {
+                ForgeTranscriptReview(words: words) { reviewed, tappedSend in
+                    transcript.wrappedValue = nil
+                    onSubmit(reviewed, tappedSend)
+                }
+                .padding()
+            }
+        }
+    }
+}
+
+private struct ForgeTranscriptReview: View {
+    let words: String
+    let onSubmit: (String, Bool) -> Void
+    @State private var editing = false
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if editing {
+                TextField("Edit your spoken prompt", text: $draft, axis: .vertical)
+                    .lineLimit(2...7)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($focused)
+                    .onAppear { focused = true }
+                Button("Send") {
+                    onSubmit(draft.trimmingCharacters(in: .whitespacesAndNewlines), true)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } else {
+                Button {
+                    draft = words
+                    editing = true
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(words).lineLimit(4)
+                        Text("Tap to edit").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 500, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .task(id: editing) {
+            guard !editing else { return }
+            do { try await Task.sleep(nanoseconds: 750_000_000) } catch { return }
+            guard !editing, !Task.isCancelled else { return }
+            onSubmit(words, false)
+        }
     }
 }

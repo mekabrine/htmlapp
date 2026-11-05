@@ -110,12 +110,16 @@ struct HTMLAppMain: App {
                     }
                     store.runningApp = nil
                 }
-                .task { await store.syncICloud() }
+                .task {
+                    await HTMLAppOfflineSpeech.shared.preloadIfSelected()
+                    await store.syncICloud()
+                }
                 .onReceive(NotificationCenter.default.publisher(for: HTMLAppPortableDataStore.localDataChanged)) { _ in
                     if HTMLAppICloudPreferences.includeData { store.requestICloudSync() }
                 }
                 .onChange(of: scenePhase) { phase in
                     if phase == .active {
+                        Task { await HTMLAppOfflineSpeech.shared.preloadIfSelected() }
                         store.requestICloudSync()
                         store.claimShareExtensionFiles()
                         store.presentNextExternalHTMLImport()

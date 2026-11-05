@@ -5,6 +5,7 @@ import AVFoundation
 @MainActor
 final class ForgeDictation: ObservableObject {
     @Published var recording = false
+    @Published var blockedByOtherAudio = false
     @Published var requestingPermission = false
     @Published var transcribingOffline = false
     @Published private(set) var canRetryTranscription = false
@@ -67,8 +68,19 @@ final class ForgeDictation: ObservableObject {
         transcript = (completedSpeech + [currentSpeech]).joined(separator: " ")
     }
 
+    private func microphoneCanStart() -> Bool {
+        guard !AVAudioSession.sharedInstance().isOtherAudioPlaying else {
+            status = "Pause music or other audio, then try the microphone again."
+            blockedByOtherAudio = true
+            return false
+        }
+        return true
+    }
+
     func start(tapToStop: Bool = false) async {
         guard !recording, !requestingPermission, !transcribingOffline else { return }
+        transcript = ""
+        guard microphoneCanStart() else { return }
         discardRetainedAudio()
         if preferWhisperWhenAppleUnavailable || UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
             await startOffline(tapToStop: tapToStop)
@@ -97,10 +109,11 @@ final class ForgeDictation: ObservableObject {
             await startOffline(tapToStop: tapToStop)
             return
         }
+        guard microphoneCanStart() else { return }
         stop()
         do {
             let audio = AVAudioSession.sharedInstance()
-            try audio.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try audio.setCategory(.record, mode: .measurement)
             try audio.setActive(true)
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
@@ -177,6 +190,7 @@ final class ForgeDictation: ObservableObject {
         // while this press is still active; never retry permission denial.
         for attempt in 1...3 {
             guard generation == requestedGeneration, !Task.isCancelled else { return }
+            guard microphoneCanStart() else { return }
             var candidateURL: URL?
             do {
                 let audio = AVAudioSession.sharedInstance()

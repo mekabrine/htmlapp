@@ -105,6 +105,7 @@ struct WebRunner: View {
     @State private var editorPresentationTask: Task<Void, Never>?
     @State private var micArmed = false
     @State private var awaitingEdit = false
+    @State private var transcriptReview: String?
     @State private var spokenEdit = ""
     @State private var recordingTask: Task<Void, Never>?
 
@@ -169,7 +170,21 @@ struct WebRunner: View {
                 }
             }
             .onChange(of: editDictation.transcribingOffline) { processing in
-                if !processing && awaitingEdit { submitSpokenEdit() }
+                if !processing && awaitingEdit {
+                    let words = editDictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if words.isEmpty { submitSpokenEdit() }
+                    else {
+                        awaitingEdit = false
+                        transcriptReview = words
+                    }
+                }
+            }
+            .alert("Pause music before using the microphone", isPresented: $editDictation.blockedByOtherAudio) {
+                Button("OK", role: .cancel) {}
+            }
+            .forgeTranscriptReview($transcriptReview) { words, _ in
+                editDictation.transcript = words
+                submitSpokenEdit()
             }
             .onDisappear {
                 recordingTask?.cancel()
@@ -200,15 +215,16 @@ struct WebRunner: View {
             .scaleEffect(x: micStretch.width, y: micStretch.height)
             .offset(x: -24 + micDrag.width, y: 68 + micDrag.height)
             .accessibilityLabel("Drag microphone inward, speak, then release to edit")
-            .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
                 .onChanged { value in
-                    guard !awaitingEdit, editorPresentationTask == nil else { return }
+                    guard !awaitingEdit, transcriptReview == nil, editorPresentationTask == nil else { return }
                     if let returning = micReturnTask {
                         returning.cancel()
                         micReturnTask = nil
                         micArmed = false
                     }
                     micStretch = CGSize(width: 1, height: 1)
+                    if micDrag == .zero { HTMLAppOfflineSpeech.shared.preloadIfSelected() }
                     micDrag = value.translation
                     let inside = isMicInside(micDrag, in: size)
                     if inside && !micArmed {
@@ -222,7 +238,7 @@ struct WebRunner: View {
                     }
                 }
                 .onEnded { value in
-                    guard !awaitingEdit, editorPresentationTask == nil else { return }
+                    guard !awaitingEdit, transcriptReview == nil, editorPresentationTask == nil else { return }
                     let shouldSubmit = micArmed && isMicInside(value.translation, in: size)
                     returnEditMic(from: value.translation)
                     recordingTask?.cancel()

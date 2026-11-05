@@ -38,6 +38,7 @@ struct LibraryView: View {
     @State private var showAllApps = false
     @State private var showAddOptions = false
     @State private var showGenerator = false
+    @State private var libraryVoiceRequest: LibraryVoiceRequest?
     @State private var checkedInterruptedForgeThisLaunch = false
     @State private var remoteHTMLDraft: RemoteHTMLImportDraft?
     @State private var remoteImportWorking = false
@@ -90,10 +91,7 @@ struct LibraryView: View {
         .overlay(alignment: .topLeading) {
             if folderPath.isEmpty {
                 LibraryCreateMicrophone { words in
-                    shortcutPrompt = words
-                    shortcutSource = "libraryMic"
-                    shortcutGenerationNonce += 1
-                    showGenerator = true
+                    libraryVoiceRequest = LibraryVoiceRequest(prompt: words)
                 }
             }
         }
@@ -116,6 +114,12 @@ struct LibraryView: View {
             shortcutGenerationNonce = 0
         }) {
             AIGenerationView(initialPrompt: shortcutPrompt, shortcutGenerationNonce: shortcutGenerationNonce, shortcutSource: shortcutSource).environmentObject(store).interactiveDismissDisabled(true)
+        }
+        .fullScreenCover(item: $libraryVoiceRequest) { request in
+            AIGenerationView(initialPrompt: request.prompt, shortcutGenerationNonce: 1,
+                             shortcutSource: "libraryMic")
+                .environmentObject(store)
+                .interactiveDismissDisabled(true)
         }
         .fullScreenCover(item: $remoteHTMLDraft) { draft in
             AIGenerationView(importedDraft: draft)
@@ -1134,6 +1138,11 @@ struct ContentUnavailableViewCompat: View {
 
 
 // The Library uses the same microphone face as saved apps and the editor.
+private struct LibraryVoiceRequest: Identifiable {
+    let id = UUID()
+    let prompt: String
+}
+
 private struct LibraryCreateMicrophone: View {
     let onPrompt: (String) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1142,6 +1151,9 @@ private struct LibraryCreateMicrophone: View {
     @State private var stretch = CGSize(width: 1, height: 1)
     @State private var armed = false
     @State private var awaitingTranscript = false
+    @State private var transcriptReview: String?
+    @State private var usedWhisper = false
+    @State private var touched = false
     @State private var recordingTask: Task<Void, Never>?
     @State private var returnTask: Task<Void, Never>?
 
@@ -1151,9 +1163,13 @@ private struct LibraryCreateMicrophone: View {
                 .scaleEffect(x: stretch.width, y: stretch.height)
                 .offset(x: -24 + translation.width, y: 68 + translation.height)
                 .accessibilityLabel("Drag microphone inward, speak, then release to create an app")
-                .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
+                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
-                        guard !awaitingTranscript, returnTask == nil else { return }
+                        guard !awaitingTranscript, transcriptReview == nil, returnTask == nil else { return }
+                        if !touched {
+                            touched = true
+                            HTMLAppOfflineSpeech.shared.preloadIfSelected()
+                        }
                         translation = value.translation
                         let inside = isInside(translation, size: proxy.size)
                         if inside && !armed {
@@ -1168,9 +1184,13 @@ private struct LibraryCreateMicrophone: View {
                     }
                     .onEnded { value in
                         guard !awaitingTranscript, returnTask == nil else { return }
+                        touched = false
                         awaitingTranscript = armed && isInside(value.translation, size: proxy.size)
                         recordingTask?.cancel()
-                        if awaitingTranscript { dictation.stop() } else { dictation.cancel() }
+                        if awaitingTranscript {
+                            dictation.stop()
+                            usedWhisper = dictation.transcribingOffline
+                        } else { dictation.cancel() }
                         if reduceMotion {
                             resetPosition()
                             finishIfReady()
@@ -1191,7 +1211,8 @@ private struct LibraryCreateMicrophone: View {
                     })
         }
         .overlay(alignment: .top) {
-            if awaitingTranscript && (dictation.transcribingOffline || dictation.canRetryTranscription) {
+            if (awaitingTranscript && (dictation.transcribingOffline || dictation.canRetryTranscription))
+                || (armed && !dictation.recording) {
                 VStack {
                     Text(dictation.status)
                     if dictation.canRetryTranscription {
@@ -1207,6 +1228,12 @@ private struct LibraryCreateMicrophone: View {
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
                 .padding()
             }
+        }
+        .alert("Pause music before using the microphone", isPresented: $dictation.blockedByOtherAudio) {
+            Button("OK", role: .cancel) {}
+        }
+        .forgeTranscriptReview($transcriptReview) { words, _ in
+            onPrompt(words)
         }
         .onChange(of: dictation.transcribingOffline) { processing in
             if !processing { finishIfReady() }
@@ -1238,6 +1265,8 @@ private struct LibraryCreateMicrophone: View {
         let words = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         if words.isEmpty && dictation.canRetryTranscription { return }
         awaitingTranscript = false
-        if !words.isEmpty { onPrompt(words) }
+        if !words.isEmpty {
+            if usedWhisper { transcriptReview = words } else { onPrompt(words) }
+        }
     }
 }

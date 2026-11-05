@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.83"
-    static let compiledBuild = "91"
+    static let compiledVersion = "1.6.84"
+    static let compiledBuild = "92"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,12 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.84" { return [
+            Entry(id: "library-voice-launch", title: "Start building from the Library mic", description: "Release the mic to start your app without opening the prompt form. Turn on Show styles for Library voice creation in Settings if you want previews first.", symbol: "sparkles", tint: .purple),
+            Entry(id: "whisper-review", title: "Check what Whisper heard", description: "Your words appear briefly after transcription. Tap them to make a correction and send.", symbol: "text.bubble", tint: .blue),
+            Entry(id: "mic-audio-guard", title: "Pause music before dictating", description: "If another app is playing audio, HTMLApp asks you to pause it before opening the microphone.", symbol: "pause.circle", tint: .orange)
+        ] }
+
         // Each new release lists only its own changes. 1.6.83 is the one
         // requested exception and also covers the previous three updates.
         if version == "1.6.83" { return [
