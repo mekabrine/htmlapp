@@ -208,13 +208,12 @@
       "nativeCancellation": true,
       "arguments": {
         "prompt": "string",
+        "messages": "array",
         "system": "string",
         "format": "string",
         "fallback": "string"
       },
-      "requiredArguments": [
-        "prompt"
-      ],
+      "requiredArguments": [],
       "resultType": "unknown"
     },
     "ai.stream": {

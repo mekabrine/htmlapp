@@ -43,6 +43,12 @@ When code uses a relative endpoint such as `fetch('/api/build')`, this works onl
 
 For remote integrations show a setup screen and a clear online/offline status. Do not download, cache, or rewrite API routes as if they were static assets. Avoid caching secrets. Never expose tokens in a publicly shared HTML file.
 
+## Local devices and TV remotes
+
+For a device remote, first identify the exact model or platform, verify its control protocol, and implement the actual command and pairing flow. Ask for the model if a missing detail changes which protocol works. A brand selector must choose a real implementation or say that the platform still needs a bridge. A reachability check and an accepted command do not prove the device acted on it.
+
+In HTMLApp builds with LAN support, feature-detect `window.HTMLAppLocalNetwork?.isLocalURL(url)`. For private HTTP(S), use `HTMLAppLocalNetwork.fetch(url, options)`. For private WebSockets, the installed host routes supported local URLs through its wrapped `WebSocket`. Request access from an explicit Connect action. Distinguish network denial, pairing denial, timeouts, and an unsupported model. Do not use `HTMLAppNative.network.request` for private addresses: that API is for approved public HTTPS hosts. Outside HTMLApp, ordinary browser CORS and mixed-content restrictions apply. Never expose pairing tokens in exported HTML.
+
 ## Quality requirements
 
 - Semantic, accessible HTML. Responsive on compact iPhone and iPad, respecting safe areas. Fixed page scale (no pinch/double-tap zoom): 16px minimum input text, accessible scalable typography, and actual responsive reflow.
@@ -66,6 +72,32 @@ Recent HTMLApp runtimes expose `HTMLAppNative.protocolVersion`, `await HTMLAppNa
 ## Native UI controls
 
 Supported recent runtimes can use `HTMLAppNative.ui.alert({title,message,actions})`, `.menu(...)`, and `.datePicker({title,mode,value})` for real UIKit dialogs/pickers. Show them only in response to user intent; excessive modal requests are rate-limited. `HTMLAppNative.events.on(name, handler)` subscribes to existing `htmlapp:*` native events (and returns an unsubscribe function). Do not invent unimplemented native UI primitives.
+
+For top-level navigation, match tab IDs to `data-htmlapp-screen` values and call `HTMLAppNative.screens.configure({items, selected})` when present. Use `data-htmlapp-go="settings"` for buttons and `screens.go("settings")` for code so the visible screen and native tab change together. Keep a working web navigation fallback. On iOS 26, feature-check `ui.glassShow` to add one decorative, touch-transparent native glass overlay with `ui.glassShow({x,y,width,height})` in viewport points. Update its bounds on layout changes, hide it with `ui.glassHide()` when leaving, and use `data-htmlapp-glass` for a web fallback.
+
+For speech-to-text, use the documented `speech.listen` or `speech.recognize` API and expose a Stop button that calls its matching stop method. Saved apps use the speech engine selected in HTMLApp Settings. Whisper returns text after recording stops, so start the request without blocking the Stop button and await the original result afterward.
+
+## On-device Apple Intelligence chat
+
+Use `HTMLAppNative.ai.localAvailable()` to explain setup and `HTMLAppNative.ai.localComplete({messages, signal})` to answer a chat turn. This needs a compatible device on iOS 26+, a ready model, generated-app AI access enabled in HTMLApp Settings, and per-app AI consent. No provider key is needed. Keep the chat history in your app and send a short tail of up to 12 `{role, content}` messages with only `user` and `assistant` roles, ending in a user message. The encoded conversation must fit within 4 KB. Older hosts support `localComplete({prompt})`, which can receive a compact text transcript.
+
+```js
+const ai = window.HTMLAppNative?.ai;
+if (!ai?.localAvailable || !ai?.localComplete) {
+  showError("Open this app in a compatible HTMLApp build.");
+} else {
+  const status = await ai.localAvailable();
+  if (!status.available) showError(status.reason);
+  else {
+    const { text } = await ai.localComplete({
+      messages: [{ role: "user", content: "Give me three dinner ideas." }]
+    });
+    showReply(text);
+  }
+}
+```
+
+Handle errors, four requests per minute, cancellation, and repeated taps. Display model text as text, not injected HTML. Never silently switch to a configured cloud provider. Only offer cloud fallback as a separate, deliberate choice.
 
 ## Runtime helpers for real applications
 

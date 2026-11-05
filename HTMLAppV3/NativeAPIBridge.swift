@@ -520,9 +520,13 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                                 "remainingBudget": ready ? max(0, 10 - used) : 0,
                                 "totalRequests": total] as [String: Any])
         case "ai.localAvailable":
+            let modelReason = HTMLAppLocalAgent.availabilityMessage
+            let enabled = UserDefaults.standard.bool(forKey: "htmlapp.aiBridge.enabled")
             resolve(id, value: [
-                "available": HTMLAppLocalAgent.availabilityMessage == nil,
-                "reason": HTMLAppLocalAgent.availabilityMessage ?? ""
+                "available": enabled && modelReason == nil,
+                "modelAvailable": modelReason == nil,
+                "onDevice": true,
+                "reason": !enabled ? "Enable generated-app AI access in HTMLApp Settings." : (modelReason ?? "")
             ])
         case "ai.localComplete":
             guard UserDefaults.standard.bool(forKey: "htmlapp.aiBridge.enabled") else {
@@ -530,9 +534,30 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 return
             }
             let system = (args["system"] as? String) ?? "Be helpful, accurate and concise."
-            guard let prompt = args["prompt"] as? String, !prompt.isEmpty,
+            let prompt: String
+            if let raw = args["messages"] {
+                guard args["prompt"] == nil,
+                      let messages = raw as? [[String: String]],
+                      (1...12).contains(messages.count),
+                      messages.last?["role"] == "user",
+                      messages.allSatisfy({
+                          ["user", "assistant"].contains($0["role"] ?? "") &&
+                              !($0["content"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                      }),
+                      let data = try? JSONSerialization.data(withJSONObject: messages.map {
+                          ["role": $0["role"] ?? "", "content": $0["content"] ?? ""]
+                      }, options: [.sortedKeys]),
+                      let transcript = String(data: data, encoding: .utf8) else {
+                    reject(id, code: "invalid_arguments", message: "Send 1–12 user or assistant messages ending in a user message, or send one prompt.")
+                    return
+                }
+                prompt = "Continue this conversation. Reply to the final user message only.\n" + transcript
+            } else {
+                prompt = args["prompt"] as? String ?? ""
+            }
+            guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   prompt.utf8.count <= 4000, system.utf8.count <= 1200 else {
-                reject(id, code: "invalid_arguments", message: "Provide a prompt under 4 KB and an optional short system instruction.")
+                reject(id, code: "invalid_arguments", message: "Keep the prompt or conversation under 4 KB. Shorten older chat messages and try again.")
                 return
             }
             let structured = args["format"] as? String == "structured"
@@ -3778,7 +3803,17 @@ enum HTMLNativeAPIScript {
         ai: {
           available: () => call('ai.available'),
           localAvailable: () => call('ai.localAvailable'),
-          localComplete: (options = {}) => call('ai.localComplete', options),
+          localComplete: (options = {}) => {
+            const { signal, ...args } = options;
+            let requestID;
+            const cancel = () => {
+              if (requestID) void call('ai.cancel', { requestID }).catch(() => {});
+            };
+            signal?.addEventListener('abort', cancel, { once: true });
+            return call('ai.localComplete', args, {
+              signal, onDispatch: id => { requestID = id; }
+            }).finally(() => signal?.removeEventListener('abort', cancel));
+          },
           complete: (options = {}) => call('ai.complete', options),
           stream: (options = {}) => {
             const { signal, onToken, ...args } = options;

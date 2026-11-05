@@ -267,7 +267,7 @@ enum HTMLAppBridgeRegistry {
         "network.request",
     ]
     private static let argumentTypes: [String: [String: String]] = [
-        "ai.localComplete": ["fallback": "string", "format": "string", "prompt": "string", "system": "string"],
+        "ai.localComplete": ["fallback": "string", "format": "string", "messages": "array", "prompt": "string", "system": "string"],
         "ai.stream": ["maxTokens": "number", "prompt": "string", "system": "string"],
         "appStorage.get": ["key": "string"],
         "appStorage.remove": ["key": "string"],
@@ -343,7 +343,6 @@ enum HTMLAppBridgeRegistry {
         "widgets.remove": ["id": "string"],
     ]
     private static let requiredArguments: [String: [String]] = [
-        "ai.localComplete": ["prompt"],
         "ai.stream": ["prompt"],
         "appStorage.get": ["key"],
         "appStorage.remove": ["key"],

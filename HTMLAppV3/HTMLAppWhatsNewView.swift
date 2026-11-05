@@ -30,19 +30,26 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
-        let dragUpdates: [Entry] = version == "1.6.83" ? [
+        // Each new release lists only its own changes. 1.6.83 is the one
+        // requested exception and also covers the previous three updates.
+        if version == "1.6.83" { return [
+            Entry(id: "local-ai-chat", title: "Chat with Apple Intelligence", description: "Saved apps can send recent chat messages to Apple Intelligence and display an answer generated on your device. Turn on generated-app AI access in Settings.", symbol: "bubble.left", tint: .blue),
+            Entry(id: "style-music", title: "Music while styles are made", description: "Your generation music now plays during style previews. If you leave HTMLApp and the previews finish, you can get a notification.", symbol: "music.note", tint: .purple),
+            Entry(id: "builder-guide", title: "A better guide for external AI", description: "The app-building guide now explains local devices, chat, dictation, native tabs and Liquid Glass.", symbol: "book", tint: .green),
             Entry(id: "library-create-mic", title: "Speak an app idea from Library", description: "Drag the Library microphone inward, speak, and release. If style previews are on, Forge shows designs first. If they are off, Forge starts building.", symbol: "sparkles", tint: .purple),
-            Entry(id: "finger-tracking-mic", title: "The edit mic follows your finger", description: "Drag the mic in any direction. When you release it, it stretches and springs back as the editor opens. On iOS 26, the glass fits inside the outline and turns a translucent red while recording.", symbol: "mic.fill", tint: .blue)
-        ] : []
-        let glassUpdates: [Entry] = version == "1.6.82" ? [
+            Entry(id: "finger-tracking-mic", title: "The edit mic follows your finger", description: "Drag the mic in any direction. When you release it, it stretches and springs back as the editor opens. On iOS 26, the glass fits inside the outline and turns a translucent red while recording.", symbol: "mic.fill", tint: .blue),
             Entry(id: "native-glass-mic", title: "The same edit mic in both places", description: "The saved-app mic now matches the tilted mic in Edit with AI. Both use Apple’s Liquid Glass on iOS 26 and later.", symbol: "mic.fill", tint: .blue),
             Entry(id: "native-glass-api", title: "Real Liquid Glass for saved apps", description: "On iOS 26 and later, apps can add a native glass surface to a small area of the screen. The glass lets taps pass through.", symbol: "sparkles", tint: .purple)
-        ] : []
-        let micFixes: [Entry] = ["1.6.82", "1.6.81"].contains(version) ? [
+        ] }
+        if version == "1.6.82" { return [
+            Entry(id: "native-glass-mic", title: "The same edit mic in both places", description: "The saved-app mic now matches the tilted mic in Edit with AI. Both use Apple’s Liquid Glass on iOS 26 and later.", symbol: "mic.fill", tint: .blue),
+            Entry(id: "native-glass-api", title: "Real Liquid Glass for saved apps", description: "On iOS 26 and later, apps can add a native glass surface to a small area of the screen. The glass lets taps pass through.", symbol: "sparkles", tint: .purple)
+        ] }
+        if version == "1.6.81" { return [
             Entry(id: "drag-edit-mic", title: "Drag, speak, then release", description: "Drag the edge mic inward, hold it while you speak, and release to start the edit. Long dictation keeps earlier words when Apple Speech starts a new segment.", symbol: "mic.fill", tint: .blue),
             Entry(id: "faster-edit-start", title: "Edits start sooner", description: "Apply Change and voice edits skip the extra planning check for ordinary edits. Full rewrites still ask you first.", symbol: "bolt.fill", tint: .orange)
-        ] : []
-        if ["1.6.83", "1.6.82", "1.6.81", "1.6.80", "1.6.79"].contains(version) { return dragUpdates + glassUpdates + micFixes + [
+        ] }
+        if version == "1.6.80" || version == "1.6.79" { return [
             Entry(id: "forge-edits", title: "AI edits are easier to follow", description: "Edit summaries tell you what changed in a short sentence. Forge uses the app around your edit to better understand short requests and protect features you want to keep.", symbol: "pencil", tint: .blue),
             Entry(id: "forge-generation", title: "More reliable app generation", description: "Forge catches cut-off answers and incomplete edits before using them. Stopping a request also stops its retries.", symbol: "checkmark.shield", tint: .green),
             Entry(id: "forge-style", title: "More variety in app designs", description: "Forge can try more creative layouts and add motion where it helps. Compare previews with the numbered buttons on the right. The text below the preview is gone.", symbol: "paintpalette", tint: .purple),

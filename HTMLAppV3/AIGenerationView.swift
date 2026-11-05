@@ -49,6 +49,7 @@ struct AIGenerationView: View {
     @State private var autoQuickReason: String?
     @State private var polishThisRun = false
     @State private var exploringStyles = false
+    @State private var styleMusicRun: UUID?
     @State private var preparedStylePrompt: String?
     @State private var preparedStyleTask: Task<(String, AIPlanningResult?), Never>?
     @State private var styleOptions: [ForgeStyleConcept] = []
@@ -1102,6 +1103,21 @@ struct AIGenerationView: View {
         }
     }
 
+    private func startStyleAudio() -> UUID {
+        let run = UUID()
+        styleMusicRun = run
+        HTMLAppForgeBackgroundNotice.prepare()
+        GenerationMusic.shared.start()
+        return run
+    }
+
+    private func finishStyleAudio(_ run: UUID, ready: Bool) {
+        guard styleMusicRun == run else { return }
+        styleMusicRun = nil
+        GenerationMusic.shared.stop()
+        if ready { HTMLAppForgeBackgroundNotice.completed(edit: false, styles: true) }
+    }
+
     private func generateAdditionalStyles() {
         guard !exploringStyles else { return }
         let idea = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1110,7 +1126,10 @@ struct AIGenerationView: View {
         let appearance = colorScheme == .dark ? "dark" : "light"
         let quick = quickMode && !AISettingsStore.quickModel.isEmpty
         exploringStyles = true
+        let audioRun = startStyleAudio()
         generationTask = Task {
+            var previewsReady = false
+            defer { finishStyleAudio(audioRun, ready: previewsReady && !Task.isCancelled) }
             await withTaskGroup(of: ForgeStyleConcept?.self) { group in
                 for index in firstIndex..<(firstIndex + 3) {
                     group.addTask {
@@ -1125,13 +1144,16 @@ struct AIGenerationView: View {
                     }
                 }
                 for await concept in group {
+                    guard !Task.isCancelled else { group.cancelAll(); break }
                     if let concept {
                         styleOptions.append(concept)
                         styleOptions.sort { $0.id < $1.id }
                     }
                 }
             }
+            guard !Task.isCancelled else { return }
             exploringStyles = false
+            previewsReady = styleOptions.contains { $0.id >= firstIndex }
         }
     }
 
@@ -1152,7 +1174,10 @@ struct AIGenerationView: View {
         exploringStyles = true
         let feedback = styleFeedback
         let regenerationRound = styleRegenerationRound
+        let audioRun = startStyleAudio()
         generationTask = Task {
+            var previewsReady = false
+            defer { finishStyleAudio(audioRun, ready: previewsReady && !Task.isCancelled) }
             if quickModePolicy == "automatic" && !AISettingsStore.quickModel.isEmpty {
                 let choice = await ForgeQuickClassifier.decide(for: idea)
                 guard !Task.isCancelled else { return }
@@ -1209,6 +1234,7 @@ struct AIGenerationView: View {
             }
             guard !Task.isCancelled else { return }
             exploringStyles = false
+            previewsReady = !styleOptions.isEmpty
             if styleOptions.isEmpty {
                 styleFailure = failures.joined(separator: "\n")
             } else {
@@ -1703,6 +1729,7 @@ struct AIGenerationView: View {
     }
 
     private func startForgeActivity(edit: Bool) {
+        styleMusicRun = nil
         UserDefaults.standard.set(false, forKey: "forge.hurryUpCurrentRun")
         showHurryUp = false
         hurriedThisRun = false
@@ -2419,11 +2446,11 @@ private enum HTMLAppForgeBackgroundNotice {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
-    static func completed(edit: Bool) {
+    static func completed(edit: Bool, styles: Bool = false) {
         guard UIApplication.shared.applicationState != .active else { return }
         let content = UNMutableNotificationContent()
-        content.title = edit ? "App update finished" : "Your app is ready"
-        content.body = edit ? "Your HTMLApp changes are complete." : "HTMLApp finished generating your app."
+        content.title = styles ? "Your style previews are ready" : (edit ? "App update finished" : "Your app is ready")
+        content.body = styles ? "Open HTMLApp to choose a design." : (edit ? "Your HTMLApp changes are complete." : "HTMLApp finished generating your app.")
         content.sound = .default
         let request = UNNotificationRequest(
             identifier: "htmlapp.forge.finished.\(UUID().uuidString)",

@@ -70,7 +70,7 @@ struct AIConfigurationSettingsView: View {
 
             Section("AI in saved apps") {
                 Toggle("Allow saved apps to request AI", isOn: $aiBridgeEnabled)
-                Text("Off by default. Each saved app also needs its own AI permission. Requests can consume API credits.")
+                Text("Off by default. Each saved app needs AI permission. Apple Intelligence runs on compatible devices without a provider key. Cloud requests can consume API credits.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Generation") {
@@ -383,3 +383,4 @@ struct AIConfigurationSettingsView: View {
         }
     }
 }
+
