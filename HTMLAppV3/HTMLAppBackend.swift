@@ -357,7 +357,14 @@ struct HTMLAppBackendView: View {
                                 }
                             }
                         }
-                        Text("For new apps, pair your VPS in Settings → AI & Voice → Automatic backends. You can also link an existing backend using its provisioning JSON.")
+                        if HTMLAppBackendProvisioning.template(in: app.html) != nil {
+                            Text(HTMLAppBackendProvisioning.isPaired
+                                 ? "HTMLApp sets up this app’s backend automatically. Use Retry if setup could not finish."
+                                 : "Pair your VPS in Settings → AI & Voice → Automatic backends, then reopen this screen.")
+                        } else {
+                            Text("This app does not declare a supported backend. Ask Forge to add cloud storage or notifications.")
+                        }
+                        Text("To connect a backend you already created, paste its provisioning JSON below.")
                         SecureField("Provisioning JSON", text: $provisioning)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -431,6 +438,11 @@ struct HTMLAppBackendView: View {
             } message: {
                 Text("This removes the local link and script. The VPS backend keeps running.")
             }
+            .onReceive(NotificationCenter.default.publisher(for: HTMLAppBackendProvisioning.didFinish)) { _ in
+                link = HTMLAppBackendStore.link(for: app.id)
+                message = link == nil ? HTMLAppBackendProvisioning.status(for: app.id) : nil
+                if let link { run { backend = try await HTMLAppBackendAPI.status(link) } }
+            }
             .onChange(of: scenePhase) { if $0 != .active { showKey = false } }
             .disabled(busy)
         }
@@ -441,7 +453,17 @@ struct HTMLAppBackendView: View {
                 source = text
                 shareURL = url
             }
-            if let link { run { backend = try await HTMLAppBackendAPI.status(link) } }
+            // Opening this native panel explicitly requests setup for an
+            // existing app, including an imported or transferred copy.
+            if link == nil, let template = HTMLAppBackendProvisioning.template(in: app.html) {
+                HTMLAppBackendProvisioning.enqueue(app, template: template)
+            }
+            run {
+                await HTMLAppBackendProvisioning.flush()
+                link = HTMLAppBackendStore.link(for: app.id)
+                if let link { backend = try await HTMLAppBackendAPI.status(link) }
+                else { message = HTMLAppBackendProvisioning.status(for: app.id) }
+            }
         }
     }
 
@@ -498,8 +520,9 @@ struct HTMLAppBackendView: View {
 }
 
 
-// Only Forge saves opt into provisioning. Imported and Nearby copies cannot
-// trigger provisioning by including a marker in their HTML.
+// Forge saves opt into provisioning. Existing apps can also request setup
+// when the user opens their native Backend panel. Importing alone does not
+// provision a backend, and shared copies receive their own credentials.
 @MainActor
 enum HTMLAppBackendProvisioning {
     private struct Pending: Codable {
@@ -514,6 +537,7 @@ enum HTMLAppBackendProvisioning {
     private static let account = "backend-provision-key"
     private static let queue = "htmlapp.backend.pendingProvision"
     private static var running = false
+    static let didFinish = Notification.Name("HTMLAppBackendProvisioningDidFinish")
     static var isPaired: Bool { KeychainValueStore.read(account: account) != nil }
 
     static func template(in html: String) -> String? {
@@ -572,7 +596,10 @@ enum HTMLAppBackendProvisioning {
     static func flush() async {
         guard !running, let key = KeychainValueStore.read(account: account) else { return }
         running = true
-        defer { running = false }
+        defer {
+            running = false
+            NotificationCenter.default.post(name: didFinish, object: nil)
+        }
         for appID in jobs.keys.sorted() {
             guard var job = jobs[appID] else { continue }
             if HTMLAppBackendStore.link(for: appID) != nil {

@@ -1,10 +1,12 @@
-# Automatic Hostish backends in HTMLApp 1.7.1
+# Automatic Hostish backends in HTMLApp 1.7.2
 
 Upgrade the gateway with the matching auto-link package, then paste its VPS
 provisioning key once in **Settings → AI & Voice → Automatic backends**.
 Forge apps that need an approved document or notification backend provision
-and link on save. Retrying uses the same backend. Imported and transferred
-HTML cannot auto-provision. Keep the owner key on the VPS.
+and link on save. For existing apps, including imports and transferred copies,
+opening **Developer → Backend** also creates and links the declared backend.
+Importing alone does not create a backend. Retrying uses the same backend,
+and transferred copies get separate credentials. Keep the owner key on the VPS.
 
 The steps below are a fallback for existing backends or older builds.
 
