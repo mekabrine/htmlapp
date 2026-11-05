@@ -1,0 +1,47 @@
+{
+  "sdkVersion": 2,
+  "schemaVersion": 1,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "access": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/resources",
+      "access": "app"
+    },
+    {
+      "method": "POST",
+      "path": "/join",
+      "access": "app"
+    },
+    {
+      "method": "GET",
+      "path": "/items",
+      "access": "session"
+    },
+    {
+      "method": "POST",
+      "path": "/items",
+      "access": "session"
+    },
+    {
+      "method": "POST",
+      "path": "/notify",
+      "access": "session"
+    }
+  ],
+  "checks": [
+    {
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "path": "/items",
+      "expect": 401
+    }
+  ],
+  "migrations": []
+}

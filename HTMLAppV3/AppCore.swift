@@ -436,13 +436,13 @@ final class AppStore: ObservableObject {
         }
     }
 
-    func add(html: String, summary: String, backendTemplate: String? = nil) async {
+    func add(html: String, summary: String, backendTemplate: String? = nil, runtimeID: String? = nil) async {
         let name = HTMLTools.title(in: html) ?? "Untitled App"
         let icon = await HTMLAppIconTools.savedIcon(html: html, name: name)
         let now = Date()
         let destination = validPendingInsertionFolderID()
         let app = SavedHTMLApp(
-            id: makeID(), name: name,
+            id: runtimeID ?? makeID(), name: name,
             summary: summary.trimmingCharacters(in: .whitespacesAndNewlines),
             html: html, favicon: icon,
             createdAt: now, updatedAt: now, lastOpenedAt: nil,
@@ -451,6 +451,7 @@ final class AppStore: ObservableObject {
         )
         pendingInsertionFolderID = nil
         apps.insert(app, at: 0)
+        HTMLAppRuntimeBackend.importPublicLink(app.html, localID: app.id)
         save()
         if let backendTemplate { HTMLAppBackendProvisioning.enqueue(app, template: backendTemplate) }
         Task(priority: .utility) { await SourceCache.shared.refresh(app: app, force: false) }
@@ -510,6 +511,7 @@ final class AppStore: ObservableObject {
         )
         pendingInsertionFolderID = nil
         apps.insert(app, at: 0)
+        HTMLAppRuntimeBackend.importPublicLink(app.html, localID: app.id)
         if let portableData {
             HTMLAppPortableDataStore.replace(appID: id, values: portableData)
         }
@@ -683,6 +685,7 @@ final class AppStore: ObservableObject {
     }
 
     func prepareAutomaticBackends() {
+        Task { await HTMLAppRuntimeSubscriptions.refresh() }
         guard HTMLAppBackendProvisioning.isPaired else { return }
         for app in apps {
             if let template = HTMLAppBackendProvisioning.template(in: app.html) {
@@ -1012,7 +1015,7 @@ final class AppStore: ObservableObject {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(fileName)
         do {
-            try Data(app.html.utf8).write(to: url, options: .atomic)
+            try Data(HTMLAppRuntimeBackend.sharedHTML(app.html, localID: app.id).utf8).write(to: url, options: .atomic)
             SharePresenter.present(items: [url])
         } catch {
             errorMessage = "The HTML file could not be exported."
@@ -1022,6 +1025,7 @@ final class AppStore: ObservableObject {
     func createNearbyPackage(appIDs: Set<String>) throws -> URL {
         let selected = apps.filter { appIDs.contains($0.id) }.map { original in
             var clean = original
+            clean.html = HTMLAppRuntimeBackend.sharedHTML(original.html, localID: original.id)
             clean.lastOpenedAt = nil
             clean.isFavorite = nil
             return clean

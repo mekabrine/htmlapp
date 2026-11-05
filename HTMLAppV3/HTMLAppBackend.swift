@@ -12,10 +12,11 @@ struct HTMLAppBackendLink: Codable {
     let readKey: String
     let sendKey: String?
     let runtimeReadKey: String?
+    var sdkVersion: Int? = nil
 
     var isValid: Bool {
         appID.range(of: #"^[A-Z2-7]{12}$"#, options: .regularExpression) != nil
-            && Self.isKey(managementKey, length: 20)
+            && (Self.isKey(managementKey, length: 20) || (sdkVersion == 2 && managementKey.isEmpty))
             && Self.isKey(readKey, length: 32)
             && (sendKey.map { Self.isKey($0, length: 32) } ?? true)
             && (runtimeReadKey.map { Self.isKey($0, length: 32) } ?? true)
@@ -47,6 +48,7 @@ enum HTMLAppBackendStore {
 
     static func save(_ link: HTMLAppBackendLink, for appID: String) throws {
         guard link.isValid else { throw HTMLAppBackendError(message: "This backend link has invalid credentials.") }
+        UserDefaults.standard.set(appID, forKey: "htmlapp.runtime.localID." + link.appID)
         let encoded = try JSONEncoder().encode(link)
         KeychainValueStore.write(String(decoding: encoded, as: UTF8.self), account: prefix + appID)
         guard self.link(for: appID)?.managementKey == link.managementKey else {
@@ -91,7 +93,7 @@ enum HTMLAppBackendDeletionQueue {
     }
 
     static func enqueue(_ appID: String) {
-        guard HTMLAppBackendStore.link(for: appID) != nil else { return }
+        guard let link = HTMLAppBackendStore.link(for: appID), !link.managementKey.isEmpty else { return }
         let pending = Set(UserDefaults.standard.stringArray(forKey: queueKey) ?? [])
         UserDefaults.standard.set(Array(pending.union([appID])), forKey: queueKey)
         HTMLAppBackendStore.removeSource(appID)
@@ -105,7 +107,12 @@ enum HTMLAppBackendDeletionQueue {
         for appID in UserDefaults.standard.stringArray(forKey: queueKey) ?? [] {
             guard let link = HTMLAppBackendStore.link(for: appID) else { continue }
             do {
-                let result = try await HTMLAppBackendAPI.request(link, path: "", method: "DELETE", key: link.managementKey)
+                let result: [String: Any]
+                if link.sdkVersion == 2 {
+                    result = try await HTMLAppRuntimeBackend.mutate("/v2/manage/apps/" + link.appID, method: "DELETE", key: link.managementKey, body: nil, localID: appID + ".delete")
+                } else {
+                    result = try await HTMLAppBackendAPI.request(link, path: "", method: "DELETE", key: link.managementKey)
+                }
                 guard result["deleted"] as? Bool == true else { continue }
                 HTMLAppBackendStore.unlink(appID)
                 let pending = UserDefaults.standard.stringArray(forKey: queueKey) ?? []
@@ -149,7 +156,17 @@ enum HTMLAppBackendAPI {
         return try await authenticatedRequest(url(link, path: path), method: method, key: key, body: body)
     }
 
+    static func raw(_ path: String, method: String, key: String, body: [String: Any]? = nil, idempotency: String? = nil) async throws -> [String: Any] {
+        guard path.hasPrefix("/v2/"), !path.contains(".."), !path.contains("#") else { throw HTMLAppBackendError(message: "Invalid runtime endpoint.") }
+        return try await authenticatedRequest(URL(string: origin + path)!, method: method, key: key, body: body, idempotency: idempotency)
+    }
+    static func runtimeRequest(_ link: HTMLAppBackendLink, path: String, method: String, body: [String: Any]?, session: String?) async throws -> [String: Any] {
+        try await authenticatedRequest(URL(string: origin + "/v2/apps/" + link.appID + "/api" + path)!, method: method, key: link.readKey, body: body, runtimeSession: session)
+    }
     static func pair(_ key: String) async throws {
+        _ = try await raw("/v2/enrollment", method: "GET", key: key)
+    }
+    static func pairLegacy(_ key: String) async throws {
         _ = try await authenticatedRequest(URL(string: origin + "/v1/provision/status")!,
                                            method: "GET", key: key, body: nil)
     }
@@ -162,10 +179,12 @@ enum HTMLAppBackendAPI {
         return link
     }
 
-    private static func authenticatedRequest(_ url: URL, method: String, key: String,
-                                             body: [String: Any]?) async throws -> [String: Any] {
+    static func authenticatedRequest(_ url: URL, method: String, key: String,
+                                             body: [String: Any]?, idempotency: String? = nil, runtimeSession: String? = nil) async throws -> [String: Any] {
         var request = URLRequest(url: url)
         request.httpMethod = method
+        if let idempotency { request.setValue(idempotency, forHTTPHeaderField: "Idempotency-Key") }
+        if let runtimeSession { request.setValue(runtimeSession, forHTTPHeaderField: "X-HTMLApp-Session") }
         request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
         if let body {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -184,6 +203,10 @@ enum HTMLAppBackendAPI {
     }
 
     static func status(_ link: HTMLAppBackendLink) async throws -> HTMLAppBackendStatus {
+        if link.sdkVersion == 2 {
+            let result = try await raw("/v2/manage/apps/" + link.appID, method: "GET", key: link.managementKey)
+            return HTMLAppBackendStatus(name: result["name"] as? String ?? "Backend", template: "Python v2", revision: result["revision"] as? Int ?? 0, publishRead: false, pushConfigured: result["pushConfigured"] as? Bool ?? false, deviceRegistered: false)
+        }
         let result = try await request(link, path: "", method: "GET", key: link.managementKey)
         guard let template = result["template"] as? String, ["document", "notification"].contains(template),
               let revision = result["revision"] as? Int,
@@ -243,6 +266,10 @@ struct HTMLAppBackendView: View {
                 if let link {
                     Section("Backend details") {
                         LabeledContent("Backend ID", value: link.appID)
+                        if link.sdkVersion == 2 {
+                            Text(HTMLAppBackendAPI.origin + "/v2/apps/" + link.appID + "/api").textSelection(.enabled)
+                            Text(link.managementKey.isEmpty ? "Shared participant access" : "Owner access")
+                        }
                         Button("Copy Backend ID") { UIPasteboard.general.string = link.appID }
                         if let backend {
                             LabeledContent("Name", value: backend.name)
@@ -256,6 +283,7 @@ struct HTMLAppBackendView: View {
                         Text("Public read key").font(.caption).foregroundStyle(.secondary)
                         Text(link.readKey).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
                         Button("Copy public read key") { UIPasteboard.general.string = link.readKey }
+                        if !link.managementKey.isEmpty {
                         if showKey {
                             Text(link.managementKey).font(.system(.footnote, design: .monospaced))
                                 .privacySensitive()
@@ -271,6 +299,7 @@ struct HTMLAppBackendView: View {
                                     showKey = true
                                 }
                             }
+                        }
                         }
                         Text("The management key can change or delete this backend. HTMLApp keeps it out of HTML, Forge prompts and transfers.")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -305,6 +334,7 @@ struct HTMLAppBackendView: View {
                             }
                         }
                     }
+                    if link.sdkVersion != 2 {
                     Section("Stored data") {
                         Button("Edit JSON data") {
                             run {
@@ -330,7 +360,20 @@ struct HTMLAppBackendView: View {
                         Text("Anyone with the read key can read this entire document when public reads are enabled.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
+                    }
                     Section("Backend script") {
+                        if link.sdkVersion == 2 && !link.managementKey.isEmpty {
+                            Button("Download deployed script") {
+                                run {
+                                    let result = try await HTMLAppBackendAPI.raw("/v2/manage/apps/" + link.appID + "/source", method: "GET", key: link.managementKey)
+                                    guard let text = result["source"] as? String else { throw HTMLAppBackendError(message: "No source returned.") }
+                                    let url = try HTMLAppBackendStore.sourceURL(for: app.id)
+                                    try Data(text.utf8).write(to: url, options: [.atomic, .completeFileProtection])
+                                    source = text
+                                    shareURL = url
+                                }
+                            }
+                        }
                         if source != nil {
                             Button("View script") { showSource = true }
                             if let shareURL {
@@ -338,7 +381,7 @@ struct HTMLAppBackendView: View {
                             }
                         }
                         Button(source == nil ? "Attach local Python script" : "Replace local Python script") { importing = true }
-                        Text("Approved gateway templates have no per-app Python file. An attached script is a local reference only. Sharing it is a separate action, so remove any secrets first.")
+                        Text(link.sdkVersion == 2 ? "Your generated Python runs in an isolated server. Review the source for secrets before exporting." : "Legacy templates have no executable per-app source.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     Section {

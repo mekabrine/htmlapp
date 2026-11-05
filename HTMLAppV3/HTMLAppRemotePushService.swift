@@ -40,6 +40,7 @@ final class HTMLAppRemotePushService {
         let value = token.map { String(format: "%02x", $0) }.joined()
         UserDefaults.standard.set(value, forKey: "htmlapp.apnsToken")
         finish(.success(value))
+        Task { await HTMLAppRuntimeSubscriptions.refresh() }
     }
 
     func didFail(_ error: Error) { finish(.failure(error)) }

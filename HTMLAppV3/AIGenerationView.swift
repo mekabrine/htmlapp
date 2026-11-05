@@ -74,6 +74,8 @@ struct AIGenerationView: View {
     @State private var rewriteApproved = false
     @State private var showingChange = false
     @State private var saving = false
+    @State private var runtimeRepairAttempts = 0
+    @AppStorage("htmlapp.runtime.creationID") private var runtimeCreationID = UUID().uuidString
     @State private var showCancelConfirmation = false
     @State private var uiPolishNotice: String?
     @State private var didLoadExisting = false
@@ -2237,6 +2239,24 @@ Requested edit:
             } else if let existingApp {
                 html = ForgeEditIconContext(existingApp.html).restoringIcons(in: html)
             }
+            do {
+                if let bundle = try HTMLAppRuntimeBundle.extract(html) {
+                    try await HTMLAppRuntimeBackend.deploy(localID: existingApp?.id ?? runtimeCreationID,
+                        name: HTMLTools.title(in: html) ?? "My app", bundle: bundle)
+                }
+            } catch {
+                if (error as? HTMLAppBackendError)?.status == 422, runtimeRepairAttempts < 2 {
+                    runtimeRepairAttempts += 1
+                    let diagnostic = String(error.localizedDescription.prefix(1200))
+                    await session.revise(change: "Repair the runtime bundle and matching frontend using the installed SDK contract. Preserve the app design and existing data. The server rejected the candidate: " + diagnostic)
+                    saving = false
+                    if session.errorMessage == nil { saveGeneratedApp() }
+                    return
+                }
+                session.errorMessage = error.localizedDescription
+                saving = false
+                return
+            }
             let backendTemplate = HTMLAppBackendProvisioning.template(in: html)
             if let existingApp {
                 await store.updateFromAI(existingApp, html: html, summary: session.description.isEmpty ? existingApp.summary : session.description, note: session.lastEditSummary.isEmpty ? "AI changed this app." : session.lastEditSummary)
@@ -2256,7 +2276,7 @@ Requested edit:
                 store.notice = "Saved AI changes to \(existingApp.name)."
             } else {
                 let beforeIDs = Set(store.apps.map(\.id))
-                await store.add(html: html, summary: session.description, backendTemplate: backendTemplate)
+                await store.add(html: html, summary: session.description, backendTemplate: backendTemplate, runtimeID: runtimeCreationID)
                 if let added = store.apps.first(where: { !beforeIDs.contains($0.id) }) {
                     ForgeSemanticAppModelStore.save(for: added.id, html: html, purpose: session.description)
                     workTracker.associateDraft(with: added.id)
@@ -2268,6 +2288,7 @@ Requested edit:
             }
             AIDebugTraceStore.shared.finish(outcome: "Saved")
             session.clearCheckpoint()
+            runtimeCreationID = UUID().uuidString
             saving = false
             dismiss()
         }

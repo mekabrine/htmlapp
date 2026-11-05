@@ -25,7 +25,10 @@
     "audio.stopRecording",
     "backend.notify",
     "backend.read",
+    "backend.request",
     "backend.status",
+    "backend.subscribe",
+    "backend.unsubscribe",
     "background.configure",
     "background.list",
     "background.refreshNow",
@@ -385,6 +388,22 @@
       "requiredArguments": [],
       "resultType": "unknown"
     },
+    "backend.request": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "path": "string",
+        "method": "string",
+        "body": "object",
+        "session": "string"
+      },
+      "requiredArguments": [
+        "path"
+      ],
+      "resultType": "unknown"
+    },
     "backend.status": {
       "minimumIOS": "16.0",
       "permission": null,
@@ -392,6 +411,32 @@
       "nativeCancellation": false,
       "arguments": {},
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "backend.subscribe": {
+      "minimumIOS": "16.0",
+      "permission": "notifications",
+      "userInitiationRecommended": true,
+      "nativeCancellation": false,
+      "arguments": {
+        "session": "string"
+      },
+      "requiredArguments": [
+        "session"
+      ],
+      "resultType": "unknown"
+    },
+    "backend.unsubscribe": {
+      "minimumIOS": "16.0",
+      "permission": "notifications",
+      "userInitiationRecommended": true,
+      "nativeCancellation": false,
+      "arguments": {
+        "session": "string"
+      },
+      "requiredArguments": [
+        "session"
+      ],
       "resultType": "unknown"
     },
     "background.configure": {

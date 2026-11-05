@@ -1191,6 +1191,42 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             }
             HTMLAppNetworkDomainConsent.revoke(host: host.lowercased(), appID: appID)
             resolve(id, value: ["revoked": true])
+        case "backend.subscribe", "backend.unsubscribe":
+            withPermission(.notifications, id: id) { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    do {
+                        guard let link = HTMLAppBackendStore.link(for: self.appID), link.sdkVersion == 2,
+                              let session = args["session"] as? String, !session.isEmpty else {
+                            throw HTMLAppBackendError(message: "Sign in to a backend resource before subscribing.")
+                        }
+                        let token: String = try await withCheckedThrowingContinuation { continuation in
+                            HTMLAppRemotePushService.shared.register { continuation.resume(with: $0) }
+                        }
+                        let result = try await HTMLAppBackendAPI.raw("/v2/apps/" + link.appID + "/devices",
+                            method: method == "backend.subscribe" ? "PUT" : "DELETE", key: link.readKey,
+                            body: ["session": session, "deviceToken": token])
+                        HTMLAppRuntimeSubscriptions.remember(localID: self.appID, session: session, remove: method == "backend.unsubscribe")
+                        self.resolve(id, value: result)
+                    } catch { self.reject(id, code: "backend_subscription_failed", message: error.localizedDescription) }
+                }
+            }
+        case "backend.request":
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    guard let link = HTMLAppBackendStore.link(for: self.appID), link.sdkVersion == 2,
+                          let path = args["path"] as? String,
+                          path.range(of: #"^/[A-Za-z0-9_/?=&.~-]*$"#, options: .regularExpression) != nil,
+                          !path.contains(".."), !path.hasPrefix("/_platform") else {
+                        throw HTMLAppBackendError(message: "No connected runtime or invalid route.")
+                    }
+                    let method = args["method"] as? String ?? "GET"
+                    guard ["GET", "POST", "PUT", "PATCH", "DELETE"].contains(method) else { throw HTMLAppBackendError(message: "Unsupported method.") }
+                    let result = try await HTMLAppBackendAPI.runtimeRequest(link, path: path, method: method, body: args["body"] as? [String: Any], session: args["session"] as? String)
+                    self.resolve(id, value: result)
+                } catch { self.reject(id, code: "backend_request_failed", message: error.localizedDescription) }
+            }
         case "backend.status":
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -3785,6 +3821,9 @@ enum HTMLNativeAPIScript {
           stop: () => call('audio.stop')
         },
         backend: {
+          request: (options) => call('backend.request', options),
+          subscribe: (session) => call('backend.subscribe', {session}),
+          unsubscribe: (session) => call('backend.unsubscribe', {session}),
           status: () => call('backend.status'),
           read: () => call('backend.read'),
           notify: ({ title, body }) => call('backend.notify', { title, body })

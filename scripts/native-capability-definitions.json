@@ -1898,7 +1898,51 @@
       },
       "required": [],
       "result": "unknown"
+    },
+    {
+      "method": "backend.request",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "path": "string",
+        "method": "string",
+        "body": "object",
+        "session": "string"
+      },
+      "required": [
+        "path"
+      ],
+      "result": "unknown"
+    },
+    {
+      "method": "backend.subscribe",
+      "permission": "notifications",
+      "minimumIOS": "16.0",
+      "userInitiated": true,
+      "nativeCancellation": false,
+      "arguments": {
+        "session": "string"
+      },
+      "required": [
+        "session"
+      ],
+      "result": "unknown"
+    },
+    {
+      "method": "backend.unsubscribe",
+      "permission": "notifications",
+      "minimumIOS": "16.0",
+      "userInitiated": true,
+      "nativeCancellation": false,
+      "arguments": {
+        "session": "string"
+      },
+      "required": [
+        "session"
+      ],
+      "result": "unknown"
     }
   ]
 }
-

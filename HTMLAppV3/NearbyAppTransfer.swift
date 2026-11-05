@@ -210,7 +210,7 @@ struct NearbyAppTransferView: View {
             }
             if selectedAppIDs.contains(where: { HTMLAppBackendStore.link(for: $0) != nil }) {
                 Section("Private backend") {
-                    Label("The recipient gets a detached copy. Backend access, private keys, and Python source are excluded.",
+                    Label("V2 apps keep their public backend connection. Python source and private control keys are excluded. Legacy apps are shared without a backend connection.",
                           systemImage: "lock.shield")
                 }
             }

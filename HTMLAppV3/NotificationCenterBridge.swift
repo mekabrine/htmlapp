@@ -29,7 +29,10 @@ final class HTMLNotificationCenterDelegate: NSObject, UNUserNotificationCenterDe
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        if let appID = response.notification.request.content.userInfo["htmlAppID"] as? String,
+        let info = response.notification.request.content.userInfo
+        let backendID = info["htmlapp_backend_id"] as? String
+        let localID = backendID.flatMap { UserDefaults.standard.string(forKey: "htmlapp.runtime.localID." + $0) }
+        if let appID = (info["htmlAppID"] as? String) ?? localID,
            let url = URL(string: "htmlapp://open?id=\(appID)") {
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .htmlAppNotificationOpened, object: url)

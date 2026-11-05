@@ -43,18 +43,19 @@ When code uses a relative endpoint such as `fetch('/api/build')`, this works onl
 
 For remote integrations show a setup screen and a clear online/offline status. Do not download, cache, or rewrite API routes as if they were static assets. Avoid caching secrets. Never expose tokens in a publicly shared HTML file.
 
-## Optional Hostish backend templates
+## Runtime v2 backends
 
-Only suggest a managed backend when the user's requested feature needs it. For
-server-read JSON or a notification webhook, feature-detect
-`HTMLAppNative.backend?.status()`, then use `backend.read()` or
-`backend.notify({title,body})` as appropriate. Forge auto-provisions supported templates on save after one-time VPS pairing.
-Externally generated or imported HTML can use a backend after linking it from
-Developer → BACKEND. Explain the right setup when the app reports unlinked. Published reads must be enabled by the
-owner. Notifications need an APNs-ready server and a registered phone. Never
-put any backend keys, device tokens or deploy endpoints in the generated HTML.
-Do not claim arbitrary Python execution or encrypted chat is available through
-these templates.
+When server logic is needed, provide a complete Python source and v2 manifest in
+an inert script tag: `<script type="application/json" id="htmlapp-backend-v2">`.
+Its JSON contains `source` and `manifest`. Escape less-than characters inside
+JSON as Unicode escapes. HTMLApp deploys and validates the bundle on save.
+Use `HTMLAppNative.backend.request({path, method, body, session})` in the frontend.
+The host supplies the public app key. Sensitive routes need resource sessions.
+Use the runtime contract in the generation instructions for actual SDK methods,
+limits, checks, migrations and API formats. Never invent SDK APIs or dependencies.
+Encrypt locally with established authenticated cryptography when requested;
+never send plaintext or decryption passphrases to the server. Public app keys
+are not user authentication. Handle request failures visibly.
 
 ## Local devices and TV remotes
 

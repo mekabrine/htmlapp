@@ -1,0 +1,27 @@
+[Unit]
+Description=HTMLApp isolated Python backend manager
+PartOf=docker.service
+Requires=docker.service htmlapp-runtime-storage.service
+After=docker.service htmlapp-runtime-storage.service network-online.target
+
+[Service]
+User=root
+Group=htmlapp-gateway
+WorkingDirectory=/opt/htmlapp-runtime
+EnvironmentFile=/etc/htmlapp-template-gateway.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=/opt/htmlapp-template-gateway
+RuntimeDirectory=htmlapp-runtime
+RuntimeDirectoryMode=0750
+ExecStartPre=/opt/htmlapp-runtime/storage.sh mount
+ExecStart=/opt/htmlapp-template-gateway/.venv/bin/gunicorn --bind unix:/run/htmlapp-runtime/control.sock --umask 007 --workers 1 --threads 8 --timeout 120 --limit-request-line 4096 --limit-request-fields 24 --limit-request-field_size 2048 service:create_app()
+Restart=on-failure
+RestartSec=5
+UMask=0077
+TasksMax=256
+MemoryMax=384M
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.7.3"
-    static let compiledBuild = "98"
+    static let compiledVersion = "1.8.0"
+    static let compiledBuild = "99"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,10 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.8.0" { return [
+            Entry(id: "runtime-backends", title: "Build apps with real backends", description: "Forge can include custom Python server code. Saving deploys and checks the backend before saving your app.", symbol: "server.rack", tint: .blue),
+            Entry(id: "runtime-sharing", title: "Share apps without control keys", description: "Nearby shares keep the public connection and leave out Python source and private management keys.", symbol: "lock.shield", tint: .green)
+        ] }
         if version == "1.7.3" { return [
             Entry(id: "secret-only-backends", title: "Enter your secret and you’re connected", description: "Backend setup starts as soon as you enter your secret. Existing apps connect automatically, and new apps connect when you open or save them.", symbol: "server.rack", tint: .blue),
             Entry(id: "music-warning-once", title: "The microphone warning appears once", description: "Dismiss the music warning once to keep using the microphone. HTMLApp remembers your choice after you close it.", symbol: "mic", tint: .purple)

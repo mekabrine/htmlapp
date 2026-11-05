@@ -1,0 +1,12 @@
+[Unit]
+Description=HTMLApp quota-controlled workspace volume
+After=local-fs.target
+Before=htmlapp-runtime.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/htmlapp-runtime/storage.sh mount
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
