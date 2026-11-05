@@ -5,6 +5,41 @@
   "description": "Canonical HTMLApp native RPC method registry. Registered does not mean authorized or available on every device. Unlisted arguments remain permitted for forward compatibility.",
   "methods": [
     {
+      "method": "backend.status",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "required": [],
+      "result": "unknown"
+    },
+    {
+      "method": "backend.read",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "required": [],
+      "result": "unknown"
+    },
+    {
+      "method": "backend.notify",
+      "permission": "notifications",
+      "minimumIOS": "16.0",
+      "userInitiated": true,
+      "nativeCancellation": false,
+      "arguments": {
+        "title": "string",
+        "body": "string"
+      },
+      "required": [
+        "body"
+      ],
+      "result": "unknown"
+    },
+    {
       "method": "ai.available",
       "permission": "ai",
       "minimumIOS": "16.0",

@@ -1162,6 +1162,38 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             }
             HTMLAppNetworkDomainConsent.revoke(host: host.lowercased(), appID: appID)
             resolve(id, value: ["revoked": true])
+        case "backend.status":
+            let link = appID == "PREVIEW" ? nil : HTMLAppBackendStore.link(for: appID)
+            resolve(id, value: ["linked": link != nil, "canNotify": link?.sendKey != nil])
+        case "backend.read", "backend.notify":
+            guard appID != "PREVIEW", let link = HTMLAppBackendStore.link(for: appID) else {
+                reject(id, code: "backend_unlinked", message: "Link a backend from the saved app’s Developer menu.")
+                return
+            }
+            if method == "backend.read" {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    do {
+                        let result = try await HTMLAppBackendAPI.request(link, path: "/data", method: "GET", key: link.readKey)
+                        self.resolve(id, value: result)
+                    } catch {
+                        self.reject(id, code: "backend_request_failed", message: error.localizedDescription)
+                    }
+                }
+            } else {
+                withPermission(.notifications, id: id) { [weak self] in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        do {
+                            let result = try await HTMLAppBackendAPI.send(link, title: args["title"] as? String ?? "HTMLApp",
+                                                                           body: args["body"] as? String ?? "")
+                            self.resolve(id, value: result)
+                        } catch {
+                            self.reject(id, code: "backend_request_failed", message: error.localizedDescription)
+                        }
+                    }
+                }
+            }
         case "network.request":
             guard let host = HTMLAppNetworkBridge.validatedHost(args) else {
                 reject(id, code: "invalid_url", message: "Only public HTTPS domain URLs without IP literals, LAN or embedded credentials are allowed.")
@@ -3733,6 +3765,11 @@ enum HTMLNativeAPIScript {
           play: (url) => call('audio.play', { url: String(url || '') }),
           pause: () => call('audio.pause'),
           stop: () => call('audio.stop')
+        },
+        backend: {
+          status: () => call('backend.status'),
+          read: () => call('backend.read'),
+          notify: ({ title, body }) => call('backend.notify', { title, body })
         },
         network: {
           request: (options = {}) => {

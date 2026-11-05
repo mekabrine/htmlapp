@@ -96,6 +96,14 @@ async function testNativeRPC() {
   listeners.get('pagehide')();
   await api.ai.localComplete({ messages: [{ role: 'user', content: 'Hello' }] });
   assert.equal(sent.find(msg => msg.method === 'ai.localComplete').args.messages[0].content, 'Hello');
+  await api.backend.status();
+  await api.backend.read();
+  await api.backend.notify({ title: 'Test', body: 'Hello' });
+  assert.ok(sent.some(msg => msg.method === 'backend.status'));
+  assert.ok(sent.some(msg => msg.method === 'backend.read'));
+  const notification = sent.find(msg => msg.method === 'backend.notify');
+  assert.equal(notification.args.body, 'Hello');
+  assert.deepEqual(Object.keys(notification.args).sort(), ['body', 'title']);
   await api.ui.glassShow({ x: 20, y: 16, width: 140, height: 46 });
   assert.ok(sent.some(msg => msg.method === 'ui.glassShow' && msg.args.width === 140 && msg.args.y === 16));
   await api.ui.glassHide();

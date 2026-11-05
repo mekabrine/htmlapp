@@ -43,6 +43,19 @@ When code uses a relative endpoint such as `fetch('/api/build')`, this works onl
 
 For remote integrations show a setup screen and a clear online/offline status. Do not download, cache, or rewrite API routes as if they were static assets. Avoid caching secrets. Never expose tokens in a publicly shared HTML file.
 
+## Optional Hostish backend templates
+
+Only suggest a managed backend when the user's requested feature needs it. For
+server-read JSON or a notification webhook, feature-detect
+`HTMLAppNative.backend?.status()`, then use `backend.read()` or
+`backend.notify({title,body})` as appropriate. A backend is provisioned on the
+VPS and linked in the native Developer → BACKEND panel. Explain this step when
+the app reports that it is unlinked. Published reads must be enabled by the
+owner. Notifications need an APNs-ready server and a registered phone. Never
+put any backend keys, device tokens or deploy endpoints in the generated HTML.
+Do not claim arbitrary Python execution or encrypted chat is available through
+these templates.
+
 ## Local devices and TV remotes
 
 For a device remote, first identify the exact model or platform, verify its control protocol, and implement the actual command and pairing flow. Ask for the model if a missing detail changes which protocol works. A brand selector must choose a real implementation or say that the platform still needs a bridge. A reachability check and an accepted command do not prove the device acted on it.

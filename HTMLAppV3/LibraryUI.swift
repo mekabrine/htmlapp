@@ -46,6 +46,8 @@ struct LibraryView: View {
     @State private var shortcutPrompt = ""
     @State private var shortcutGenerationNonce = 0
     @State private var shortcutSource = "siri"
+    @AppStorage("developerMode") private var backendDeveloperMode = false
+    @State private var backendDetailsApp: SavedHTMLApp?
     @State private var aiEditorApp: SavedHTMLApp?
     @State private var editHistoryApp: SavedHTMLApp?
     @State private var aiIconApp: SavedHTMLApp?
@@ -128,6 +130,9 @@ struct LibraryView: View {
         }
         .fullScreenCover(item: $aiEditorApp) { app in
             AIGenerationView(existingApp: app).environmentObject(store).interactiveDismissDisabled(true)
+        }
+        .sheet(item: $backendDetailsApp) { app in
+            HTMLAppBackendView(app: app).environmentObject(store)
         }
         .sheet(item: $editHistoryApp) { app in
             NavigationStack {
@@ -343,7 +348,11 @@ struct LibraryView: View {
             }
             Button("Cancel", role: .cancel) { pendingDelete = nil }
         } message: {
-            Text("This removes the one canonical app and all of its folder links, HTML, icon, metadata, caches, downloaded website files, and saved permission choices.")
+            if let app = pendingDelete, HTMLAppBackendStore.link(for: app.id) != nil {
+                Text("This also deletes the linked VPS backend and its data. If offline, HTMLApp will retry when it runs online.")
+            } else {
+                Text("This removes the saved app, its folder links, and its local data.")
+            }
         }
         .confirmationDialog(
             "Delete \(pendingFolderDelete?.name ?? "this folder")?",
@@ -618,6 +627,16 @@ struct LibraryView: View {
             Button { storageManagementApp = app } label: { Label("Manage Storage", systemImage: "externaldrive") }
             Button { UIPasteboard.general.string = app.id } label: { Label("Copy ID", systemImage: "number") }
             Button { refresh(app) } label: { Label("Refresh External Sources", systemImage: "arrow.clockwise") }
+            if backendDeveloperMode {
+                Section("BACKEND") {
+                    Button { backendDetailsApp = app } label: { Label("Backend details", systemImage: "server.rack") }
+                    if let backend = HTMLAppBackendStore.link(for: app.id) {
+                        Button { UIPasteboard.general.string = backend.appID } label: {
+                            Label("Copy Backend ID", systemImage: "number")
+                        }
+                    }
+                }
+            }
         } label: { Label("Developer", systemImage: "chevron.left.forwardslash.chevron.right") }
         Button(role: .destructive) { pendingDelete = app } label: { Label("Delete", systemImage: "trash") }
     }

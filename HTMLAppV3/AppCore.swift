@@ -114,13 +114,18 @@ struct HTMLAppMain: App {
                 .task {
                     await HTMLAppOfflineSpeech.shared.preloadIfSelected()
                     await store.syncICloud()
+                    await HTMLAppBackendDeletionQueue.flush()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: HTMLAppPortableDataStore.localDataChanged)) { _ in
                     if HTMLAppICloudPreferences.includeData { store.requestICloudSync() }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: HTMLAppNetworkStatus.notification)) { _ in
+                    Task { await HTMLAppBackendDeletionQueue.flush() }
+                }
                 .onChange(of: scenePhase) { phase in
                     if phase == .active {
                         Task { await HTMLAppOfflineSpeech.shared.preloadIfSelected() }
+                        Task { await HTMLAppBackendDeletionQueue.flush() }
                         store.requestICloudSync()
                         store.claimShareExtensionFiles()
                         store.presentNextExternalHTMLImport()
@@ -960,6 +965,7 @@ final class AppStore: ObservableObject {
     }
 
     func delete(_ app: SavedHTMLApp) {
+        HTMLAppBackendDeletionQueue.enqueue(app.id)
         HTMLAppICloudPreferences.markDeleted(app.id)
         FolderAppLinkStore.shared.removeAll(appID: app.id)
         apps.removeAll { $0.id == app.id }

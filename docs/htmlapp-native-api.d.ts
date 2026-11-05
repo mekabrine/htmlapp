@@ -19,6 +19,9 @@ export type HTMLAppNativeMethod =
   | 'audio.record'
   | 'audio.stop'
   | 'audio.stopRecording'
+  | 'backend.notify'
+  | 'backend.read'
+  | 'backend.status'
   | 'background.configure'
   | 'background.list'
   | 'background.refreshNow'
@@ -200,6 +203,11 @@ export interface HTMLAppNativeAPI {
     status(permission: string): Promise<{ hostPolicy: "ask" | "allow" | "deny"; systemAuthorization: string; available: boolean; canRequest: boolean; settingsRequired: boolean; note: string }>;
     request(permission: string): Promise<{ hostAllowed: boolean }>;
     openSettings(): Promise<{ opened: boolean }>;
+  };
+  backend: {
+    status(): Promise<{ linked: boolean; canNotify: boolean }>;
+    read(): Promise<{ data: unknown }>;
+    notify(options: { title?: string; body: string }): Promise<{ accepted: boolean }>;
   };
   network: {
     status(): Promise<{ status: "unknown" | "satisfied" | "unsatisfied" | "requires_connection"; online: boolean; interface: string; expensive: boolean; constrained: boolean }>;

@@ -208,6 +208,12 @@ struct NearbyAppTransferView: View {
                     Text("Both devices must keep HTMLApp open. Once connected, your app sends automatically and this screen closes after the receiver saves it.")
                 }
             }
+            if selectedAppIDs.contains(where: { HTMLAppBackendStore.link(for: $0) != nil }) {
+                Section("Private backend") {
+                    Label("The recipient gets a detached copy. Backend access, private keys, and Python source are excluded.",
+                          systemImage: "lock.shield")
+                }
+            }
             if let transferError {
                 Section {
                     Label(transferError, systemImage: "exclamationmark.triangle")
@@ -355,3 +361,4 @@ struct NearbyAppTransferView: View {
     }
 
 }
+
