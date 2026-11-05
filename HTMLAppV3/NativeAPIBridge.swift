@@ -75,11 +75,15 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         liquidGlassView = nil
     }
 
+    func clearNativeTabs() {
+        nativeTabBar?.remove()
+        nativeTabBar = nil
+    }
+
     func shutdown() {
         clearLiquidGlass()
         HTMLAppNativeListService.dismiss(appID: appID)
-        nativeTabBar?.remove()
-        nativeTabBar = nil
+        clearNativeTabs()
         speechRecognition.stop()
         offlineSpeechLimit?.cancel()
         offlineSpeech.cancel()

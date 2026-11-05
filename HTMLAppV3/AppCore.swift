@@ -43,6 +43,7 @@ struct HTMLAppMain: App {
                 .environmentObject(store)
                 .fullScreenCover(item: $store.runningApp) { app in
                     WebRunner(app: app)
+                        .id(app.id)
                         .environmentObject(store)
                         .interactiveDismissDisabled(true)
                         .onChange(of: store.pendingSwitchApp?.id) { id in

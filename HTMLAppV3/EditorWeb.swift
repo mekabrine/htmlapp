@@ -630,6 +630,7 @@ struct HTMLWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             nativeBridge?.clearLiquidGlass()
+            nativeBridge?.clearNativeTabs()
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

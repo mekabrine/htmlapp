@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.6.84"
-    static let compiledBuild = "92"
+    static let compiledVersion = "1.6.85"
+    static let compiledBuild = "93"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.6.85" { return [
+            Entry(id: "direct-edit-prompt", title: "Edits use your own words", description: "Forge sends your edit as you wrote or spoke it. New app ideas can still be refined before building.", symbol: "pencil", tint: .blue),
+            Entry(id: "clean-app-switch", title: "Tabs stay with their app", description: "Opening a different saved app from the Home Screen clears the previous app’s tab bar.", symbol: "square.stack", tint: .green)
+        ] }
+
         if version == "1.6.84" { return [
             Entry(id: "library-voice-launch", title: "Start building from the Library mic", description: "Release the mic to start your app without opening the prompt form. Turn on Show styles for Library voice creation in Settings if you want previews first.", symbol: "sparkles", tint: .purple),
             Entry(id: "whisper-review", title: "Check what Whisper heard", description: "Your words appear briefly after transcription. Tap them to make a correction and send.", symbol: "text.bubble", tint: .blue),

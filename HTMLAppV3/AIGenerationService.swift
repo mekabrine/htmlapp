@@ -553,39 +553,12 @@ final class AIGenerationSession: ObservableObject {
             AIDebugTraceStore.shared.append("SEMANTIC EDIT CONTRACT",
                 "Scope: \(editContract.scope.rawValue); targets: \(editContract.targets.joined(separator: ", ")); capability candidates: \(editContract.recommendedCapabilities.joined(separator: ", "))")
             iconRefreshAllowed = Self.changeMayNeedIconRefresh(cleanChange) || renderedIconData == nil
-            // A short request can still be architecturally consequential.
-            // Skip the extra planning call only for safe, local edit classes.
-            let simpleScope: Bool = {
-                switch editContract.scope {
-                case .appearance, .copy, .component, .screenLayout,
-                     .accessibility, .bugFix, .performance: return true
-                case .behavior, .dataModel, .nativeCapability, .architecture: return false
-                }
-            }()
-            let safeVisualChange = editContract.scope == .appearance &&
-                cleanChange.count <= 60
-            let canApplyDirectly = cleanChange.count <= 280 && simpleScope &&
-                (editContract.interpretationConfidence >= 0.70 || safeVisualChange) &&
-                !AIHTMLAgent.needsCapabilityResearch(for: cleanChange)
-            let improvedChange: String
-            if canApplyDirectly {
-                phase = "Preparing focused patch"
-                improvedChange = editContract.implementationBrief
-                AIDebugTraceStore.shared.append(
-                    "CHANGE PLANNER",
-                    "Skipped because this is a concise local edit; the patching model can apply it directly without another AI planning round trip."
-                )
-            } else {
-                phase = "Improving the requested change"
-                improvedChange = try await AIHTMLAgent.refineRevision(editContract.implementationBrief, appBrief: refinedBrief, config: AISettingsStore.configuration(for: .planner))
-            }
-
             let suppliedResearch = researchReport.trimmingCharacters(in: .whitespacesAndNewlines)
             let shouldPlanResearch = !suppliedResearch.isEmpty || AIHTMLAgent.needsCapabilityResearch(for: change)
             let plan: AIResearchPlan
             if shouldPlanResearch {
                 phase = "Checking APIs for this change"
-                plan = try await AIHTMLAgent.planResearch(original: originalPrompt, revision: improvedChange, config: AISettingsStore.configuration(for: .planner))
+                plan = try await AIHTMLAgent.planResearch(original: originalPrompt, revision: cleanChange, config: AISettingsStore.configuration(for: .planner))
             } else {
                 phase = "Preparing focused patch"
                 plan = AIResearchPlan()
@@ -639,11 +612,8 @@ Semantic app model and preserved invariants:
 \(semanticModel.summary)
 \(checkpointExistingAppID.flatMap { ForgeAppManifestStore.load(for: $0)?.planningSummary } ?? "")
 
-Authoritative original request (takes precedence over planner assumptions):
+Requested edit:
 \(cleanChange)
-
-Implementation guidance:
-\(improvedChange)
 
 \(styleInstruction ?? "")
 """
@@ -671,7 +641,7 @@ Implementation guidance:
                 "Source bytes: \(changedSource.utf8.count); response bytes: \(response.utf8.count); section: \(streamedSection)")
             var output = try await applyEditOutputWithRecovery(
                 initialOutput,
-                requestedChange: improvedChange,
+                requestedChange: cleanChange,
                 config: config
             )
             if let issue = ForgeVisualEditQualityGate.issue(
@@ -2231,27 +2201,6 @@ Prefer the smallest complete product that already feels like a thoughtful first 
                 AIDebugTraceStore.shared.append("PLANNER FALLBACK", "Prompt refinement was unavailable; continuing with the original request. \(error.localizedDescription)")
             }
             return prompt
-        }
-    }
-
-    static func refineRevision(_ change: String, appBrief: String, config: AIProviderConfiguration) async throws -> String {
-        let system = """
-You are HTMLApp Forge's change-planning agent. Turn the requested edit into a precise implementation brief for an existing working app.
-
-Preserve every behavior, storage key, API integration, navigation path, visual convention, and user-created-data assumption that the user did not ask to change. Identify the smallest coherent change surface, any state/data migration implications, edge cases, and acceptance criteria. Resolve ambiguity conservatively and prefer reversible edits. Never invent facts, APIs, capabilities, or live data.
-
-Return only <brief>...</brief>.
-"""
-        do {
-            let text = try await AIProviderClient.complete(config: config, system: system, messages: [("user", "Current brief: \(appBrief)\nRequested change: \(change)")], timeout: 90, maxTokens: 6000, retryOnTransient: true)
-            return value("brief", in: text).trimmed.isEmpty ? change : value("brief", in: text).trimmed
-        } catch {
-            try Task.checkCancellation()
-            if error is CancellationError { throw error }
-            await MainActor.run {
-                AIDebugTraceStore.shared.append("CHANGE PLANNER FALLBACK", "Change planning was unavailable; applying the user's requested edit directly. \(error.localizedDescription)")
-            }
-            return change
         }
     }
 
