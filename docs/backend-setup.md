@@ -1,4 +1,12 @@
-# Link a Hostish backend in HTMLApp 1.7.0
+# Automatic Hostish backends in HTMLApp 1.7.1
+
+Upgrade the gateway with the matching auto-link package, then paste its VPS
+provisioning key once in **Settings → AI & Voice → Automatic backends**.
+Forge apps that need an approved document or notification backend provision
+and link on save. Retrying uses the same backend. Imported and transferred
+HTML cannot auto-provision. Keep the owner key on the VPS.
+
+The steps below are a fallback for existing backends or older builds.
 
 HTMLApp 1.7.0 uses the existing template gateway at
 `https://htmlapp.hostish.site`. Leave the Hostish agent in Screen. If the

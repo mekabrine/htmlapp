@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.7.0"
-    static let compiledBuild = "95"
+    static let compiledVersion = "1.7.1"
+    static let compiledBuild = "96"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,10 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.7.1" { return [
+            Entry(id: "automatic-backends", title: "Backends link automatically", description: "Pair your VPS once in Settings. When you save a Forge app that needs a backend, HTMLApp creates and links it for you. If you’re offline, it retries when you return.", symbol: "server.rack", tint: .blue)
+        ] }
+
         if version == "1.7.0" { return [
             Entry(id: "backend-panel", title: "Connect your apps to a backend", description: "Open Developer → Backend to link a server template, see its details and keys, and manage its saved data.", symbol: "server.rack", tint: .blue),
             Entry(id: "backend-push", title: "Send notifications from a webhook", description: "Link a notification backend and register your phone. Use its send-only key from your website or automation.", symbol: "bell", tint: .purple),

@@ -448,6 +448,11 @@ struct SettingsView: View {
             Form {
                 Section("AI & Voice") {
                     NavigationLink {
+                        HTMLAppBackendPairingView()
+                    } label: {
+                        Label("Automatic backends", systemImage: "server.rack")
+                    }
+                    NavigationLink {
                         AIConfigurationSettingsView()
                     } label: {
                         Label("AI Connection & Generation", systemImage: "sparkles")

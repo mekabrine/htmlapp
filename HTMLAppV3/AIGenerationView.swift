@@ -2237,9 +2237,11 @@ Requested edit:
             } else if let existingApp {
                 html = ForgeEditIconContext(existingApp.html).restoringIcons(in: html)
             }
+            let backendTemplate = HTMLAppBackendProvisioning.template(in: html)
             if let existingApp {
                 await store.updateFromAI(existingApp, html: html, summary: session.description.isEmpty ? existingApp.summary : session.description, note: session.lastEditSummary.isEmpty ? "AI changed this app." : session.lastEditSummary)
                 if store.apps.first(where: { $0.id == existingApp.id })?.html == html {
+                    if let backendTemplate { HTMLAppBackendProvisioning.enqueue(existingApp, template: backendTemplate) }
                     ForgeSemanticAppModelStore.save(for: existingApp.id, html: html,
                         purpose: session.description.isEmpty ? existingApp.summary : session.description,
                         editNote: session.lastEditSummary)
@@ -2254,7 +2256,7 @@ Requested edit:
                 store.notice = "Saved AI changes to \(existingApp.name)."
             } else {
                 let beforeIDs = Set(store.apps.map(\.id))
-                await store.add(html: html, summary: session.description)
+                await store.add(html: html, summary: session.description, backendTemplate: backendTemplate)
                 if let added = store.apps.first(where: { !beforeIDs.contains($0.id) }) {
                     ForgeSemanticAppModelStore.save(for: added.id, html: html, purpose: session.description)
                     workTracker.associateDraft(with: added.id)

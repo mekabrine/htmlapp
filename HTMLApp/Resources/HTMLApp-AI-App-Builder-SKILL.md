@@ -48,9 +48,9 @@ For remote integrations show a setup screen and a clear online/offline status. D
 Only suggest a managed backend when the user's requested feature needs it. For
 server-read JSON or a notification webhook, feature-detect
 `HTMLAppNative.backend?.status()`, then use `backend.read()` or
-`backend.notify({title,body})` as appropriate. A backend is provisioned on the
-VPS and linked in the native Developer → BACKEND panel. Explain this step when
-the app reports that it is unlinked. Published reads must be enabled by the
+`backend.notify({title,body})` as appropriate. Forge auto-provisions supported templates on save after one-time VPS pairing.
+Externally generated or imported HTML can use a backend after linking it from
+Developer → BACKEND. Explain the right setup when the app reports unlinked. Published reads must be enabled by the
 owner. Notifications need an APNs-ready server and a registered phone. Never
 put any backend keys, device tokens or deploy endpoints in the generated HTML.
 Do not claim arbitrary Python execution or encrypted chat is available through

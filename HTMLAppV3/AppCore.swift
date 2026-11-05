@@ -114,18 +114,25 @@ struct HTMLAppMain: App {
                 .task {
                     await HTMLAppOfflineSpeech.shared.preloadIfSelected()
                     await store.syncICloud()
+                    await HTMLAppBackendProvisioning.flush()
                     await HTMLAppBackendDeletionQueue.flush()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: HTMLAppPortableDataStore.localDataChanged)) { _ in
                     if HTMLAppICloudPreferences.includeData { store.requestICloudSync() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: HTMLAppNetworkStatus.notification)) { _ in
-                    Task { await HTMLAppBackendDeletionQueue.flush() }
+                    Task {
+                        await HTMLAppBackendProvisioning.flush()
+                        await HTMLAppBackendDeletionQueue.flush()
+                    }
                 }
                 .onChange(of: scenePhase) { phase in
                     if phase == .active {
                         Task { await HTMLAppOfflineSpeech.shared.preloadIfSelected() }
-                        Task { await HTMLAppBackendDeletionQueue.flush() }
+                        Task {
+                            await HTMLAppBackendProvisioning.flush()
+                            await HTMLAppBackendDeletionQueue.flush()
+                        }
                         store.requestICloudSync()
                         store.claimShareExtensionFiles()
                         store.presentNextExternalHTMLImport()
@@ -427,7 +434,7 @@ final class AppStore: ObservableObject {
         }
     }
 
-    func add(html: String, summary: String) async {
+    func add(html: String, summary: String, backendTemplate: String? = nil) async {
         let name = HTMLTools.title(in: html) ?? "Untitled App"
         let icon = await HTMLAppIconTools.savedIcon(html: html, name: name)
         let now = Date()
@@ -443,6 +450,7 @@ final class AppStore: ObservableObject {
         pendingInsertionFolderID = nil
         apps.insert(app, at: 0)
         save()
+        if let backendTemplate { HTMLAppBackendProvisioning.enqueue(app, template: backendTemplate) }
         Task(priority: .utility) { await SourceCache.shared.refresh(app: app, force: false) }
     }
 
@@ -965,6 +973,7 @@ final class AppStore: ObservableObject {
     }
 
     func delete(_ app: SavedHTMLApp) {
+        HTMLAppBackendProvisioning.cancel(app.id)
         HTMLAppBackendDeletionQueue.enqueue(app.id)
         HTMLAppICloudPreferences.markDeleted(app.id)
         FolderAppLinkStore.shared.removeAll(appID: app.id)

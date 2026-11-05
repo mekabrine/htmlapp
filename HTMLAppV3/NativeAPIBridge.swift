@@ -1167,14 +1167,14 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             resolve(id, value: ["linked": link != nil, "canNotify": link?.sendKey != nil])
         case "backend.read", "backend.notify":
             guard appID != "PREVIEW", let link = HTMLAppBackendStore.link(for: appID) else {
-                reject(id, code: "backend_unlinked", message: "Link a backend from the saved app’s Developer menu.")
+                reject(id, code: "backend_unlinked", message: "Pair your VPS in Settings → Automatic backends, then save the Forge app or retry setup from Backend details.")
                 return
             }
             if method == "backend.read" {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     do {
-                        let result = try await HTMLAppBackendAPI.request(link, path: "/data", method: "GET", key: link.readKey)
+                        let result = try await HTMLAppBackendAPI.request(link, path: "/data", method: "GET", key: link.runtimeReadKey ?? link.readKey)
                         self.resolve(id, value: result)
                     } catch {
                         self.reject(id, code: "backend_request_failed", message: error.localizedDescription)

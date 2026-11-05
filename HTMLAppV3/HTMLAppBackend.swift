@@ -11,12 +11,14 @@ struct HTMLAppBackendLink: Codable {
     let managementKey: String
     let readKey: String
     let sendKey: String?
+    let runtimeReadKey: String?
 
     var isValid: Bool {
         appID.range(of: #"^[A-Z2-7]{12}$"#, options: .regularExpression) != nil
             && Self.isKey(managementKey, length: 20)
             && Self.isKey(readKey, length: 32)
             && (sendKey.map { Self.isKey($0, length: 32) } ?? true)
+            && (runtimeReadKey.map { Self.isKey($0, length: 32) } ?? true)
     }
 
     private static func isKey(_ value: String, length: Int) -> Bool {
@@ -29,6 +31,7 @@ struct HTMLAppBackendLink: Codable {
 
 struct HTMLAppBackendError: LocalizedError {
     let message: String
+    var status: Int? = nil
     var errorDescription: String? { message }
 }
 
@@ -143,7 +146,25 @@ enum HTMLAppBackendAPI {
         guard link.isValid, ["", "/data", "/device", "/notify", "/deploy"].contains(path) else {
             throw HTMLAppBackendError(message: "Invalid backend link or endpoint.")
         }
-        var request = URLRequest(url: url(link, path: path))
+        return try await authenticatedRequest(url(link, path: path), method: method, key: key, body: body)
+    }
+
+    static func pair(_ key: String) async throws {
+        _ = try await authenticatedRequest(URL(string: origin + "/v1/provision/status")!,
+                                           method: "GET", key: key, body: nil)
+    }
+
+    static func provision(clientID: String, name: String, template: String, key: String) async throws -> HTMLAppBackendLink {
+        let json = try await authenticatedRequest(URL(string: origin + "/v1/provision")!,
+            method: "POST", key: key, body: ["clientID": clientID, "name": name, "template": template])
+        let link = try JSONDecoder().decode(HTMLAppBackendLink.self, from: JSONSerialization.data(withJSONObject: json))
+        guard link.isValid else { throw HTMLAppBackendError(message: "The gateway returned invalid credentials.") }
+        return link
+    }
+
+    private static func authenticatedRequest(_ url: URL, method: String, key: String,
+                                             body: [String: Any]?) async throws -> [String: Any] {
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
         if let body {
@@ -157,7 +178,7 @@ enum HTMLAppBackendAPI {
         }
         guard (200..<300).contains(http.statusCode) else {
             throw HTMLAppBackendError(message: (json["error"] as? String).map { String($0.prefix(180)) }
-                                       ?? "The backend rejected the request (HTTP \(http.statusCode)).")
+                                       ?? "The backend rejected the request (HTTP \(http.statusCode)).", status: http.statusCode)
         }
         return json
     }
@@ -196,6 +217,7 @@ struct HTMLAppBackendStatus {
     let deviceRegistered: Bool
 }
 
+@MainActor
 struct HTMLAppBackendView: View {
     let app: SavedHTMLApp
     @EnvironmentObject private var store: AppStore
@@ -324,7 +346,18 @@ struct HTMLAppBackendView: View {
                     }
                 } else {
                     Section("Connect a backend") {
-                        Text("Create an approved template on your VPS, then paste its provisioning JSON here. Only this app will have access.")
+                        if let status = HTMLAppBackendProvisioning.status(for: app.id) {
+                            Text(status)
+                            Button("Retry automatic setup") {
+                                run {
+                                    await HTMLAppBackendProvisioning.flush()
+                                    link = HTMLAppBackendStore.link(for: app.id)
+                                    if let link { backend = try await HTMLAppBackendAPI.status(link) }
+                                    else { message = HTMLAppBackendProvisioning.status(for: app.id) }
+                                }
+                            }
+                        }
+                        Text("For new apps, pair your VPS in Settings → AI & Voice → Automatic backends. You can also link an existing backend using its provisioning JSON.")
                         SecureField("Provisioning JSON", text: $provisioning)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -461,5 +494,158 @@ struct HTMLAppBackendView: View {
         try bytes.write(to: destination, options: [.atomic, .completeFileProtection])
         source = text
         shareURL = destination
+    }
+}
+
+
+// Only Forge saves opt into provisioning. Imported and Nearby copies cannot
+// trigger provisioning by including a marker in their HTML.
+@MainActor
+enum HTMLAppBackendProvisioning {
+    private struct Pending: Codable {
+        var name: String
+        var template: String
+        var clientID = UUID().uuidString
+        var attempted = false
+        var deleted = false
+        var error: String?
+    }
+
+    private static let account = "backend-provision-key"
+    private static let queue = "htmlapp.backend.pendingProvision"
+    private static var running = false
+    static var isPaired: Bool { KeychainValueStore.read(account: account) != nil }
+
+    static func template(in html: String) -> String? {
+        let source = String(html.prefix(32_000))
+        let pattern = #"<meta\s+name\s*=\s*["']htmlapp-backend["']\s+content\s*=\s*["'](document|notification)["']\s*/?>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+              let range = Range(match.range(at: 1), in: source) else { return nil }
+        let value = source[range].lowercased()
+        let operation = value == "notification" ? "notify" : "read"
+        return html.contains(".backend." + operation) || html.contains(".backend?." + operation) ? value : nil
+    }
+
+    private static var jobs: [String: Pending] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: queue) else { return [:] }
+            return (try? JSONDecoder().decode([String: Pending].self, from: data)) ?? [:]
+        }
+        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: queue) }
+    }
+
+    static func pair(_ key: String) async throws {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.utf8.count == 64, trimmed.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
+            throw HTMLAppBackendError(message: "Paste the 64-character provisioning key from your VPS.")
+        }
+        try await HTMLAppBackendAPI.pair(trimmed)
+        KeychainValueStore.write(trimmed, account: account)
+        guard KeychainValueStore.read(account: account) == trimmed else {
+            throw HTMLAppBackendError(message: "The device could not save the pairing key.")
+        }
+        await flush()
+    }
+
+    static func status(for appID: String) -> String? {
+        guard let job = jobs[appID] else { return nil }
+        return job.error ?? (isPaired ? "Waiting for automatic backend setup." : "Pair your VPS once in Settings to finish setup.")
+    }
+
+    static func enqueue(_ app: SavedHTMLApp, template: String) {
+        guard HTMLAppBackendStore.link(for: app.id) == nil, jobs[app.id] == nil else { return }
+        jobs[app.id] = Pending(name: String(app.name.prefix(40)), template: template)
+        Task { await flush() }
+    }
+
+    static func cancel(_ appID: String) {
+        guard var job = jobs[appID] else { return }
+        if job.attempted {
+            job.deleted = true
+            jobs[appID] = job
+        } else {
+            jobs.removeValue(forKey: appID)
+        }
+    }
+
+    static func flush() async {
+        guard !running, let key = KeychainValueStore.read(account: account) else { return }
+        running = true
+        defer { running = false }
+        for appID in jobs.keys.sorted() {
+            guard var job = jobs[appID] else { continue }
+            if HTMLAppBackendStore.link(for: appID) != nil {
+                if job.deleted { HTMLAppBackendDeletionQueue.enqueue(appID) }
+                jobs.removeValue(forKey: appID)
+                continue
+            }
+            job.attempted = true
+            jobs[appID] = job
+            do {
+                let link = try await HTMLAppBackendAPI.provision(clientID: job.clientID, name: job.name, template: job.template, key: key)
+                try HTMLAppBackendStore.save(link, for: appID)
+                if jobs[appID]?.deleted == true {
+                    HTMLAppBackendDeletionQueue.enqueue(appID)
+                } else if job.template == "notification" && UIApplication.shared.applicationState == .active {
+                    // Registration can still require the user's iOS consent.
+                    // A push failure must not roll back an otherwise valid link.
+                    try? await registerPhoneIfReady(link)
+                }
+                jobs.removeValue(forKey: appID)
+            } catch {
+                if (error as? HTMLAppBackendError)?.status == 410 && jobs[appID]?.deleted == true {
+                    jobs.removeValue(forKey: appID)
+                } else {
+                    jobs[appID]?.error = error.localizedDescription
+                }
+            }
+        }
+    }
+    private static func registerPhoneIfReady(_ link: HTMLAppBackendLink) async throws {
+        let details = try await HTMLAppBackendAPI.status(link)
+        guard details.pushConfigured, !details.deviceRegistered else { return }
+        let token: String = try await withCheckedThrowingContinuation { continuation in
+            HTMLAppRemotePushService.shared.register { continuation.resume(with: $0) }
+        }
+        _ = try await HTMLAppBackendAPI.request(link, path: "/device", method: "PUT",
+                                               key: link.managementKey, body: ["deviceToken": token])
+    }
+
+}
+
+@MainActor
+struct HTMLAppBackendPairingView: View {
+    @State private var key = ""
+    @State private var busy = false
+    @State private var paired = HTMLAppBackendProvisioning.isPaired
+    @State private var error: String?
+
+    var body: some View {
+        Form {
+            Section {
+                Text(paired ? "VPS paired. Forge apps can set up their backends when saved."
+                     : "Pair this device once. Forge apps that need a backend will link automatically when saved.")
+                SecureField("VPS provisioning key", text: $key)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button(paired ? "Update pairing" : "Pair with VPS") {
+                    busy = true
+                    error = nil
+                    Task { @MainActor in
+                        defer { busy = false }
+                        do {
+                            try await HTMLAppBackendProvisioning.pair(key)
+                            paired = true
+                            key = ""
+                        } catch { self.error = error.localizedDescription }
+                    }
+                }
+                .disabled(busy || key.isEmpty)
+                if busy { ProgressView() }
+                if let error { Text(error).foregroundStyle(.secondary) }
+            }
+        }
+        .navigationTitle("Automatic backends")
     }
 }
