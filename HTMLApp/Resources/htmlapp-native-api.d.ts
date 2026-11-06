@@ -194,6 +194,8 @@ export interface HTMLAppAIAgentSession {
   readonly tools: string[];
 }
 
+export interface HTMLAppWidgetTimeRange { startMs: number; endMs: number; upcomingLabel?: string; inProgressLabel?: string; completedLabel?: string; }
+export interface HTMLAppDynamicWidgetSnapshot { timeRange?: HTMLAppWidgetTimeRange; display?: "countdown" | "elapsed" | "remainingProgress" | "elapsedProgress"; deadlineMs?: number; value?: string; [key: string]: unknown; }
 export interface HTMLAppNativeAPI {
   readonly protocolVersion: number;
   call<T = unknown>(method: HTMLAppNativeMethod, args?: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<T>;
@@ -206,6 +208,12 @@ export interface HTMLAppNativeAPI {
     status(permission: string): Promise<{ hostPolicy: "ask" | "allow" | "deny"; systemAuthorization: string; available: boolean; canRequest: boolean; settingsRequired: boolean; note: string }>;
     request(permission: string): Promise<{ hostAllowed: boolean }>;
     openSettings(): Promise<{ opened: boolean }>;
+  };
+  widgets: {
+    configure(definition: { id: string; name?: string; families: string[]; snapshot: HTMLAppDynamicWidgetSnapshot; [key: string]: unknown }): Promise<unknown>;
+    list(): Promise<unknown>;
+    remove(id?: string): Promise<unknown>;
+    reload(): Promise<unknown>;
   };
   backend: {
     subscribe(session: string): Promise<Record<string, unknown>>;

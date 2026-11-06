@@ -23,6 +23,43 @@ final class WidgetTests: XCTestCase {
         let changed = HTMLAppJSONPath.applyBindings(["deadlineMs": "event.ends"], json: ["event": ["ends": 1_900_000_000_000.0]], to: snapshot)
         XCTAssertEqual(changed.deadlineMs, 1_900_000_000_000)
     }
+    func testGenericTimeRangeValidationBindingsAndCompatibility() throws {
+        var snapshot = HTMLAppWidgetSnapshot.placeholder
+        snapshot.value = nil
+        snapshot.timeRange = HTMLAppWidgetTimeRange(startMs: 1_000, endMs: 11_000)
+        snapshot.display = "remainingProgress"
+        XCTAssertTrue(snapshot.hasDisplayValue)
+        XCTAssertTrue(snapshot.showsTimeProgress)
+        XCTAssertTrue(snapshot.countsDown)
+        snapshot.display = "elapsedProgress"
+        XCTAssertFalse(snapshot.countsDown)
+        let restored = try JSONDecoder().decode(HTMLAppWidgetSnapshot.self, from: JSONEncoder().encode(snapshot))
+        XCTAssertEqual(restored, snapshot)
+        XCTAssertNil(HTMLAppWidgetTimeRange(startMs: 2_000, endMs: 1_000).interval)
+        XCTAssertNil(HTMLAppWidgetTimeRange(startMs: 1_000, endMs: 1_000).interval)
+        XCTAssertNil(HTMLAppWidgetTimeRange(startMs: .nan, endMs: 1_000).interval)
+        let changed = HTMLAppJSONPath.applyBindings(["timeRange.startMs": "start", "timeRange.endMs": "end"],
+            json: ["start": 20_000.0, "end": 30_000.0], to: snapshot)
+        XCTAssertEqual(changed.nativeTimeInterval?.lowerBound, Date(timeIntervalSince1970: 20))
+        XCTAssertEqual(changed.nativeTimeInterval?.upperBound, Date(timeIntervalSince1970: 30))
+        XCTAssertEqual(snapshot.presentation(at: Date(timeIntervalSince1970: 0)).footer, "Upcoming")
+        XCTAssertEqual(snapshot.presentation(at: Date(timeIntervalSince1970: 1)).footer, "In progress")
+        XCTAssertEqual(snapshot.presentation(at: Date(timeIntervalSince1970: 11)).footer, "Finished")
+    }
+    func testTimeRangeTimelineContainsOnlyKnownBoundaries() async {
+        var widget = definition("time-range")
+        widget.snapshot.timeRange = HTMLAppWidgetTimeRange(startMs: 10_000, endMs: 20_000,
+            upcomingLabel: "Soon", inProgressLabel: "Active", completedLabel: "Done")
+        widget.snapshot.display = "elapsedProgress"
+        let before = await HTMLAppWidgetTimeline.make(definition: widget, now: Date(timeIntervalSince1970: 5))
+        XCTAssertEqual(before.entries.map { $0.date.timeIntervalSince1970 }, [5, 10, 20])
+        XCTAssertEqual(before.entries.map { $0.definition.snapshot.footer }, ["Soon", "Active", "Done"])
+        let during = await HTMLAppWidgetTimeline.make(definition: widget, now: Date(timeIntervalSince1970: 15))
+        XCTAssertEqual(during.entries.map { $0.date.timeIntervalSince1970 }, [15, 20])
+        let after = await HTMLAppWidgetTimeline.make(definition: widget, now: Date(timeIntervalSince1970: 25))
+        XCTAssertEqual(after.entries.count, 1)
+        XCTAssertEqual(after.entries.first?.definition.snapshot.footer, "Done")
+    }
     func definition(_ id: String, primary: Bool = true) -> HTMLAppWidgetDefinition {
         var d = HTMLAppWidgetDefinition.placeholder(id: id)
         d.appID = "test-app"; d.primary = primary

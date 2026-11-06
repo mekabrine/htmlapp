@@ -1243,19 +1243,19 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
     private func ensureRuntimeBackend(config: AIProviderConfiguration, request: String? = nil) async throws {
         let intent = request ?? originalPrompt
         for attempt in 0...2 {
-            let issues = ForgeBackendContract.issues(request: intent, html: streamedHTML, required: runtimeBackendRequired)
+            let issues = ForgeBackendContract.issues(request: intent, html: streamedHTML, required: runtimeBackendRequired) + ForgeWidgetTimeContract.issues(request: intent, html: streamedHTML)
             guard !issues.isEmpty else { return }
             guard attempt < 2 else {
-                throw HTMLAppBackendError(message: "The requested backend is incomplete. " + issues.joined(separator: " "), status: 422)
+                throw HTMLAppBackendError(message: "The requested runtime feature is incomplete. " + issues.joined(separator: " "), status: 422)
             }
             try Task.checkCancellation()
-            phase = "Building the backend"
+            phase = ForgeBackendContract.requiresBackend(request: intent, html: streamedHTML) ? "Building the backend" : "Building widget updates"
             AIDebugTraceStore.shared.append("BACKEND COMPLETENESS", issues.joined(separator: "\n"))
             let icon = ForgeEditIconContext(streamedHTML)
             let response = try await AIProviderClient.complete(config: config,
                 system: AIHTMLAgent.patchSystemPrompt(research: lastResearch),
                 messages: [("user", """
-                Complete the requested backend workflow. Preserve the current app identity and working UI.
+                Complete the requested runtime and widget workflow. Time widgets alone do not need a server. Only introduce a backend if the requested workflow requires it. Preserve the current app identity and working UI.
                 The VPS supports generated Python; do not replace the requested server feature with a local test.
                 Authoritative request: \(intent)
                 Blocking issues: \(issues.joined(separator: "\n"))
@@ -2318,7 +2318,7 @@ REMOTE PUSH AND BACKGROUND VOICE:
 HTMLAPP LIVE ACTIVITY COUNTDOWNS AND WIDGETS:
 - For any Live Activity representing a timer or deadline, include primaryDeadlineMs and optionally secondaryDeadlineMs as absolute Unix milliseconds in liveActivities.start/update. Native WidgetKit displays these with Text(date, style: .timer), so they continue counting while HTMLApp is suspended. Do NOT rely on one-minute JavaScript calls to refresh strings in the Lock Screen.
 - Continue to send strings for fallback content; use liveActivities.update when plans/deadlines actually change, rather than on every second or minute.
-- Published widgets are snapshot-based and iOS controls refresh budgets; never promise second-by-second or exact 15-minute background reloads. For countdown widgets, set snapshot.deadlineMs to the absolute Unix timestamp in milliseconds. WidgetKit renders a bounded native countdown in every family even while the extension is inactive; it stops at zero. Do not use setInterval or repeated widget reloads to update remaining-time text. Keep value as readable fallback text.
+- Published widgets are snapshot-based and iOS controls refresh budgets; never promise second-by-second or exact 15-minute background reloads. For time progress use snapshot.timeRange:{startMs,endMs} with display:remainingProgress or elapsedProgress; for countdown text use display:countdown (legacy deadlineMs remains supported). Use absolute Unix milliseconds. WidgetKit renders a bounded native countdown in every family even while the extension is inactive; it stops at zero. Do not use setInterval or repeated widget reloads to update remaining-time text. Keep value as readable fallback text.
 
 WIDGET FAMILY COMPLETENESS (REQUIRED WHEN ADDING WIDGETS):
 - If the app benefits from a Home Screen widget, implement ALL THREE Home Screen families: systemSmall, systemMedium, and systemLarge. Do not publish just a small widget. Configure a widget definition with families: ["systemSmall","systemMedium","systemLarge"], and make each family useful at its available size: small = essential glanceable metric/action context, medium = richer snapshot, large = detailed summary or multi-item view. WidgetKit owns native family rendering. Avoid text overflow and empty placeholders.

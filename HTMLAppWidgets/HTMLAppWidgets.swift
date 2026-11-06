@@ -24,14 +24,23 @@ struct HTMLAppWidgetEntry: TimelineEntry {
 }
 
 enum HTMLAppWidgetTimeline {
-    static func make(definition: HTMLAppWidgetDefinition) async -> Timeline<HTMLAppWidgetEntry> {
+    static func make(definition: HTMLAppWidgetDefinition, now: Date = Date()) async -> Timeline<HTMLAppWidgetEntry> {
         // Providers are read-only. A slow network response must not revert shared publications.
         let refreshed = definition // Display committed App Group content immediately; never block on HTTPS.
         // Request shorter timelines for generated widgets. WidgetKit owns
         // actual background scheduling and may delay refreshes to save power.
         let interval = max(15, refreshed.refresh?.intervalMinutes ?? 30)
-        return Timeline(entries: [.init(date: Date(), definition: refreshed)],
-                        policy: .after(Date().addingTimeInterval(TimeInterval(interval * 60))))
+        var dates = [now]
+        if let range = refreshed.snapshot.nativeTimeInterval {
+            dates += [range.lowerBound, range.upperBound].filter { $0 > now }
+        }
+        let entries = Array(Set(dates)).sorted().map { date -> HTMLAppWidgetEntry in
+            var value = refreshed
+            value.snapshot = refreshed.snapshot.presentation(at: date)
+            return .init(date: date, definition: value)
+        }
+        return Timeline(entries: entries,
+                        policy: .after(now.addingTimeInterval(TimeInterval(interval * 60))))
     }
 }
 
@@ -128,12 +137,27 @@ struct HTMLAppWidgetView: View {
     private var snapshot: HTMLAppWidgetSnapshot { entry.definition.snapshot }
     @ViewBuilder
     private var dynamicValue: some View {
-        if let deadline = snapshot.countdownDeadline {
+        if let range = snapshot.nativeTimeInterval {
+            Text(timerInterval: range, countsDown: snapshot.countsDown).monospacedDigit()
+        } else if let deadline = snapshot.countdownDeadline {
             // Bounded native timer stops at zero instead of counting up past the event.
             Text(timerInterval: min(entry.date, deadline)...deadline, countsDown: true)
                 .monospacedDigit()
         } else {
             Text(snapshot.value ?? "—")
+        }
+    }
+
+    @ViewBuilder
+    private var timeProgress: some View {
+        if let range = snapshot.nativeTimeInterval, snapshot.showsTimeProgress {
+            ProgressView(timerInterval: range, countsDown: snapshot.countsDown) {
+                EmptyView()
+            } currentValueLabel: {
+                EmptyView()
+            }
+            .tint(accent)
+            .accessibilityLabel(snapshot.title ?? "Time progress")
         }
     }
 
@@ -175,7 +199,7 @@ struct HTMLAppWidgetView: View {
             if let symbol = snapshot.systemSymbol, !symbol.isEmpty {
                 Image(systemName: symbol)
             }
-            if snapshot.countdownDeadline != nil {
+            if snapshot.nativeTimeInterval != nil || snapshot.countdownDeadline != nil {
                 Text(snapshot.title ?? entry.definition.name).lineLimit(1)
                 dynamicValue.lineLimit(1).minimumScaleFactor(0.6)
             } else {
@@ -186,7 +210,10 @@ struct HTMLAppWidgetView: View {
 
     private var circularView: some View {
         ZStack {
-            if let progress = snapshot.progress {
+            if snapshot.showsTimeProgress {
+                timeProgress.progressViewStyle(.circular)
+                circularCenter
+            } else if let progress = snapshot.progress {
                 Gauge(value: min(max(progress, 0), 1)) {
                     EmptyView()
                 } currentValueLabel: {
@@ -226,6 +253,7 @@ struct HTMLAppWidgetView: View {
                     .font(.headline)
                     .lineLimit(1)
             }
+            if snapshot.showsTimeProgress { timeProgress.progressViewStyle(.linear) }
             if let footer = snapshot.footer ?? snapshot.subtitle, !footer.isEmpty {
                 Text(footer)
                     .font(.caption2)
@@ -239,7 +267,10 @@ struct HTMLAppWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             header
             Spacer(minLength: 0)
-            if snapshot.layout?.lowercased() == "ring",
+            if snapshot.showsTimeProgress {
+                heroValue
+                timeProgress.progressViewStyle(.linear)
+            } else if snapshot.layout?.lowercased() == "ring",
                let progress = snapshot.progress {
                 ZStack {
                     Circle().stroke(accent.opacity(0.20), lineWidth: 12)
@@ -275,7 +306,9 @@ struct HTMLAppWidgetView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if snapshot.layout?.lowercased() == "image", let image = decodedImage {
+            if snapshot.showsTimeProgress {
+                timeProgress.progressViewStyle(.linear).frame(maxWidth: 140)
+            } else if snapshot.layout?.lowercased() == "image", let image = decodedImage {
                 image
                     .resizable()
                     .scaledToFill()
@@ -305,16 +338,19 @@ struct HTMLAppWidgetView: View {
     private var largeCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
+            if snapshot.nativeTimeInterval != nil { heroValue }
             if snapshot.layout?.lowercased() == "image", let image = decodedImage {
                 image
                     .resizable()
                     .scaledToFill()
                     .frame(maxWidth: .infinity, maxHeight: 140)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            } else {
+            } else if snapshot.nativeTimeInterval == nil {
                 heroValue
             }
-            if let progress = snapshot.progress {
+            if snapshot.showsTimeProgress {
+                timeProgress.progressViewStyle(.linear)
+            } else if let progress = snapshot.progress {
                 ProgressView(value: min(max(progress, 0), 1))
                     .tint(accent)
             }

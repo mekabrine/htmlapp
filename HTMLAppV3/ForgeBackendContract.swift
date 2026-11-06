@@ -18,12 +18,24 @@ enum ForgeBackendContract {
     Do not invent a free relay or silently add a paid dependency. Never label an in-app
     poll or local test as a delivered remote push. Still implement the working backend.
 
-    COUNTDOWN WIDGETS: publish snapshot.deadlineMs as an absolute Unix millisecond
-    timestamp, not a formatted remaining-time string. iOS renders a native bounded
-    timer in Home Screen and Lock Screen families without per-second app refreshes.
-    Publish on event creation/change/deletion and app activation, not every second.
-    Keep a readable snapshot.value fallback. Schedule an optional local reminder for
-    the deadline; the timer itself is not a notification or a background network task.
+    DYNAMIC WIDGET CONTRACT:
+    For time-based widgets publish snapshot.timeRange:{startMs,endMs} (absolute Unix
+    milliseconds, end strictly after start), plus snapshot.display set to countdown,
+    elapsed, remainingProgress or elapsedProgress. Optional timeRange.upcomingLabel,
+    inProgressLabel and completedLabel customize generic boundary states. WidgetKit
+    renders native timers and progress from these dates without per-second JS.
+    remainingProgress empties; elapsedProgress fills. Circular Lock Screen widgets
+    use the system circular progress style; Home Screen/rectangular widgets use a
+    native bar. Inline widgets show timer text. Do not promise arbitrary live percent
+    text or custom animated paths: a formatted percent/progress fraction is static.
+    The host schedules start/end timeline entries (iOS controls exact display timing).
+    Publish on create/change/delete and activation, not every second. Keep snapshot.value
+    as fallback. snapshot.deadlineMs remains supported for countdown-only old apps.
+    Use the user's actual model/time zone to compute start/end, including date rollover.
+    Local dataBindings and remote JSON bindings support timeRange.startMs/endMs.
+    Time progress is not task completion: keep fixed progress for non-time metrics.
+    Known future state is a timeline; changing remote data is cached with an honest
+    last-updated state and opportunistic refresh. None of these wake arbitrary JS.
 
     MANAGED RUNTIME V2 — AUTHORITATIVE BACKEND CAPABILITY:
     HTMLApp can deploy generated Python servers automatically using the owner's saved secret.
@@ -89,5 +101,23 @@ enum ForgeBackendContract {
             }
             return result
         } catch { return ["Repair the runtime bundle: " + error.localizedDescription] }
+    }
+}
+
+/// Catch explicit requests for a live time widget before accepting a fixed snapshot.
+enum ForgeWidgetTimeContract {
+    static func issues(request: String, html: String) -> [String] {
+        let text = request.lowercased()
+        guard text.contains("widget"), html.contains("widgets.configure") else { return [] }
+        let progress = text.contains("progress") && ["time", "timer", "duration", "elapsed", "remaining"].contains(where: text.contains)
+        let timer = ["countdown", "time remaining", "time left", "elapsed time"].contains(where: text.contains)
+        guard progress || timer else { return [] }
+        if progress && (!html.contains("timeRange") || (!html.contains("remainingProgress") && !html.contains("elapsedProgress"))) {
+            return ["Time-based widget progress must publish snapshot.timeRange with startMs/endMs and display remainingProgress or elapsedProgress, not a fixed percent or progress fraction."]
+        }
+        if timer && !html.contains("timeRange") && !html.contains("deadlineMs") {
+            return ["The live timer widget needs absolute timeRange dates or deadlineMs, not formatted remaining-time snapshot text."]
+        }
+        return []
     }
 }

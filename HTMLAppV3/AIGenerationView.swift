@@ -2240,7 +2240,7 @@ Requested edit:
                 html = ForgeEditIconContext(existingApp.html).restoringIcons(in: html)
             }
             do {
-                let backendIssues = ForgeBackendContract.issues(request: session.originalPrompt, html: html, required: session.runtimeBackendRequired)
+                let backendIssues = ForgeBackendContract.issues(request: session.originalPrompt, html: html, required: session.runtimeBackendRequired) + ForgeWidgetTimeContract.issues(request: session.originalPrompt, html: html)
                 guard backendIssues.isEmpty else { throw HTMLAppBackendError(message: backendIssues.joined(separator: " "), status: 422) }
                 if let bundle = try HTMLAppRuntimeBundle.extract(html) {
                     try await HTMLAppRuntimeBackend.deploy(localID: existingApp?.id ?? runtimeCreationID,

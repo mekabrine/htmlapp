@@ -83,9 +83,32 @@ struct HTMLAppWidgetItem: Codable, Hashable, Identifiable {
     }
 }
 
+/// A declarative interval; no app-specific meaning or JavaScript is needed by WidgetKit.
+struct HTMLAppWidgetTimeRange: Codable, Hashable {
+    var startMs: Double
+    var endMs: Double
+    var upcomingLabel: String? = nil
+    var inProgressLabel: String? = nil
+    var completedLabel: String? = nil
+
+    var interval: ClosedRange<Date>? {
+        guard HTMLAppWidgetSnapshot.validDeadline(startMs) != nil,
+              HTMLAppWidgetSnapshot.validDeadline(endMs) != nil, endMs > startMs else { return nil }
+        return Date(timeIntervalSince1970: startMs / 1000)...Date(timeIntervalSince1970: endMs / 1000)
+    }
+    func label(at date: Date) -> String {
+        guard let interval else { return "Unavailable" }
+        if date < interval.lowerBound { return upcomingLabel ?? "Upcoming" }
+        if date >= interval.upperBound { return completedLabel ?? "Finished" }
+        return inProgressLabel ?? "In progress"
+    }
+}
+
 struct HTMLAppWidgetSnapshot: Codable, Hashable {
     var layout: String?
     var deadlineMs: Double? = nil
+    var timeRange: HTMLAppWidgetTimeRange? = nil
+    var display: String? = nil
     var eyebrow: String?
     var title: String?
     var subtitle: String?
@@ -109,8 +132,31 @@ struct HTMLAppWidgetSnapshot: Codable, Hashable {
     var countdownDeadline: Date? {
         Self.validDeadline(deadlineMs).map { Date(timeIntervalSince1970: $0 / 1000) }
     }
+    static let timeDisplays: Set<String> = ["countdown", "elapsed", "remainingProgress", "elapsedProgress"]
+    var nativeTimeInterval: ClosedRange<Date>? { timeRange?.interval }
+    var countsDown: Bool { !["elapsed", "elapsedProgress"].contains(display ?? "countdown") }
+    var showsTimeProgress: Bool {
+        nativeTimeInterval != nil && ["remainingProgress", "elapsedProgress"].contains(display ?? "")
+    }
+    func presentation(at date: Date) -> Self {
+        var result = self
+        if nativeTimeInterval != nil, let timeRange {
+            result.subtitle = timeRange.label(at: date)
+            result.footer = timeRange.label(at: date)
+            // A formatted percent is a snapshot, not a dynamic timer value.
+            result.unit = nil
+        }
+        return result
+    }
+    mutating func setTimeBoundary(_ field: String, milliseconds: Double?) {
+        guard let milliseconds = Self.validDeadline(milliseconds) else { timeRange = nil; return }
+        var range = timeRange ?? HTMLAppWidgetTimeRange(startMs: 0, endMs: 0)
+        if field == "timeRange.startMs" { range.startMs = milliseconds }
+        else { range.endMs = milliseconds }
+        timeRange = range
+    }
     var hasDisplayValue: Bool {
-        countdownDeadline != nil || !(value ?? "").isEmpty
+        nativeTimeInterval != nil || countdownDeadline != nil || !(value ?? "").isEmpty
     }
 
     static let placeholder = HTMLAppWidgetSnapshot(
@@ -323,6 +369,7 @@ enum HTMLAppWidgetStore {
                         switch field {
                         case "title": widgets[index].snapshot.title = String(parsed.prefix(100))
                         case "subtitle": widgets[index].snapshot.subtitle = String(parsed.prefix(180))
+                        case "timeRange.startMs", "timeRange.endMs": widgets[index].snapshot.setTimeBoundary(field, milliseconds: Double(parsed))
                         case "deadlineMs": widgets[index].snapshot.deadlineMs = HTMLAppWidgetSnapshot.validDeadline(Double(parsed))
                         case "value": widgets[index].snapshot.value = String(parsed.prefix(50))
                         case "footer": widgets[index].snapshot.footer = String(parsed.prefix(180))
@@ -608,6 +655,9 @@ enum HTMLAppJSONPath {
             case "eyebrow": snapshot.eyebrow = displayString(value)
             case "title": snapshot.title = displayString(value)
             case "subtitle": snapshot.subtitle = displayString(value)
+            case "timeRange.startMs", "timeRange.endMs":
+                let number = (value as? NSNumber)?.doubleValue ?? displayString(value).flatMap(Double.init)
+                snapshot.setTimeBoundary(target, milliseconds: number)
             case "deadlineMs":
                 let number = (value as? NSNumber)?.doubleValue ?? displayString(value).flatMap(Double.init)
                 snapshot.deadlineMs = HTMLAppWidgetSnapshot.validDeadline(number)

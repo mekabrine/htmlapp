@@ -2134,7 +2134,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             definition.openBehavior = behavior
         }
         if let requested = args["dataBindings"] as? [String: String] {
-            let allowed: Set<String> = ["title", "subtitle", "value", "footer", "eyebrow", "unit", "progress", "deadlineMs"]
+            let allowed: Set<String> = ["title", "subtitle", "value", "footer", "eyebrow", "unit", "progress", "deadlineMs", "timeRange.startMs", "timeRange.endMs"]
             let valid = requested.filter {
                 allowed.contains($0.key) && !$0.value.isEmpty && $0.value.count <= 200
             }
@@ -2281,7 +2281,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         }
 
         let rawLayout = text("layout", limit: 24)?.lowercased()
-        let allowedLayouts: Set<String> = ["metric", "list", "status", "progress", "image"]
+        let allowedLayouts: Set<String> = ["metric", "list", "status", "progress", "image", "ring"]
         let layout = rawLayout.flatMap { allowedLayouts.contains($0) ? $0 : nil }
 
         var items: [HTMLAppWidgetItem] = []
@@ -2313,9 +2313,25 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                   CFGetTypeID(number) != CFBooleanGetTypeID(),
                   HTMLAppWidgetSnapshot.validDeadline(number.doubleValue) != nil else { return nil }
         }
+        var timeRange: HTMLAppWidgetTimeRange?
+        let display = text("display", limit: 32)
+        if let display, !HTMLAppWidgetSnapshot.timeDisplays.contains(display) { return nil }
+        if let raw = args["timeRange"], !(raw is NSNull) {
+            guard let range = raw as? [String: Any],
+                  let start = range["startMs"] as? NSNumber, let end = range["endMs"] as? NSNumber,
+                  CFGetTypeID(start) != CFBooleanGetTypeID(), CFGetTypeID(end) != CFBooleanGetTypeID() else { return nil }
+            func label(_ key: String) -> String? { (range[key] as? String).map { String($0.prefix(80)) } }
+            let interval = HTMLAppWidgetTimeRange(startMs: start.doubleValue, endMs: end.doubleValue,
+                upcomingLabel: label("upcomingLabel"), inProgressLabel: label("inProgressLabel"), completedLabel: label("completedLabel"))
+            guard interval.interval != nil else { return nil }
+            timeRange = interval
+        }
+        if display != nil && timeRange == nil { return nil }
         return HTMLAppWidgetSnapshot(
             layout: layout,
             deadlineMs: HTMLAppWidgetSnapshot.validDeadline((args["deadlineMs"] as? NSNumber)?.doubleValue),
+            timeRange: timeRange,
+            display: display,
             eyebrow: text("eyebrow"),
             title: text("title"),
             subtitle: text("subtitle", limit: 240),

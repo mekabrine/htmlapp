@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.8.2"
-    static let compiledBuild = "101"
+    static let compiledVersion = "1.8.3"
+    static let compiledBuild = "102"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,14 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        // Requested one-time recap: changes after 1.8.0 through this release.
+        if version == "1.8.3" { return [
+            Entry(id: "time-based-widgets", title: "Widgets understand time", description: "Countdowns, elapsed timers and time progress use native displays. The same feature works for events, sessions, workouts and more, without constant app refreshes.", symbol: "timer", tint: .purple),
+            Entry(id: "widget-boundaries", title: "Plan widget changes ahead", description: "Widgets can prepare Upcoming, In progress and Finished states from their start and end times. iOS controls when scheduled changes appear.", symbol: "calendar", tint: .blue),
+            Entry(id: "backend-reliability-recap", title: "Forge builds the backend too", description: "Forge checks for missing server code and matching app routes, then attempts repairs. Developer → Backend can repair an older incomplete app or connect its generated code using your saved secret.", symbol: "server.rack", tint: .green),
+            Entry(id: "notification-alternatives-recap", title: "Work without Apple push setup", description: "Forge plans saved server messages, checks while the app is open and local reminders. It explains why instant remote alerts cannot be guaranteed while the app is closed.", symbol: "bell", tint: .orange),
+            Entry(id: "countdown-fixes-recap", title: "More reliable Lock Screen countdowns", description: "Published deadlines reach all widget sizes and native countdowns stop at zero. Backend status also shows the real API address and available notification support.", symbol: "lock", tint: .blue)
+        ] }
         if version == "1.8.2" { return [
             Entry(id: "no-apns", title: "Build around available notifications", description: "Forge uses saved server messages, foreground checks and local reminders when Apple push is unavailable, and explains background limits.", symbol: "bell", tint: .blue),
             Entry(id: "countdown-widgets", title: "Countdowns keep counting", description: "Event widgets use a native timer on the Home Screen and Lock Screen. They no longer need constant refreshes and stop at zero.", symbol: "timer", tint: .purple)
