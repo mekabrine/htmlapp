@@ -496,7 +496,7 @@ enum HTMLAppDeviceAPIResearch {
             id: "widgets",
             title: "Generated Home Screen and Lock Screen widgets",
             keywords: ["widget", "widgets", "home screen", "lock screen", "widgetkit", "glanceable", "live metric", "background refresh", "timeline"],
-            purpose: "Publish one or more native WidgetKit widgets from a saved HTMLApp. Widgets can show generated text, metrics, progress, lists, SF Symbols, and embedded images, deep-link back into the originating HTMLApp, and optionally refresh public HTTPS JSON in the background.",
+            purpose: "For event countdowns publish snapshot.deadlineMs (absolute Unix milliseconds). The system timer ticks without app refresh and stops at zero, including all Lock Screen sizes. Publish one or more native WidgetKit widgets from a saved HTMLApp. Widgets can show generated text, metrics, progress, lists, SF Symbols, and embedded images, deep-link back into the originating HTMLApp, and optionally refresh public HTTPS JSON in the background.",
             api: "HTMLAppNative.widgets.configure(definition); widgets.list(); widgets.remove(id?); widgets.reload()",
             example: """
             await HTMLAppNative.widgets.configure({

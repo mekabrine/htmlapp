@@ -101,6 +101,18 @@ struct HTMLAppWidgetSnapshot: Codable, Hashable {
     var imageBase64: String?
     var items: [HTMLAppWidgetItem]?
 
+    /// Countdown bounds are shared by the host bridge, bindings and widget renderer.
+    static func validDeadline(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value > 0, value <= 253_402_300_799_000 else { return nil }
+        return value
+    }
+    var countdownDeadline: Date? {
+        Self.validDeadline(deadlineMs).map { Date(timeIntervalSince1970: $0 / 1000) }
+    }
+    var hasDisplayValue: Bool {
+        countdownDeadline != nil || !(value ?? "").isEmpty
+    }
+
     static let placeholder = HTMLAppWidgetSnapshot(
         layout: "metric",
         eyebrow: "HTMLApp",
@@ -311,6 +323,7 @@ enum HTMLAppWidgetStore {
                         switch field {
                         case "title": widgets[index].snapshot.title = String(parsed.prefix(100))
                         case "subtitle": widgets[index].snapshot.subtitle = String(parsed.prefix(180))
+                        case "deadlineMs": widgets[index].snapshot.deadlineMs = HTMLAppWidgetSnapshot.validDeadline(Double(parsed))
                         case "value": widgets[index].snapshot.value = String(parsed.prefix(50))
                         case "footer": widgets[index].snapshot.footer = String(parsed.prefix(180))
                         case "eyebrow": widgets[index].snapshot.eyebrow = String(parsed.prefix(50))
@@ -595,6 +608,9 @@ enum HTMLAppJSONPath {
             case "eyebrow": snapshot.eyebrow = displayString(value)
             case "title": snapshot.title = displayString(value)
             case "subtitle": snapshot.subtitle = displayString(value)
+            case "deadlineMs":
+                let number = (value as? NSNumber)?.doubleValue ?? displayString(value).flatMap(Double.init)
+                snapshot.deadlineMs = HTMLAppWidgetSnapshot.validDeadline(number)
             case "value": snapshot.value = displayString(value)
             case "unit": snapshot.unit = displayString(value)
             case "footer": snapshot.footer = displayString(value)

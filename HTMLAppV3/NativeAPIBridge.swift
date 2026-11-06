@@ -2134,7 +2134,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             definition.openBehavior = behavior
         }
         if let requested = args["dataBindings"] as? [String: String] {
-            let allowed: Set<String> = ["title", "subtitle", "value", "footer", "eyebrow", "unit", "progress"]
+            let allowed: Set<String> = ["title", "subtitle", "value", "footer", "eyebrow", "unit", "progress", "deadlineMs"]
             let valid = requested.filter {
                 allowed.contains($0.key) && !$0.value.isEmpty && $0.value.count <= 200
             }
@@ -2308,8 +2308,14 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         let image = text("imageBase64", limit: 1_500_000)
         if let image, image.utf8.count > 1_500_000 { return nil }
 
+        if let value = args["deadlineMs"], !(value is NSNull) {
+            guard let number = value as? NSNumber,
+                  CFGetTypeID(number) != CFBooleanGetTypeID(),
+                  HTMLAppWidgetSnapshot.validDeadline(number.doubleValue) != nil else { return nil }
+        }
         return HTMLAppWidgetSnapshot(
             layout: layout,
+            deadlineMs: HTMLAppWidgetSnapshot.validDeadline((args["deadlineMs"] as? NSNumber)?.doubleValue),
             eyebrow: text("eyebrow"),
             title: text("title"),
             subtitle: text("subtitle", limit: 240),

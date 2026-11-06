@@ -193,7 +193,8 @@ struct ForgeCapabilityPlan {
         if Self.requiresBackend(request: request, html: "") {
             methods += ["backend.status", "backend.request"]
             constraints.append("Managed runtime v2 supports generated Python, persistent SQLite and custom routes. Include the full source/manifest bundle and matching frontend; do not substitute a local-only demo.")
-            if mentions(["push", "notification", "phone message"]) { methods += ["backend.subscribe", "backend.unsubscribe"] }
+            if mentions(["push", "notification", "phone message"]) { methods += ["notifications.schedule"]
+                constraints.append("APNs is unavailable on this deployment. Use foreground polling and local alerts; suspended-app instant remote delivery is not supported.") }
         }
         methods = Array(Set(methods)).sorted()
         browsers = Array(Set(browsers)).sorted()

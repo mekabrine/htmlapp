@@ -11,6 +11,18 @@ final class WidgetTests: XCTestCase {
         repository = HTMLAppWidgetRepository(directory: directory)
     }
     override func tearDownWithError() throws { try FileManager.default.removeItem(at: directory) }
+    func testCountdownDeadlineSurvivesPublicationWithoutStaticValue() throws {
+        var snapshot = HTMLAppWidgetSnapshot.placeholder
+        snapshot.value = nil
+        snapshot.deadlineMs = 1_800_000_000_000
+        let restored = try JSONDecoder().decode(HTMLAppWidgetSnapshot.self, from: JSONEncoder().encode(snapshot))
+        XCTAssertTrue(restored.hasDisplayValue)
+        XCTAssertEqual(restored.countdownDeadline?.timeIntervalSince1970, 1_800_000_000)
+        XCTAssertNil(HTMLAppWidgetSnapshot.validDeadline(.infinity))
+        XCTAssertNil(HTMLAppWidgetSnapshot.validDeadline(-1))
+        let changed = HTMLAppJSONPath.applyBindings(["deadlineMs": "event.ends"], json: ["event": ["ends": 1_900_000_000_000.0]], to: snapshot)
+        XCTAssertEqual(changed.deadlineMs, 1_900_000_000_000)
+    }
     func definition(_ id: String, primary: Bool = true) -> HTMLAppWidgetDefinition {
         var d = HTMLAppWidgetDefinition.placeholder(id: id)
         d.appID = "test-app"; d.primary = primary

@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.8.1"
-    static let compiledBuild = "100"
+    static let compiledVersion = "1.8.2"
+    static let compiledBuild = "101"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,10 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.8.2" { return [
+            Entry(id: "no-apns", title: "Build around available notifications", description: "Forge uses saved server messages, foreground checks and local reminders when Apple push is unavailable, and explains background limits.", symbol: "bell", tint: .blue),
+            Entry(id: "countdown-widgets", title: "Countdowns keep counting", description: "Event widgets use a native timer on the Home Screen and Lock Screen. They no longer need constant refreshes and stop at zero.", symbol: "timer", tint: .purple)
+        ] }
         if version == "1.8.1" { return [
             Entry(id: "backend-completeness", title: "Forge builds the backend too", description: "Apps that need a server must include real backend code. Forge repairs missing pieces instead of calling a local-only demo finished.", symbol: "server.rack", tint: .blue),
             Entry(id: "backend-repair", title: "Repair existing backend apps", description: "Open Developer → Backend to repair an incomplete app with Forge or connect its generated server code using your saved secret.", symbol: "wrench.and.screwdriver", tint: .purple),

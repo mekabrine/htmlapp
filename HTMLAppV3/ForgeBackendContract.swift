@@ -3,6 +3,28 @@ import Foundation
 /// Backend completeness is a correctness requirement, independent of optional UI QA.
 enum ForgeBackendContract {
     static let instructions = """
+    DEPLOYMENT ENVIRONMENT: APNs IS NOT CONFIGURED AND THE OWNER CANNOT SET IT UP.
+    Do not require Apple push keys, push.register, backend.subscribe or app.notify as
+    the only path for the primary workflow. Use the backend for durable messages/data;
+    poll it while the app is foreground, pause polling when hidden, resume and fetch
+    missed messages on activation, and deduplicate by cursor/message ID. Show received
+    messages in the app and offer a local notification after notification consent.
+    Already-known future events can schedule local reminders in advance, without APNs.
+    Background refresh is opportunistic, never a guaranteed message delivery channel.
+    Do not claim server polling, a widget, a WebSocket or JavaScript can wake a suspended
+    or terminated app for instant remote alerts. If this is essential, explain the
+    limitation and offer an explicit optional external notification service integration
+    only with the user's chosen service, real documented API and required credentials.
+    Do not invent a free relay or silently add a paid dependency. Never label an in-app
+    poll or local test as a delivered remote push. Still implement the working backend.
+
+    COUNTDOWN WIDGETS: publish snapshot.deadlineMs as an absolute Unix millisecond
+    timestamp, not a formatted remaining-time string. iOS renders a native bounded
+    timer in Home Screen and Lock Screen families without per-second app refreshes.
+    Publish on event creation/change/deletion and app activation, not every second.
+    Keep a readable snapshot.value fallback. Schedule an optional local reminder for
+    the deadline; the timer itself is not a notification or a background network task.
+
     MANAGED RUNTIME V2 — AUTHORITATIVE BACKEND CAPABILITY:
     HTMLApp can deploy generated Python servers automatically using the owner's saved secret.
     A requested server feature must have real Python, manifest and matching frontend calls.
@@ -14,7 +36,7 @@ enum ForgeBackendContract {
     a Unicode escape. Do not emit separate backend artifacts outside the HTML document.
     Use HTMLAppNative.backend.request({path,method,body,session}) for generated routes.
     backend.status() returns linked, sdkVersion, apiBaseURL, canNotify, pushConfigured and state.
-    Never gate v2 access on a legacy sendKey. backend.subscribe(session) registers this phone
+    Never gate v2 access on a legacy sendKey. Only if APNs is actually configured, backend.subscribe(session) registers this phone
     for its authenticated resource; unsubscribe(session) removes it. push.register alone does
     not subscribe or deliver anything. Public APIs are deliberate public routes; respect the
     user's authentication requirements while keeping phone registration resource-scoped.

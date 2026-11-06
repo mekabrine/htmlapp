@@ -128,9 +128,10 @@ struct HTMLAppWidgetView: View {
     private var snapshot: HTMLAppWidgetSnapshot { entry.definition.snapshot }
     @ViewBuilder
     private var dynamicValue: some View {
-        if let milliseconds = snapshot.deadlineMs,
-           milliseconds.isFinite, milliseconds > 0 {
-            Text(Date(timeIntervalSince1970: milliseconds / 1000), style: .timer)
+        if let deadline = snapshot.countdownDeadline {
+            // Bounded native timer stops at zero instead of counting up past the event.
+            Text(timerInterval: min(entry.date, deadline)...deadline, countsDown: true)
+                .monospacedDigit()
         } else {
             Text(snapshot.value ?? "—")
         }
@@ -174,8 +175,12 @@ struct HTMLAppWidgetView: View {
             if let symbol = snapshot.systemSymbol, !symbol.isEmpty {
                 Image(systemName: symbol)
             }
-            Text([snapshot.title, snapshot.value].compactMap { $0 }.joined(separator: " "))
-                .lineLimit(1)
+            if snapshot.countdownDeadline != nil {
+                Text(snapshot.title ?? entry.definition.name).lineLimit(1)
+                dynamicValue.lineLimit(1).minimumScaleFactor(0.6)
+            } else {
+                Text([snapshot.title, snapshot.value].compactMap { $0 }.joined(separator: " ")).lineLimit(1)
+            }
         }
     }
 
@@ -200,7 +205,7 @@ struct HTMLAppWidgetView: View {
             if let symbol = snapshot.systemSymbol, !symbol.isEmpty {
                 Image(systemName: symbol)
             }
-            if let value = snapshot.value, !value.isEmpty {
+            if snapshot.hasDisplayValue {
                 dynamicValue.font(.caption2.bold()).lineLimit(1)
             }
         }
@@ -216,7 +221,7 @@ struct HTMLAppWidgetView: View {
                     .font(.caption.bold())
                     .lineLimit(1)
             }
-            if let value = snapshot.value, !value.isEmpty {
+            if snapshot.hasDisplayValue {
                 dynamicValue
                     .font(.headline)
                     .lineLimit(1)
@@ -283,7 +288,7 @@ struct HTMLAppWidgetView: View {
                     Circle().trim(from: 0, to: min(max(progress, 0), 1))
                         .stroke(accent, style: StrokeStyle(lineWidth: 12, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                    if let value = snapshot.value {
+                    if snapshot.hasDisplayValue {
                         dynamicValue.font(.title3.bold()).lineLimit(1)
                     }
                 }
@@ -345,7 +350,7 @@ struct HTMLAppWidgetView: View {
     private var heroValue: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if let value = snapshot.value, !value.isEmpty {
+                if snapshot.hasDisplayValue {
                     dynamicValue
                         .font(.system(size: family == .systemSmall ? 30 : 36, weight: .bold, design: .rounded))
                         .minimumScaleFactor(0.55)
