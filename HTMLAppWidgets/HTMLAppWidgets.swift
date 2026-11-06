@@ -34,6 +34,16 @@ enum HTMLAppWidgetTimeline {
         if let range = refreshed.snapshot.nativeTimeInterval {
             dates += [range.lowerBound, range.upperBound].filter { $0 > now }
         }
+        if let deadline = refreshed.snapshot.countdownDeadline, deadline > now { dates.append(deadline) }
+        // Older systems cannot live-format selected units. Prepare minute changes,
+        // never a per-second reload loop. iOS still controls timeline delivery.
+        if #available(iOS 18.0, *) {} else if refreshed.snapshot.needsMinuteTimeline {
+            let anchor = refreshed.snapshot.nativeTimeInterval.map {
+                refreshed.snapshot.countsDown ? $0.upperBound : $0.lowerBound
+            } ?? refreshed.snapshot.countdownDeadline ?? now
+            let first = anchor.timeIntervalSince1970 + (floor(now.timeIntervalSince(anchor) / 60) + 1) * 60
+            dates += (0..<120).map { Date(timeIntervalSince1970: first + Double($0 * 60)) }
+        }
         let entries = Array(Set(dates)).sorted().map { date -> HTMLAppWidgetEntry in
             var value = refreshed
             value.snapshot = refreshed.snapshot.presentation(at: date)
@@ -135,17 +145,8 @@ struct HTMLAppWidgetView: View {
     let entry: HTMLAppWidgetEntry
 
     private var snapshot: HTMLAppWidgetSnapshot { entry.definition.snapshot }
-    @ViewBuilder
     private var dynamicValue: some View {
-        if let range = snapshot.nativeTimeInterval {
-            Text(timerInterval: range, countsDown: snapshot.countsDown).monospacedDigit()
-        } else if let deadline = snapshot.countdownDeadline {
-            // Bounded native timer stops at zero instead of counting up past the event.
-            Text(timerInterval: min(entry.date, deadline)...deadline, countsDown: true)
-                .monospacedDigit()
-        } else {
-            Text(snapshot.value ?? "—")
-        }
+        HTMLAppWidgetTimerText(snapshot: snapshot, date: entry.date, format: snapshot.timeFormat)
     }
 
     @ViewBuilder
@@ -176,6 +177,13 @@ struct HTMLAppWidgetView: View {
 
     @ViewBuilder
     private var widgetContent: some View {
+        if let content = snapshot.customContent(for: family.storageName) {
+            HTMLAppWidgetElementView(node: content, snapshot: snapshot, date: entry.date)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .font(.caption)
+                .foregroundStyle(foreground)
+        } else {
         switch family {
         case .accessoryInline:
             inlineView
@@ -191,6 +199,7 @@ struct HTMLAppWidgetView: View {
             largeCard
         @unknown default:
             compactCard
+        }
         }
     }
 
@@ -209,6 +218,7 @@ struct HTMLAppWidgetView: View {
     }
 
     private var circularView: some View {
+        GeometryReader { geometry in
         ZStack {
             if snapshot.showsTimeProgress {
                 timeProgress.progressViewStyle(.circular)
@@ -224,6 +234,8 @@ struct HTMLAppWidgetView: View {
                 circularCenter
             }
         }
+        .frame(width: geometry.size.width, height: geometry.size.height, alignment: .center)
+        }
     }
 
     @ViewBuilder
@@ -233,9 +245,14 @@ struct HTMLAppWidgetView: View {
                 Image(systemName: symbol)
             }
             if snapshot.hasDisplayValue {
-                dynamicValue.font(.caption2.bold()).lineLimit(1)
+                dynamicValue.font(.caption2.bold()).lineLimit(1).minimumScaleFactor(0.5)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
         }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .multilineTextAlignment(.center)
     }
 
     private var rectangularView: some View {
@@ -537,7 +554,7 @@ struct HTMLAppPrimaryWidget: Widget {
         .configurationDisplayName("HTMLApp Primary")
         .description("Shows the latest primary widget published by a saved HTMLApp.")
         .supportedFamilies([
-            .systemSmall, .systemMedium, .systemLarge,
+            .systemSmall, .systemMedium, .systemLarge, .systemExtraLarge,
             .accessoryInline, .accessoryCircular, .accessoryRectangular
         ])
     }
@@ -591,3 +608,187 @@ private extension Color {
     }
 }
 
+
+/// Native time text shared by templates and the declarative layout renderer.
+struct HTMLAppWidgetTimerText: View {
+    let snapshot: HTMLAppWidgetSnapshot
+    let date: Date
+    var format: String? = nil
+
+    private var selectedFormat: String { format ?? snapshot.timeFormat ?? "automatic" }
+    private var interval: ClosedRange<Date>? {
+        snapshot.nativeTimeInterval ?? snapshot.countdownDeadline.map { min(date, $0)...$0 }
+    }
+    var body: some View {
+        value.monospacedDigit()
+    }
+    @ViewBuilder private var value: some View {
+        if let range = interval {
+            if ["automatic", "hoursMinutesSeconds", "minutesSeconds"].contains(selectedFormat) {
+                Text(timerInterval: range, countsDown: snapshot.countsDown, showsHours: selectedFormat != "minutesSeconds")
+            } else if date < range.lowerBound || date >= range.upperBound {
+                Text(snapshot.formattedTime(at: date, format: selectedFormat))
+            } else if #available(iOS 18.0, *) {
+                // System-provided discrete format styles are serializable by WidgetKit;
+                // custom formatter closures or preformatted strings do not tick live.
+                Text(.currentDate, format: .offset(
+                    to: snapshot.countsDown ? range.upperBound : range.lowerBound,
+                    allowedFields: fields, maxFieldCount: 2, sign: .never))
+            } else if selectedFormat == "seconds" {
+                // iOS 16/17 have no seconds-only native live format. Keep a working
+                // bounded MM:SS timer instead of a frozen seconds snapshot.
+                Text(timerInterval: range, countsDown: snapshot.countsDown, showsHours: false)
+            } else {
+                Text(snapshot.formattedTime(at: date, format: selectedFormat))
+            }
+        } else {
+            Text(snapshot.value ?? "—")
+        }
+    }
+    @available(iOS 18.0, *)
+    private var fields: Set<Date.ComponentsFormatStyle.Field> {
+        switch selectedFormat {
+        case "seconds": return [.second]
+        case "minutes": return [.minute]
+        case "hours": return [.hour]
+        default: return [.hour, .minute]
+        }
+    }
+}
+
+/// Recursive value views are type-erased at each node to bound Swift's generic
+/// type graph. Input is validated to 96 nodes / six levels at publication.
+struct HTMLAppWidgetElementView: View {
+    let node: HTMLAppWidgetElement
+    let snapshot: HTMLAppWidgetSnapshot
+    let date: Date
+
+    private var horizontal: HorizontalAlignment {
+        node.alignment == "leading" ? .leading : node.alignment == "trailing" ? .trailing : .center
+    }
+    private var alignment: Alignment {
+        node.alignment == "leading" ? .leading : node.alignment == "trailing" ? .trailing : .center
+    }
+    private var vertical: VerticalAlignment {
+        switch node.verticalAlignment {
+        case "top": return .top
+        case "bottom": return .bottom
+        case "firstTextBaseline": return .firstTextBaseline
+        default: return .center
+        }
+    }
+    private var textAlignment: TextAlignment {
+        node.alignment == "leading" ? .leading : node.alignment == "trailing" ? .trailing : .center
+    }
+    private var weight: Font.Weight {
+        switch node.fontWeight {
+        case "medium": return .medium
+        case "semibold": return .semibold
+        case "bold": return .bold
+        case "heavy": return .heavy
+        default: return .regular
+        }
+    }
+    private var design: Font.Design {
+        switch node.fontDesign {
+        case "rounded": return .rounded
+        case "serif": return .serif
+        case "monospaced": return .monospaced
+        default: return .default
+        }
+    }
+    private var children: [HTMLAppWidgetElement] { node.children ?? [] }
+    private var color: Color { Color(htmlAppHex: node.foregroundHex ?? snapshot.accentHex ?? "#65A9FF") }
+    private var label: String {
+        switch node.field {
+        case "title": return snapshot.title ?? ""
+        case "subtitle": return snapshot.subtitle ?? ""
+        case "value": return snapshot.value ?? ""
+        case "unit": return snapshot.unit ?? ""
+        case "footer": return snapshot.footer ?? ""
+        case "eyebrow": return snapshot.eyebrow ?? ""
+        default: return node.text ?? ""
+        }
+    }
+    var body: some View {
+        decorated
+    }
+    private var decorated: AnyView {
+        var view = raw
+        if let size = node.fontSize { view = AnyView(view.font(.system(size: CGFloat(size), weight: weight, design: design))) }
+        else if node.fontWeight != nil || node.fontDesign != nil { view = AnyView(view.font(.system(.caption, design: design).weight(weight))) }
+        view = AnyView(view.lineLimit(node.lineLimit ?? 1)
+            .minimumScaleFactor(CGFloat(node.minimumScale ?? 0.5))
+            .multilineTextAlignment(textAlignment))
+        if let hex = node.foregroundHex { view = AnyView(view.foregroundStyle(Color(htmlAppHex: hex))) }
+        view = AnyView(view.padding(CGFloat(node.padding ?? 0)))
+        if node.width != nil || node.height != nil {
+            view = AnyView(view.frame(width: node.width.map { CGFloat($0) }, height: node.height.map { CGFloat($0) }, alignment: alignment))
+        }
+        if node.expand == true { view = AnyView(view.frame(maxWidth: .infinity, alignment: alignment)) }
+        if let hex = node.borderHex {
+            view = AnyView(view.overlay(RoundedRectangle(cornerRadius: CGFloat(node.cornerRadius ?? 0))
+                .stroke(Color(htmlAppHex: hex), lineWidth: CGFloat(node.borderWidth ?? 1))))
+        }
+        if let hex = node.backgroundHex {
+            view = AnyView(view.background(RoundedRectangle(cornerRadius: CGFloat(node.cornerRadius ?? 0)).fill(Color(htmlAppHex: hex))))
+        }
+        if let radius = node.cornerRadius { view = AnyView(view.clipShape(RoundedRectangle(cornerRadius: CGFloat(radius)))) }
+        if let opacity = node.opacity { view = AnyView(view.opacity(opacity)) }
+        if let label = node.accessibilityLabel { view = AnyView(view.accessibilityLabel(label)) }
+        return view
+    }
+    private var raw: AnyView {
+        switch node.type {
+        case "row":
+            return AnyView(HStack(alignment: vertical, spacing: CGFloat(node.spacing ?? 4)) { childViews })
+        case "column":
+            return AnyView(VStack(alignment: horizontal, spacing: CGFloat(node.spacing ?? 4)) { childViews })
+        case "overlay":
+            return AnyView(ZStack(alignment: alignment) { childViews })
+        case "timer":
+            return AnyView(HTMLAppWidgetTimerText(snapshot: snapshot, date: date, format: node.timeFormat)
+                .frame(maxWidth: .infinity, alignment: alignment))
+        case "symbol":
+            let symbol = node.systemSymbol ?? snapshot.systemSymbol ?? "circle"
+            let mode: SymbolRenderingMode = node.symbolRenderingMode == "multicolor" ? .multicolor : node.symbolRenderingMode == "hierarchical" ? .hierarchical : node.symbolRenderingMode == "palette" ? .palette : .monochrome
+            return AnyView(Image(systemName: UIImage(systemName: symbol) == nil ? "questionmark.circle" : symbol).symbolRenderingMode(mode))
+        case "image":
+            let encoded = node.imageBase64 ?? snapshot.imageBase64 ?? ""
+            let raw = encoded.components(separatedBy: ",").last ?? encoded
+            if let data = Data(base64Encoded: raw), let image = UIImage(data: data), image.size.width <= 4096, image.size.height <= 4096 {
+                return AnyView(Image(uiImage: image).resizable().scaledToFit())
+            }
+            return AnyView(Image(systemName: "photo"))
+        case "progress", "ring":
+            return AnyView(progress)
+        case "circle": return AnyView(Circle().fill(color))
+        case "rectangle": return AnyView(Rectangle().fill(color))
+        case "capsule": return AnyView(Capsule().fill(color))
+        case "spacer": return AnyView(Spacer(minLength: 0))
+        case "divider": return AnyView(Divider())
+        default: return AnyView(Text(label))
+        }
+    }
+    private var childViews: some View {
+        ForEach(children.indices, id: \.self) { index in
+            HTMLAppWidgetElementView(node: children[index], snapshot: snapshot, date: date)
+        }
+    }
+    @ViewBuilder private var progress: some View {
+        if let range = snapshot.nativeTimeInterval, node.progress == nil {
+            if node.type == "ring" {
+                ProgressView(timerInterval: range, countsDown: snapshot.countsDown) { EmptyView() } currentValueLabel: { EmptyView() }
+                    .progressViewStyle(.circular).tint(color)
+            } else {
+                ProgressView(timerInterval: range, countsDown: snapshot.countsDown) { EmptyView() } currentValueLabel: { EmptyView() }
+                    .progressViewStyle(.linear).tint(color)
+            }
+        } else if node.type == "ring" {
+            Gauge(value: min(max(node.progress ?? snapshot.progress ?? 0, 0), 1)) { EmptyView() }
+                .gaugeStyle(.accessoryCircularCapacity).tint(color)
+        } else {
+            ProgressView(value: min(max(node.progress ?? snapshot.progress ?? 0, 0), 1)).tint(color)
+        }
+    }
+}

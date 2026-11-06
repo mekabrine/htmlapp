@@ -60,6 +60,48 @@ final class WidgetTests: XCTestCase {
         XCTAssertEqual(after.entries.count, 1)
         XCTAssertEqual(after.entries.first?.definition.snapshot.footer, "Done")
     }
+    func testCustomTimeFormatsClampAndRoundTrip() throws {
+        var snapshot = HTMLAppWidgetSnapshot.placeholder
+        snapshot.timeRange = HTMLAppWidgetTimeRange(startMs: 1_000, endMs: 3_662_000)
+        snapshot.display = "countdown"
+        let start = Date(timeIntervalSince1970: 1)
+        XCTAssertEqual(snapshot.formattedTime(at: start, format: "seconds"), "3661s")
+        XCTAssertEqual(snapshot.formattedTime(at: start, format: "minutesSeconds"), "61:01")
+        XCTAssertEqual(snapshot.formattedTime(at: start, format: "hoursMinutes"), "1h 1m")
+        XCTAssertEqual(snapshot.formattedTime(at: start, format: "hours"), "1h")
+        XCTAssertEqual(snapshot.formattedTime(at: start, format: "minutes"), "61m")
+        XCTAssertEqual(snapshot.formattedTime(at: Date(timeIntervalSince1970: 5_000), format: "seconds"), "0s")
+        snapshot.display = "elapsed"
+        XCTAssertEqual(snapshot.formattedTime(at: Date(timeIntervalSince1970: 0), format: "seconds"), "0s")
+        XCTAssertEqual(snapshot.formattedTime(at: Date(timeIntervalSince1970: 5_000), format: "seconds"), "3661s")
+        snapshot.automaticStatus = false
+        snapshot.footer = "Keep my label"
+        XCTAssertEqual(snapshot.presentation(at: start).footer, "Keep my label")
+        snapshot.timeFormat = "hoursMinutes"
+        snapshot.content = HTMLAppWidgetElement(type: "timer")
+        snapshot.familyContent = ["accessoryCircular": HTMLAppWidgetElement(type: "symbol", systemSymbol: "clock")]
+        let restored = try JSONDecoder().decode(HTMLAppWidgetSnapshot.self, from: JSONEncoder().encode(snapshot))
+        XCTAssertEqual(restored, snapshot)
+        XCTAssertEqual(restored.customContent(for: "accessoryCircular")?.type, "symbol")
+        XCTAssertEqual(restored.customContent(for: "systemSmall")?.type, "timer")
+        XCTAssertTrue(restored.needsMinuteTimeline)
+    }
+    func testCustomElementRejectsInvalidOrExcessiveLayouts() {
+        func valid(_ node: HTMLAppWidgetElement) -> Bool {
+            var count = 0
+            return node.isValid(count: &count)
+        }
+        XCTAssertTrue(valid(HTMLAppWidgetElement(type: "column", children: [HTMLAppWidgetElement(type: "timer", timeFormat: "seconds")])))
+        XCTAssertFalse(valid(HTMLAppWidgetElement(type: "webview")))
+        XCTAssertFalse(valid(HTMLAppWidgetElement(type: "timer", fontSize: .infinity)))
+        XCTAssertFalse(valid(HTMLAppWidgetElement(type: "timer", timeFormat: "madeUp")))
+        XCTAssertFalse(valid(HTMLAppWidgetElement(type: "timer", children: [HTMLAppWidgetElement(type: "text")])))
+        XCTAssertFalse(valid(HTMLAppWidgetElement(type: "text", minimumScale: -1)))
+        XCTAssertFalse(valid(HTMLAppWidgetElement(type: "column", children: Array(repeating: HTMLAppWidgetElement(type: "text"), count: 96))))
+        var nested = HTMLAppWidgetElement(type: "text")
+        for _ in 0..<7 { nested = HTMLAppWidgetElement(type: "column", children: [nested]) }
+        XCTAssertFalse(valid(nested))
+    }
     func definition(_ id: String, primary: Bool = true) -> HTMLAppWidgetDefinition {
         var d = HTMLAppWidgetDefinition.placeholder(id: id)
         d.appID = "test-app"; d.primary = primary

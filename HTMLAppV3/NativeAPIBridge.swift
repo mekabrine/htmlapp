@@ -1008,6 +1008,14 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 "descriptorVersion": HTMLAppBridgeRegistry.descriptorVersion,
                 "methods": HTMLAppBridgeRegistry.methods,
                 "permissions": HTMLPermission.allCases.map { $0.rawValue },
+                "widgetCustomization": [
+                    "schemaVersion": 2,
+                    "elementTypes": HTMLAppWidgetElement.types.sorted(),
+                    "timeFormats": HTMLAppWidgetSnapshot.timeFormats.sorted(),
+                    "liveSelectedTimeUnits": { if #available(iOS 18.0, *) { return true }; return false }(),
+                    "maxElements": 96,
+                    "maxDepth": 6
+                ] as [String: Any],
                 "torchAvailable": AVCaptureDevice.default(for: .video)?.hasTorch ?? false,
                 "liveActivitiesAvailable": {
                     if #available(iOS 16.2, *) {
@@ -2079,14 +2087,14 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         let rawName = (args["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let name = String((rawName.isEmpty ? "HTMLApp Widget" : rawName).prefix(80))
         let allowedFamilies: Set<String> = [
-            "systemSmall", "systemMedium", "systemLarge",
+            "systemSmall", "systemMedium", "systemLarge", "systemExtraLarge",
             "accessoryInline", "accessoryCircular", "accessoryRectangular"
         ]
         let requestedFamilies = (args["families"] as? [String] ?? [])
             .filter { allowedFamilies.contains($0) }
         let families = requestedFamilies.isEmpty
             ? ["systemSmall", "systemMedium", "systemLarge"]
-            : Array(requestedFamilies.prefix(6))
+            : Array(requestedFamilies.prefix(7))
 
         guard let snapshot = widgetSnapshot(from: snapshotArgs) else {
             reject(id, code: "invalid_widget", message: "The widget snapshot contains invalid or oversized content.")
@@ -2327,11 +2335,46 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             timeRange = interval
         }
         if display != nil && timeRange == nil { return nil }
+        let timeFormat = text("timeFormat", limit: 32)
+        if let timeFormat, !HTMLAppWidgetSnapshot.timeFormats.contains(timeFormat) { return nil }
+        var nodeCount = 0
+        func element(_ raw: Any) -> HTMLAppWidgetElement? {
+            func bounded(_ raw: Any, depth: Int) -> Bool {
+                nodeCount += 1
+                guard depth <= 6, nodeCount <= 96, let object = raw as? [String: Any] else { return false }
+                let keys: Set<String> = ["type", "children", "text", "field", "systemSymbol", "imageBase64", "alignment", "spacing", "padding", "fontSize", "fontWeight", "fontDesign", "lineLimit", "minimumScale", "foregroundHex", "backgroundHex", "cornerRadius", "opacity", "width", "height", "progress", "timeFormat", "accessibilityLabel", "verticalAlignment", "expand", "borderHex", "borderWidth", "symbolRenderingMode"]
+                guard Set(object.keys).isSubset(of: keys) else { return false }
+                if let children = object["children"] {
+                    guard let children = children as? [Any] else { return false }
+                    return children.allSatisfy { bounded($0, depth: depth + 1) }
+                }
+                return true
+            }
+            guard bounded(raw, depth: 0), JSONSerialization.isValidJSONObject(raw),
+                  let data = try? JSONSerialization.data(withJSONObject: raw), data.count <= 120_000,
+                  let node = try? JSONDecoder().decode(HTMLAppWidgetElement.self, from: data) else { return nil }
+            var count = 0
+            return node.isValid(count: &count) ? node : nil
+        }
+        var content: HTMLAppWidgetElement?
+        if let raw = args["content"] { guard let node = element(raw) else { return nil }; content = node }
+        var familyContent: [String: HTMLAppWidgetElement]?
+        if let raw = args["familyContent"] {
+            let families: Set<String> = ["systemSmall", "systemMedium", "systemLarge", "systemExtraLarge", "accessoryInline", "accessoryCircular", "accessoryRectangular"]
+            guard let map = raw as? [String: Any], Set(map.keys).isSubset(of: families) else { return nil }
+            var result: [String: HTMLAppWidgetElement] = [:]
+            for (family, value) in map { guard let node = element(value) else { return nil }; result[family] = node }
+            familyContent = result
+        }
         return HTMLAppWidgetSnapshot(
             layout: layout,
             deadlineMs: HTMLAppWidgetSnapshot.validDeadline((args["deadlineMs"] as? NSNumber)?.doubleValue),
             timeRange: timeRange,
             display: display,
+            timeFormat: timeFormat,
+            automaticStatus: args["automaticStatus"] as? Bool,
+            content: content,
+            familyContent: familyContent,
             eyebrow: text("eyebrow"),
             title: text("title"),
             subtitle: text("subtitle", limit: 240),

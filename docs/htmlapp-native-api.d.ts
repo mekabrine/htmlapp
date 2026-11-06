@@ -164,6 +164,7 @@ export interface HTMLAppNativeCapabilitySnapshot {
   permissions: string[];
   torchAvailable?: boolean;
   liveActivitiesAvailable?: boolean;
+  widgetCustomization?: { schemaVersion: number; elementTypes: string[]; timeFormats: HTMLAppWidgetTimeFormat[]; liveSelectedTimeUnits: boolean; maxElements: number; maxDepth: number; };
 }
 
 export interface HTMLAppNativeCapabilityDescriptor {
@@ -195,7 +196,10 @@ export interface HTMLAppAIAgentSession {
 }
 
 export interface HTMLAppWidgetTimeRange { startMs: number; endMs: number; upcomingLabel?: string; inProgressLabel?: string; completedLabel?: string; }
-export interface HTMLAppDynamicWidgetSnapshot { timeRange?: HTMLAppWidgetTimeRange; display?: "countdown" | "elapsed" | "remainingProgress" | "elapsedProgress"; deadlineMs?: number; value?: string; [key: string]: unknown; }
+export type HTMLAppWidgetTimeFormat = "automatic" | "hoursMinutesSeconds" | "minutesSeconds" | "hoursMinutes" | "seconds" | "minutes" | "hours";
+export type HTMLAppWidgetFamily = "systemSmall" | "systemMedium" | "systemLarge" | "systemExtraLarge" | "accessoryInline" | "accessoryCircular" | "accessoryRectangular";
+export interface HTMLAppWidgetElement { type: "row" | "column" | "overlay" | "text" | "symbol" | "image" | "timer" | "progress" | "ring" | "spacer" | "divider" | "circle" | "rectangle" | "capsule"; children?: HTMLAppWidgetElement[]; text?: string; field?: "title" | "subtitle" | "value" | "unit" | "footer" | "eyebrow"; systemSymbol?: string; symbolRenderingMode?: "monochrome" | "hierarchical" | "palette" | "multicolor"; imageBase64?: string; timeFormat?: HTMLAppWidgetTimeFormat; progress?: number; alignment?: "leading" | "center" | "trailing"; verticalAlignment?: "top" | "center" | "bottom" | "firstTextBaseline"; spacing?: number; padding?: number; fontSize?: number; fontWeight?: "regular" | "medium" | "semibold" | "bold" | "heavy"; fontDesign?: "default" | "rounded" | "serif" | "monospaced"; lineLimit?: number; minimumScale?: number; foregroundHex?: string; backgroundHex?: string; borderHex?: string; borderWidth?: number; cornerRadius?: number; opacity?: number; width?: number; height?: number; expand?: boolean; accessibilityLabel?: string; }
+export interface HTMLAppDynamicWidgetSnapshot { timeRange?: HTMLAppWidgetTimeRange; display?: "countdown" | "elapsed" | "remainingProgress" | "elapsedProgress"; deadlineMs?: number; timeFormat?: HTMLAppWidgetTimeFormat; automaticStatus?: boolean; content?: HTMLAppWidgetElement; familyContent?: Partial<Record<HTMLAppWidgetFamily, HTMLAppWidgetElement>>; value?: string; [key: string]: unknown; }
 export interface HTMLAppNativeAPI {
   readonly protocolVersion: number;
   call<T = unknown>(method: HTMLAppNativeMethod, args?: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<T>;

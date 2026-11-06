@@ -104,11 +104,100 @@ struct HTMLAppWidgetTimeRange: Codable, Hashable {
     }
 }
 
+/// A bounded native view description, never executable Swift/HTML inside a widget.
+struct HTMLAppWidgetElement: Codable, Hashable {
+    var type: String
+    var children: [HTMLAppWidgetElement]? = nil
+    var text: String? = nil
+    var field: String? = nil
+    var systemSymbol: String? = nil
+    var imageBase64: String? = nil
+    var alignment: String? = nil
+    var spacing: Double? = nil
+    var padding: Double? = nil
+    var fontSize: Double? = nil
+    var fontWeight: String? = nil
+    var fontDesign: String? = nil
+    var lineLimit: Int? = nil
+    var minimumScale: Double? = nil
+    var foregroundHex: String? = nil
+    var backgroundHex: String? = nil
+    var cornerRadius: Double? = nil
+    var opacity: Double? = nil
+    var width: Double? = nil
+    var height: Double? = nil
+    var progress: Double? = nil
+    var timeFormat: String? = nil
+    var accessibilityLabel: String? = nil
+    var verticalAlignment: String? = nil
+    var expand: Bool? = nil
+    var borderHex: String? = nil
+    var borderWidth: Double? = nil
+    var symbolRenderingMode: String? = nil
+
+    static let types: Set<String> = ["row", "column", "overlay", "text", "symbol", "image", "timer", "progress", "ring", "spacer", "divider", "circle", "rectangle", "capsule"]
+    static let fields: Set<String> = ["title", "subtitle", "value", "unit", "footer", "eyebrow"]
+    func isValid(depth: Int = 0, count: inout Int) -> Bool {
+        count += 1
+        guard depth <= 6, count <= 96, Self.types.contains(type),
+              alignment == nil || ["leading", "center", "trailing"].contains(alignment!),
+              field == nil || Self.fields.contains(field!),
+              verticalAlignment == nil || ["top", "center", "bottom", "firstTextBaseline"].contains(verticalAlignment!),
+              symbolRenderingMode == nil || ["monochrome", "hierarchical", "palette", "multicolor"].contains(symbolRenderingMode!),
+              timeFormat == nil || HTMLAppWidgetSnapshot.timeFormats.contains(timeFormat!),
+              fontWeight == nil || ["regular", "medium", "semibold", "bold", "heavy"].contains(fontWeight!),
+              fontDesign == nil || ["default", "rounded", "serif", "monospaced"].contains(fontDesign!),
+              (text?.count ?? 0) <= 500, (systemSymbol?.count ?? 0) <= 100,
+              (accessibilityLabel?.count ?? 0) <= 200,
+              (imageBase64?.utf8.count ?? 0) <= 100_000 else { return false }
+        for (number, bounds) in [(spacing, 0.0...40.0), (padding, 0...40), (fontSize, 8...96),
+                                 (minimumScale, 0.3...1), (cornerRadius, 0...100), (opacity, 0...1),
+                                 (width, 1...600), (height, 1...600), (progress, 0...1), (borderWidth, 0...12)] {
+            if let number, !number.isFinite || !bounds.contains(number) { return false }
+        }
+        if let lineLimit, !(1...6).contains(lineLimit) { return false }
+        let container = ["row", "column", "overlay"].contains(type)
+        if !container && !(children ?? []).isEmpty { return false }
+        return (children ?? []).allSatisfy { $0.isValid(depth: depth + 1, count: &count) }
+    }
+}
+
 struct HTMLAppWidgetSnapshot: Codable, Hashable {
     var layout: String?
     var deadlineMs: Double? = nil
     var timeRange: HTMLAppWidgetTimeRange? = nil
     var display: String? = nil
+    var timeFormat: String? = nil
+    var automaticStatus: Bool? = nil
+    var content: HTMLAppWidgetElement? = nil
+    var familyContent: [String: HTMLAppWidgetElement]? = nil
+    static let timeFormats: Set<String> = ["automatic", "hoursMinutesSeconds", "minutesSeconds", "hoursMinutes", "seconds", "minutes", "hours"]
+
+    func customContent(for family: String) -> HTMLAppWidgetElement? { familyContent?[family] ?? content }
+    var needsMinuteTimeline: Bool {
+        let formats = ["hoursMinutes", "minutes", "hours"]
+        func needs(_ node: HTMLAppWidgetElement) -> Bool {
+            (node.type == "timer" && formats.contains(node.timeFormat ?? timeFormat ?? "automatic")) || (node.children ?? []).contains(where: needs)
+        }
+        return formats.contains(timeFormat ?? "automatic") || content.map(needs) == true || (familyContent?.values.contains(where: needs) ?? false)
+    }
+    func formattedTime(at date: Date, format: String? = nil, referenceDate: Date? = nil) -> String {
+        let range = nativeTimeInterval ?? countdownDeadline.map { min(referenceDate ?? date, $0)...$0 }
+        guard let range else { return value ?? "—" }
+        let duration = range.upperBound.timeIntervalSince(range.lowerBound)
+        let elapsed = min(max(date.timeIntervalSince(range.lowerBound), 0), duration)
+        let seconds = Int((countsDown ? duration - elapsed : elapsed).rounded(countsDown ? .up : .down))
+        switch format ?? timeFormat ?? "automatic" {
+        case "seconds": return "\(seconds)s"
+        case "minutes": return "\(seconds / 60)m"
+        case "hours": return "\(seconds / 3600)h"
+        case "hoursMinutes": return "\(seconds / 3600)h \(seconds % 3600 / 60)m"
+        case "minutesSeconds": return "\(seconds / 60):" + String(format: "%02d", seconds % 60)
+        default:
+            if seconds >= 3600 { return "\(seconds / 3600):" + String(format: "%02d:%02d", seconds % 3600 / 60, seconds % 60) }
+            return "\(seconds / 60):" + String(format: "%02d", seconds % 60)
+        }
+    }
     var eyebrow: String?
     var title: String?
     var subtitle: String?
@@ -140,7 +229,7 @@ struct HTMLAppWidgetSnapshot: Codable, Hashable {
     }
     func presentation(at date: Date) -> Self {
         var result = self
-        if nativeTimeInterval != nil, let timeRange {
+        if automaticStatus != false, nativeTimeInterval != nil, let timeRange {
             result.subtitle = timeRange.label(at: date)
             result.footer = timeRange.label(at: date)
             // A formatted percent is a snapshot, not a dynamic timer value.

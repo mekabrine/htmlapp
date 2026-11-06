@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.8.4"
-    static let compiledBuild = "103"
+    static let compiledVersion = "1.8.5"
+    static let compiledBuild = "104"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.8.5" { return [
+            Entry(id: "custom-widget-design", title: "Design widgets your way", description: "Forge can arrange text, icons, images, shapes, rings and progress bars, with different layouts for each Home Screen and Lock Screen size.", symbol: "square.grid.2x2", tint: .purple),
+            Entry(id: "widget-time-formats", title: "Choose what time shows", description: "Ask for hours and minutes, seconds only, or a countdown without seconds. iOS 18 and later support live selected units; older versions use compatible fallbacks.", symbol: "timer", tint: .blue),
+            Entry(id: "widget-ring-alignment", title: "Centered Lock Screen timers", description: "Countdown text now fits inside circular widgets, with centered alignment and space around the ring.", symbol: "circle", tint: .green)
+        ] }
         if version == "1.8.4" { return [
             Entry(id: "generation-build-fix", title: "Fixed a build error", description: "Corrected access to the original app request used by backend and widget validation.", symbol: "wrench.and.screwdriver", tint: .blue)
         ] }

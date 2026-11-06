@@ -37,6 +37,48 @@ enum ForgeBackendContract {
     Known future state is a timeline; changing remote data is cached with an honest
     last-updated state and opportunistic refresh. None of these wake arbitrary JS.
 
+
+    CUSTOM WIDGET DESIGN (schemaVersion 2):
+    snapshot.timeFormat: automatic | hoursMinutesSeconds | minutesSeconds |
+    hoursMinutes | seconds | minutes | hours. iOS 18+ uses native live selected-unit
+    text. On iOS 16/17 seconds-only falls back to a live MM:SS timer; minute/hour
+    formats use prepared minute timeline entries with system-controlled scheduling.
+    Query capabilities.list().widgetCustomization.liveSelectedTimeUnits, not guesses.
+    Formats are localized by iOS; do not promise arbitrary live string templates.
+    snapshot.automaticStatus:false preserves your subtitle/footer/unit instead of
+    replacing them with the generic timed state. Retain real timeRange dates.
+
+    For completely custom composition, snapshot.content is a native element tree.
+    snapshot.familyContent maps family names to alternate trees; selected family wins
+    over content. Omit both for legacy templates. Types: row, column, overlay (children),
+    text (text or field:title|subtitle|value|unit|footer|eyebrow), timer (timeFormat),
+    symbol (systemSymbol,symbolRenderingMode:monochrome|hierarchical|palette|multicolor),
+    image (imageBase64 or snapshot.imageBase64), progress, ring, circle, rectangle,
+    capsule, spacer, divider. timer/progress/ring use snapshot.timeRange/display;
+    progress/ring with explicit progress:0...1 are static instead. Do not preformat
+    a live timer as a text node or set a static fraction for live time progress.
+    Node styles: alignment:leading|center|trailing; verticalAlignment:top|center|bottom|
+    firstTextBaseline (rows); spacing:0...40; padding:0...40; fontSize:8...96;
+    fontWeight:regular|medium|semibold|bold|heavy; fontDesign:default|rounded|serif|
+    monospaced; lineLimit:1...6; minimumScale:0.3...1; foregroundHex,backgroundHex,
+    borderHex,borderWidth:0...12,cornerRadius:0...100,opacity:0...1,width/height:1...600,
+    expand:true to fill width,accessibilityLabel. Max96 elements across all trees,
+    max nesting depth6; invalid trees are rejected. Nested row/column creates grids;
+    overlay composes backgrounds, rings, symbols and labels. Only native layout, not
+    HTML/CSS/JS execution in widgets. Colors and rendering remain system-controlled
+    on the Lock Screen and tinted Home Screen. Do not assume arbitrary animation.
+    Make family-specific designs: accessoryInline is a single short row of text,
+    symbol/timer; circular is a centered small overlay with ring + padded column;
+    rectangular is compact; Home Screen supports richer trees/images. Avoid large
+    fixed widths on Lock Screen. Timers expand horizontally: center their text and
+    leave ring insets. Provide accessibilityLabel and sensible scale/line limits.
+    Example familyContent.accessoryCircular:
+    {type:"overlay",children:[{type:"ring"},{type:"column",padding:10,children:[
+      {type:"symbol",systemSymbol:"clock",fontSize:13},
+      {type:"timer",timeFormat:"minutesSeconds",fontSize:11,minimumScale:0.5}]}]}.
+    Existing widget tap/deep-link configuration still applies to the whole widget;
+    use existing item actions in template layouts for multiple tap destinations.
+
     MANAGED RUNTIME V2 — AUTHORITATIVE BACKEND CAPABILITY:
     HTMLApp can deploy generated Python servers automatically using the owner's saved secret.
     A requested server feature must have real Python, manifest and matching frontend calls.
