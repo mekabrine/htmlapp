@@ -211,7 +211,7 @@ export interface HTMLAppNativeAPI {
     subscribe(session: string): Promise<Record<string, unknown>>;
     unsubscribe(session: string): Promise<Record<string, unknown>>;
     request(options: { path: string; method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: Record<string, unknown>; session?: string }): Promise<Record<string, unknown>>;
-    status(): Promise<{ linked: boolean; canNotify: boolean }>;
+    status(): Promise<{ linked: boolean; canNotify: boolean; sdkVersion?: number; apiBaseURL?: string; pushConfigured?: boolean; state?: string; publicKey?: string }>;
     read(): Promise<{ data: unknown }>;
     notify(options: { title?: string; body: string }): Promise<{ accepted: boolean }>;
   };

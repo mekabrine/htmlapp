@@ -202,8 +202,29 @@ enum HTMLAppBackendAPI {
         return json
     }
 
+    static func runtimeStatus(_ link: HTMLAppBackendLink) async throws -> [String: Any] {
+        let capability = try await raw("/v2/capabilities", method: "GET", key: "")
+        guard capability["sdkVersion"] as? Int == 2 else { throw HTMLAppBackendError(message: "The server does not support runtime v2.") }
+        let state: String
+        if link.managementKey.isEmpty {
+            _ = try await raw("/v2/apps/" + link.appID + "/schema", method: "GET", key: link.readKey)
+            state = "connected"
+        } else {
+            let details = try await raw("/v2/manage/apps/" + link.appID, method: "GET", key: link.managementKey)
+            state = details["state"] as? String ?? "unknown"
+        }
+        let push = capability["pushConfigured"] as? Bool ?? false
+        return ["linked": true, "sdkVersion": 2, "apiBaseURL": origin + "/v2/apps/" + link.appID + "/api",
+                "canNotify": push, "pushConfigured": push, "state": state, "publicKey": link.readKey]
+    }
+
     static func status(_ link: HTMLAppBackendLink) async throws -> HTMLAppBackendStatus {
         if link.sdkVersion == 2 {
+            if link.managementKey.isEmpty {
+                let details = try await runtimeStatus(link)
+                return HTMLAppBackendStatus(name: "Shared backend", template: "Python v2", revision: 0, publishRead: false,
+                    pushConfigured: details["pushConfigured"] as? Bool ?? false, deviceRegistered: false)
+            }
             let result = try await raw("/v2/manage/apps/" + link.appID, method: "GET", key: link.managementKey)
             return HTMLAppBackendStatus(name: result["name"] as? String ?? "Backend", template: "Python v2", revision: result["revision"] as? Int ?? 0, publishRead: false, pushConfigured: result["pushConfigured"] as? Bool ?? false, deviceRegistered: false)
         }
@@ -259,6 +280,7 @@ struct HTMLAppBackendView: View {
     @State private var shareURL: URL?
     @State private var dataDraft = ""
     @State private var dataEditor = false
+    @State private var repairingBackend = false
 
     var body: some View {
         NavigationStack {
@@ -400,19 +422,24 @@ struct HTMLAppBackendView: View {
                                 }
                             }
                         }
-                        if HTMLAppBackendProvisioning.template(in: app.html) != nil {
-                            Text(HTMLAppBackendProvisioning.isPaired
-                                 ? "This app connects automatically. Use Retry if setup could not finish."
-                                 : "Enter your secret in Settings → AI & Voice → Automatic backends.")
+                        if app.html.contains("htmlapp-backend-v2") {
+                            Text(HTMLAppBackendProvisioning.isPaired ? "This app includes server code. Connect it using your saved secret." : "Enter your secret once in Settings → AI & Voice → Automatic backends.")
+                            Button("Connect automatically") {
+                                run { try await connectRuntime() }
+                            }.disabled(!HTMLAppBackendProvisioning.isPaired)
+                        } else if HTMLAppBackendProvisioning.template(in: app.html) != nil {
+                            Text("This app uses a legacy backend. Automatic setup uses your saved secret.")
                         } else {
-                            Text("This app does not declare a supported backend. Ask Forge to add cloud storage or notifications.")
+                            Text("This app has no deployable backend code. Your saved VPS secret does not need to be entered again.")
+                            Button("Repair backend with Forge") { repairingBackend = true }
                         }
-                        Text("To connect a backend you already created, paste its provisioning JSON below.")
-                        SecureField("Provisioning JSON", text: $provisioning)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Button("Verify and link") { linkBackend() }
-                            .disabled(provisioning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        DisclosureGroup("Advanced: link a legacy backend") {
+                            SecureField("Provisioning JSON", text: $provisioning)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            Button("Verify and link") { linkBackend() }
+                                .disabled(provisioning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
                     }
                 }
                 if busy { ProgressView() }
@@ -423,6 +450,11 @@ struct HTMLAppBackendView: View {
             .fileImporter(isPresented: $importing, allowedContentTypes: [UTType(filenameExtension: "py") ?? .plainText]) { result in
                 do { try importSource(result.get()) }
                 catch { message = error.localizedDescription }
+            }
+            .sheet(isPresented: $repairingBackend) {
+                AIGenerationView(existingApp: app, initialEdit: "Implement this app’s complete intended backend and connect every server-dependent control. Replace placeholder URLs and local-only substitutes with a generated runtime v2 Python bundle and matching frontend. Preserve the design and user data. Use the saved VPS secret automatically; do not ask for provisioning JSON.")
+                    .environmentObject(store)
+                    .interactiveDismissDisabled(true)
             }
             .sheet(isPresented: $dataEditor) {
                 NavigationStack {
@@ -502,12 +534,27 @@ struct HTMLAppBackendView: View {
                 HTMLAppBackendProvisioning.enqueue(app, template: template)
             }
             run {
+                if link == nil, app.html.contains("htmlapp-backend-v2"), HTMLAppBackendProvisioning.isPaired {
+                    try await connectRuntime()
+                }
                 await HTMLAppBackendProvisioning.flush()
                 link = HTMLAppBackendStore.link(for: app.id)
                 if let link { backend = try await HTMLAppBackendAPI.status(link) }
                 else { message = HTMLAppBackendProvisioning.status(for: app.id) }
             }
         }
+    }
+
+    private func connectRuntime() async throws {
+        let issues = ForgeBackendContract.issues(request: app.summary, html: app.html)
+        guard issues.isEmpty else { throw HTMLAppBackendError(message: issues.joined(separator: " ")) }
+        guard let bundle = try HTMLAppRuntimeBundle.extract(app.html) else { throw HTMLAppBackendError(message: "Missing generated server code. Ask Forge to repair this app.") }
+        try await HTMLAppRuntimeBackend.deploy(localID: app.id, name: app.name, bundle: bundle)
+        link = HTMLAppBackendStore.link(for: app.id)
+        if let link { backend = try await HTMLAppBackendAPI.status(link) }
+        let url = try HTMLAppBackendStore.sourceURL(for: app.id)
+        source = try String(contentsOf: url, encoding: .utf8)
+        shareURL = url
     }
 
     private func run(_ operation: @escaping @MainActor () async throws -> Void) {

@@ -32,6 +32,7 @@ struct AIPlanningResult: Sendable {
     var impliedFeatures: [String] = []
     var capabilities: [String] = []
     var recommendedMode: String? = nil
+    var backendRequired = false
 }
 
 enum ForgeTestMode: String, CaseIterable, Identifiable {
@@ -112,6 +113,7 @@ final class AIGenerationSession: ObservableObject {
     private var lastResearch = ""
     private var editingExistingApp = false
     private var checkpointExistingAppID: String?
+    var runtimeBackendRequired = false
     private var latestPartialHTML = ""
     private var iconRefreshAllowed = true
 
@@ -292,6 +294,7 @@ final class AIGenerationSession: ObservableObject {
         iconRefreshAllowed = !preserveIcon
         defer { if preserveIcon { iconScript = savedIconScript } }
         originalPrompt = originalUserPrompt ?? prompt
+        runtimeBackendRequired = ForgeBackendContract.requiresBackend(request: originalPrompt, html: "")
         isWorking = true
         errorMessage = nil
         failedPhase = nil
@@ -336,6 +339,7 @@ final class AIGenerationSession: ObservableObject {
                     }
                 }
                 if let planning {
+                runtimeBackendRequired = runtimeBackendRequired || planning.backendRequired
                 improved = planning.brief + visualReference
                 refinedBrief = improved
                 let plan = planning.research
@@ -379,6 +383,8 @@ final class AIGenerationSession: ObservableObject {
             }
 
             let generationBrief = """
+            BACKEND REQUIREMENT: \(runtimeBackendRequired ? "A complete runtime v2 source/manifest bundle and connected frontend are mandatory. Do not substitute a local-only demo." : "Use a runtime backend if needed by the actual requested workflow.")
+
             AUTHORITATIVE USER REQUEST (takes precedence over inferred defaults):
             \(prompt)
 
@@ -513,6 +519,7 @@ final class AIGenerationSession: ObservableObject {
                 }
             }
             try await verifyAndRepair(config: config, omitIcon: preserveIcon)
+            try await ensureRuntimeBackend(config: config)
             try Task.checkCancellation()
             phase = "Ready to review"
         } catch is CancellationError {
@@ -730,6 +737,7 @@ Requested edit:
                 AIDebugTraceStore.shared.append("ICON", "Preserved the existing app icon because this edit did not request an icon or identity change.")
             }
             try await verifyAndRepair(config: config, omitIcon: true)
+            try await ensureRuntimeBackend(config: config, request: originalPrompt + "\n" + cleanChange)
             // The verification repair may also edit HTML; protect the final
             // artifact after that pass, not only the first patch candidate.
             let finalSafety = ForgeEditSafetyGate.violations(
@@ -898,7 +906,8 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
                 iconScript: iconScript,
                 phase: phase,
                 existingAppID: checkpointExistingAppID,
-                streamedByteCount: streamedByteCount
+                streamedByteCount: streamedByteCount,
+                backendRequired: runtimeBackendRequired
             )
         )
     }
@@ -908,6 +917,7 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
         editingExistingApp = checkpoint.existingAppID != nil
         generationStartedAt = checkpoint.startedAt ?? checkpoint.savedAt
         originalPrompt = checkpoint.originalPrompt
+        runtimeBackendRequired = checkpoint.backendRequired ?? ForgeBackendContract.requiresBackend(request: checkpoint.originalPrompt, html: checkpoint.html)
         refinedBrief = checkpoint.refinedBrief
         lastResearch = checkpoint.research
         streamedHTML = checkpoint.html
@@ -960,6 +970,7 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
                 try await ensureValidIcon(config: config)
             }
             try await verifyAndRepair(config: config, omitIcon: omitIcon || editingExistingApp)
+            try await ensureRuntimeBackend(config: config)
             try Task.checkCancellation()
             phase = "Ready to review"
         } catch is CancellationError {
@@ -1229,8 +1240,44 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         return warnings
     }
 
+    private func ensureRuntimeBackend(config: AIProviderConfiguration, request: String? = nil) async throws {
+        let intent = request ?? originalPrompt
+        for attempt in 0...2 {
+            let issues = ForgeBackendContract.issues(request: intent, html: streamedHTML, required: runtimeBackendRequired)
+            guard !issues.isEmpty else { return }
+            guard attempt < 2 else {
+                throw HTMLAppBackendError(message: "The requested backend is incomplete. " + issues.joined(separator: " "), status: 422)
+            }
+            try Task.checkCancellation()
+            phase = "Building the backend"
+            AIDebugTraceStore.shared.append("BACKEND COMPLETENESS", issues.joined(separator: "\n"))
+            let icon = ForgeEditIconContext(streamedHTML)
+            let response = try await AIProviderClient.complete(config: config,
+                system: AIHTMLAgent.patchSystemPrompt(research: lastResearch),
+                messages: [("user", """
+                Complete the requested backend workflow. Preserve the current app identity and working UI.
+                The VPS supports generated Python; do not replace the requested server feature with a local test.
+                Authoritative request: \(intent)
+                Blocking issues: \(issues.joined(separator: "\n"))
+                Return a working patch or complete htmlapp_code, including the runtime bundle and matching frontend.
+                Current source:
+                \(icon.html)
+                """)])
+            let patch = AIHTMLAgent.patch(from: response)
+            if !patch.trimmed.isEmpty, let html = HTMLPatchApplier.apply(patch, to: icon.html) {
+                streamedHTML = icon.restoringIcons(in: html)
+            } else {
+                let output = AIHTMLAgent.parse(response)
+                guard !output.html.trimmed.isEmpty else { throw HTMLAppBackendError(message: "Forge did not return an applicable backend repair.", status: 422) }
+                streamedHTML = icon.restoringIcons(in: output.html)
+            }
+            persistCheckpoint()
+        }
+    }
+
     private func verifyAndRepair(config: AIProviderConfiguration, omitIcon: Bool = false) async throws {
         try Task.checkCancellation()
+        try await ensureRuntimeBackend(config: config)
         phase = "Testing the app"
         verificationReport = ""
         qaRepairResponseBytes = 0
@@ -2083,11 +2130,11 @@ Draw a distinctive, purpose-specific 1024px icon in IconScript. Use a crisp iOS-
             return cached
         }
         let system = """
-You are HTMLApp Forge's combined product-planning and capability-research planner. Turn the user's raw app idea into a compact implementation-ready brief AND decide what device/public API research is actually required.
+You are HTMLApp Forge's combined product-planning and capability-research planner. HTMLApp supports managed runtime v2: Python 3.12 + htmlapp_sdk, persistent per-app SQLite, custom routes, resource sessions, and resource-scoped APNs. The native host deploys the generated source automatically; never treat these supported server features as unavailable. Turn the user's raw app idea into a compact implementation-ready brief AND decide what device/public API research is actually required.
 
 \(ForgeProductContract.rules)
 
-Return exactly one <brief>...</brief>, a one-line <purpose>who, where, why</purpose>, followed by zero or more:
+Return exactly one <brief>...</brief>, a one-line <purpose>who, where, why</purpose>, and <backend_required>yes or no</backend_required>. Set yes when the actual workflow needs server execution, remote writes, shared cross-device data, inbound external requests, or notification delivery from outside the phone. A third-party read-only API or local reminders alone do not require a generated server. Never set no merely because setup or Python generation is needed. Follow with zero or more:
 <assumption>reversible assumption to confirm (at most 3)</assumption>
 <implied_feature>feature, reason and confidence (at most 3)</implied_feature>
 <capability>specific device or public API capability needed</capability>
@@ -2099,7 +2146,7 @@ BRIEF REQUIREMENTS:
 - Keep the <brief> under 300 words and avoid repeating the user's wording.
 - Preserve the user's actual intent and define the smallest complete useful product.
 - Cover outcome, core loop, must features, 0-3 strongly implied adjacent conveniences, structure, data model/persistence, capabilities, widgets/background only when useful, onboarding only when needed, real states, phone/iPad/accessibility experience, completeness, and observable acceptance criteria.
-- Never add accounts, subscriptions, social features, analytics, tracking, or fabricated backend infrastructure by default.
+- Never add accounts, subscriptions, social features, analytics or tracking by default. When the requested workflow needs a server, plan the actual managed Python runtime v2, its routes, resource sessions and frontend payloads; do not downgrade it to a local-only app. The owner has a provisioned VPS and the host deploys generated Python automatically.
 
 RESEARCH RULES:
 - Use <device_query> for iPhone/iPad hardware, sensors, camera/microphone, files, downloads, sharing, contacts, photos, calendar, reminders, notifications, biometrics, secure storage, speech, authentication, widgets, WidgetKit, background refresh, or other HTMLApp-native capabilities.
@@ -2134,7 +2181,8 @@ Resolve ambiguity with ordinary reversible defaults. Do not expose hidden reason
                 assumptions: Array(plannedValues("assumption", in: text).prefix(3)),
                 impliedFeatures: Array(plannedValues("implied_feature", in: text).prefix(3)),
                 capabilities: Array(plannedValues("capability", in: text).prefix(10)),
-                recommendedMode: value("mode", in: text).trimmed
+                recommendedMode: value("mode", in: text).trimmed,
+                backendRequired: value("backend_required", in: text).trimmed.lowercased() == "yes"
             )
             await ForgePlanCache.shared.save(planned, for: cacheKey)
             return planned
@@ -2261,7 +2309,7 @@ It is valid to return both kinds. If neither device capabilities nor external se
         let base = AISettingsStore.resolvedSystemPrompt(research: research)
         // The catalog directory is always visible; detailed entries are injected from planner queries.
         let contract = base.contains("FORGE CORE CONTRACT") ? "" : "\n\n" + ForgeProductContract.rules
-        return base + contract + ForgeNativeTypedCatalog.promptContract + """
+        return base + contract + ForgeNativeTypedCatalog.promptContract + "\n\n" + ForgeBackendContract.instructions + "\n" + HTMLAppRuntimeContract.instructions + """
 
 REMOTE PUSH AND BACKGROUND VOICE:
 - HTMLAppNative.push.register() requests opt-in iOS push registration and returns a token only on APNs-provisioned builds. This does not create a server. Remote notifications require the user's backend to register tokens and send APNs messages; never claim notifications will arrive before that infrastructure exists.
@@ -2370,13 +2418,15 @@ the existing element can be styled instead. Ensure labels and inputs remain
 associated and tappable at 320pt width and tablet widths.
 
 EDIT ACCEPTANCE:
-If the requested feature introduces a supported server need, include the same managed backend meta tag and runtime call documented for generation. Otherwise preserve the existing backend setup.
+If the requested feature needs a server, include a complete runtime v2 source/manifest JSON bundle and matching frontend calls. Preserve that bundle during unrelated edits. A legacy managed meta tag alone does not create a backend.
 Animate meaningful new or changed interactions, including navigation, sheets, and state changes. Honor prefers-reduced-motion.
 When asked to fix tab selection after opening a destination from a button, route every entry point through the same navigation function. Prefer HTMLAppNative.screens for matching tab destinations when available, with a local fallback. Preserve existing IDs and state.
 Keep the original user request authoritative. Treat inferred targets and planner text as advisory; if they conflict with the actual DOM or request, inspect the full source and choose the smallest coherent change. For ambiguous requests preserve data, features and navigation. Trace the changed interaction from user action through state update and persistence to rendered result, then check its existing callers. Summarize only changes actually present in the patch. Never claim runtime tests were executed merely from reading source.
 
 RULES:
 \(designGuide)
+\(ForgeBackendContract.instructions)
+\(HTMLAppRuntimeContract.instructions)
 Decide if <ui_polish_needed> should be yes. Say yes ONLY when the requested edit significantly changes visual identity, layout hierarchy, theme, or multiple screens and a separate UI specialist could meaningfully help. Say no for bug fixes, functional changes, wording, colors on one component, and ordinary small revisions; do not waste a specialist call.
 Keep or improve native-feeling animation and mobile interactions. Do not fabricate facts, APIs, live data or capabilities. If the revision depends on something uncertain, use the documented research below; if no credible API is available, implement an honest local/limited state rather than fake data.
 

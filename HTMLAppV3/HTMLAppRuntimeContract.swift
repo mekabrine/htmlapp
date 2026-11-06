@@ -5,12 +5,12 @@ static let instructions = #"""
 
 Read GET https://htmlapp.hostish.site/v2/capabilities and this document via
 GET /v2/docs before planning a backend. These are real capabilities only when
-apiVersion=2 is reachable. The current HTMLApp v1 native bridge cannot use v2.
+apiVersion=2 is reachable. HTMLApp v2 bridge supports backend.request, subscribe and unsubscribe.
 
 ## Generation output
 
 Generate one complete UTF-8 server.py and a manifest JSON object, plus the HTML
-frontend. Return these as separate artifacts. No keys belong in generated
+frontend. Transport these inside the single HTML document as the inert htmlapp-backend-v2 JSON script described by ForgeBackendContract. No keys belong in generated
 source, frontend HTML, model messages, logs, URLs, or shareable Python files.
 The native host owns enrollment and deployment. Generated HTML never invokes
 management endpoints. Preserve a stable local clientID across creation retries.

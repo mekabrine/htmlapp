@@ -12,6 +12,7 @@ struct ForgeDraftCheckpoint: Codable, Equatable {
     var phase: String
     var existingAppID: String?
     var streamedByteCount: Int
+    var backendRequired: Bool? = nil
 }
 
 enum ForgeDraftCheckpointStore {

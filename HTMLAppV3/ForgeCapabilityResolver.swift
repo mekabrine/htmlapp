@@ -23,6 +23,19 @@ struct ForgeCapabilityPlan {
         """
     }
 
+    static func requiresBackend(request: String, html: String) -> Bool {
+        let content = html.lowercased()
+        if content.contains("htmlapp-backend") || content.contains("backend.request") ||
+            content.contains("backend.subscribe") || content.contains("backend?.request") { return true }
+        let text = request.lowercased()
+        if ["local only", "local-only", "offline only", "offline-only", "no backend", "without a backend"].contains(where: text.contains) { return false }
+        if ["backend", "webhook", "cloud storage", "cloud text", "cloud sync", "server-side", "server side", "api endpoint", "shared chat", "encrypted chat", "multi-user", "multiplayer"].contains(where: text.contains) { return true }
+        if text.contains("cloud") && ["storage", "text", "sync", "save", "notes"].contains(where: text.contains) { return true }
+        if text.contains("shared") && ["list", "notes", "storage", "messages", "data"].contains(where: text.contains) { return true }
+        if text.contains("api") && ["send", "receive", "phone", "message", "store", "upload"].contains(where: text.contains) { return true }
+        return text.contains("chat") && ["friends", "family", "other people", "each other"].contains(where: text.contains)
+    }
+
     static func infer(_ request: String) -> ForgeCapabilityPlan {
         let lower = request.lowercased()
         // Remove harmless articles so short prompts like "scan a receipt"
@@ -177,6 +190,11 @@ struct ForgeCapabilityPlan {
             methods.append("share.present")
         }
 
+        if Self.requiresBackend(request: request, html: "") {
+            methods += ["backend.status", "backend.request"]
+            constraints.append("Managed runtime v2 supports generated Python, persistent SQLite and custom routes. Include the full source/manifest bundle and matching frontend; do not substitute a local-only demo.")
+            if mentions(["push", "notification", "phone message"]) { methods += ["backend.subscribe", "backend.unsubscribe"] }
+        }
         methods = Array(Set(methods)).sorted()
         browsers = Array(Set(browsers)).sorted()
         constraints = Array(Set(constraints)).sorted()

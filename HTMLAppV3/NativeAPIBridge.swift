@@ -1235,7 +1235,12 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 if let link, link.sendKey != nil, UIApplication.shared.applicationState == .active {
                     try? await HTMLAppBackendProvisioning.registerPhoneIfReady(link)
                 }
-                self.resolve(id, value: ["linked": link != nil, "canNotify": link?.sendKey != nil])
+                if let link, link.sdkVersion == 2 {
+                    do { self.resolve(id, value: try await HTMLAppBackendAPI.runtimeStatus(link)) }
+                    catch { self.reject(id, code: "backend_status_failed", message: error.localizedDescription) }
+                } else {
+                    self.resolve(id, value: ["linked": link != nil, "sdkVersion": link == nil ? 0 : 1, "canNotify": link?.sendKey != nil])
+                }
             }
         case "backend.read", "backend.notify":
             Task { @MainActor [weak self] in

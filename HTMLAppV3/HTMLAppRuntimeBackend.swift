@@ -6,19 +6,46 @@ struct HTMLAppRuntimeBundle: Codable {
     let manifest: [String: RuntimeJSON]
 
     static func extract(_ html: String) throws -> Self? {
-        let pattern = #"<script\s+type=["']application/json["']\s+id=["']htmlapp-backend-v2["']\s*>([\s\S]*?)</script>"#
-        let regex = try NSRegularExpression(pattern: pattern, options: .caseInsensitive)
-        guard let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+        let matches = try bundleMatches(html)
+        guard matches.count <= 1 else { throw HTMLAppBackendError(message: "Use exactly one runtime bundle.", status: 422) }
+        guard let match = matches.first,
               let range = Range(match.range(at: 1), in: html) else {
-            if html.contains("htmlapp-backend-v2") { throw HTMLAppBackendError(message: "The generated backend bundle is malformed. Ask Forge to repair its script tag.") }
+            if html.contains("htmlapp-backend-v2") { throw HTMLAppBackendError(message: "Malformed runtime bundle script tag.", status: 422) }
             return nil
         }
         let bundle = try JSONDecoder().decode(Self.self, from: Data(html[range].utf8))
-        guard bundle.source.utf8.count <= 100_000,
-              bundle.manifest["sdkVersion"] == .number(2) else {
-            throw HTMLAppBackendError(message: "Invalid runtime bundle or unsupported SDK version.")
-        }
+        try bundle.validate()
         return bundle
+    }
+    static let scriptPattern = #"<script\b(?=[^>]*\btype\s*=\s*["']application/json["'])(?=[^>]*\bid\s*=\s*["']htmlapp-backend-v2["'])[^>]*>([\s\S]*?)</script\s*>"#
+    static func bundleMatches(_ html: String) throws -> [NSTextCheckingResult] {
+        try NSRegularExpression(pattern: scriptPattern, options: .caseInsensitive)
+            .matches(in: html, range: NSRange(html.startIndex..., in: html))
+    }
+    func validate() throws {
+        let manifest = object["manifest"] as? [String: Any] ?? [:]
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, source.utf8.count <= 100_000,
+              self.manifest["sdkVersion"] == .number(2),
+              let version = manifest["schemaVersion"] as? Int, version >= 1,
+              let routes = manifest["routes"] as? [[String: Any]], !routes.isEmpty,
+              let checks = manifest["checks"] as? [[String: Any]], !checks.isEmpty else {
+            throw HTMLAppBackendError(message: "Runtime needs nonempty Python, SDK v2, schema version, routes and readiness checks.", status: 422)
+        }
+        var unique = Set<String>()
+        for route in routes {
+            guard let path = route["path"] as? String, path.hasPrefix("/"), !path.hasPrefix("/_platform"),
+                  let method = route["method"] as? String, ["GET", "POST", "PUT", "PATCH", "DELETE"].contains(method),
+                  let access = route["access"] as? String, ["public", "app", "session"].contains(access),
+                  unique.insert(method + " " + path).inserted else {
+                throw HTMLAppBackendError(message: "Invalid or duplicate runtime route.", status: 422)
+            }
+        }
+        for check in checks {
+            guard let path = check["path"] as? String, unique.contains("GET " + path),
+                  let expected = check["expect"] as? Int, (200...499).contains(expected) else {
+                throw HTMLAppBackendError(message: "Readiness checks must name a declared GET route and expected status.", status: 422)
+            }
+        }
     }
     var object: [String: Any] {
         let bytes = try! JSONEncoder().encode(self)
@@ -58,6 +85,7 @@ enum HTMLAppRuntimeBackend {
         let existing = HTMLAppBackendStore.link(for: localID)
         let credential: String
         let path: String
+        try bundle.validate()
         var body = bundle.object
         if let existing {
             guard !existing.managementKey.isEmpty else { throw HTMLAppBackendError(message: "This shared copy cannot edit its owner’s backend. Create a separately owned app to change its server code.") }
@@ -127,8 +155,8 @@ enum HTMLAppRuntimeBackend {
 
 extension HTMLAppRuntimeBackend {
     static func sharedHTML(_ html: String, localID: String) -> String {
-        let pattern = #"<script\s+type=["']application/json["']\s+id=["']htmlapp-backend-v2["']\s*>[\s\S]*?</script>"#
-        let clean = html.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+        let pattern = HTMLAppRuntimeBundle.scriptPattern
+        let clean = html.replacingOccurrences(of: pattern, with: "", options: [.regularExpression, .caseInsensitive])
         guard let link = HTMLAppBackendStore.link(for: localID), link.sdkVersion == 2 else { return clean }
         let publicLink = HTMLAppBackendLink(appID: link.appID, managementKey: "", readKey: link.readKey, sendKey: nil, runtimeReadKey: nil, sdkVersion: 2)
         guard let data = try? JSONEncoder().encode(publicLink) else { return clean }

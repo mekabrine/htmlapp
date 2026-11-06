@@ -10,6 +10,8 @@ import sys
 import tempfile
 import time
 import unittest
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE = Path(__file__).resolve().parents[1]
 
@@ -25,6 +27,7 @@ class WorkerTests(unittest.TestCase):
             sock.bind(('127.0.0.1', 0))
             self.port = sock.getsockname()[1]
         self.process = None
+        self.broker_url = ''
 
     def tearDown(self):
         self.stop()
@@ -39,7 +42,7 @@ class WorkerTests(unittest.TestCase):
     def start(self):
         (self.root / 'manifest.json').write_text(json.dumps(self.manifest))
         env = {**os.environ, 'HTMLAPP_CODE_DIRECTORY': str(self.root), 'HTMLAPP_DATABASE': str(self.database),
-               'HTMLAPP_PORT': str(self.port), 'HTMLAPP_BROKER_TOKEN': 'test-broker', 'PYTHONPATH': str(BASE)}
+               'HTMLAPP_PORT': str(self.port), 'HTMLAPP_BROKER_TOKEN': 'test-broker', 'HTMLAPP_BROKER_URL': self.broker_url, 'PYTHONPATH': str(BASE)}
         self.process = subprocess.Popen([sys.executable, str(BASE / 'worker.py')], env=env,
                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
@@ -84,6 +87,41 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(len(result['events']), 1)
         self.assertEqual(result['events'][0]['data'], {'ciphertext': 'opaque'})
+
+    def test_resource_notification_reaches_broker_only_after_authentication(self):
+        delivered = []
+        class Broker(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+            def do_POST(self):
+                payload = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                delivered.append((self.path, self.headers.get('Authorization'), payload))
+                body = b'{"accepted":true}'
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+        broker = ThreadingHTTPServer(('127.0.0.1', 0), Broker)
+        thread = threading.Thread(target=broker.serve_forever, daemon=True)
+        thread.start()
+        try:
+            self.broker_url = 'http://127.0.0.1:' + str(broker.server_port)
+            self.assertTrue(self.start())
+            self.assertEqual(self.call('POST', '/notify', {})[0], 401)
+            self.assertEqual(delivered, [])
+            status, identity = self.call('POST', '/resources', {'code': '1234'})
+            self.assertEqual(status, 200)
+            status, result = self.call('POST', '/notify', {}, session=identity['session'])
+            self.assertEqual(status, 200)
+            self.assertTrue(result['accepted'])
+            self.assertEqual(delivered, [('/notify', 'Bearer test-broker', {
+                'resource': identity['resource'], 'title': 'New activity', 'body': 'Open the app to view it.'})])
+            self.assertNotIn(identity['session'], json.dumps(delivered))
+        finally:
+            broker.shutdown()
+            broker.server_close()
+            thread.join(timeout=5)
 
     def test_migration_failure_rolls_back_schema_and_data(self):
         self.manifest['migrations'] = ['CREATE TABLE custom(value TEXT)', "INSERT INTO custom VALUES('keep')"]
