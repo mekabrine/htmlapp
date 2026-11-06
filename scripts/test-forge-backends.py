@@ -13,6 +13,7 @@ service = (root/'HTMLAppV3/AIGenerationService.swift').read_text()
 view = (root/'HTMLAppV3/AIGenerationView.swift').read_text()
 backend = (root/'HTMLAppV3/HTMLAppBackend.swift').read_text()
 native = (root/'HTMLAppV3/NativeAPIBridge.swift').read_text()
+assert 'private(set) var originalPrompt' in service, 'Save validation requires read-only access to the authoritative request'
 assert 'ForgeBackendContract.instructions' in service.split('static func systemPrompt',1)[1].split('static func shortEditSummary',1)[0]
 assert 'ForgeBackendContract.instructions' in service.split('static func patchSystemPrompt',1)[1]
 qa = service.split('private func verifyAndRepair',1)[1]

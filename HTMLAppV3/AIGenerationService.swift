@@ -108,7 +108,7 @@ final class AIGenerationSession: ObservableObject {
     @Published var sectionByteCounts: [String: Int] = [:]
     @Published var failedPhase: String?
 
-    private var originalPrompt = ""
+    private(set) var originalPrompt = ""
     private var generationStartedAt = Date()
     private var lastResearch = ""
     private var editingExistingApp = false

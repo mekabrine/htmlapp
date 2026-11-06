@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.8.3"
-    static let compiledBuild = "102"
+    static let compiledVersion = "1.8.4"
+    static let compiledBuild = "103"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,9 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.8.4" { return [
+            Entry(id: "generation-build-fix", title: "Fixed a build error", description: "Corrected access to the original app request used by backend and widget validation.", symbol: "wrench.and.screwdriver", tint: .blue)
+        ] }
         // Requested one-time recap: changes after 1.8.0 through this release.
         if version == "1.8.3" { return [
             Entry(id: "time-based-widgets", title: "Widgets understand time", description: "Countdowns, elapsed timers and time progress use native displays. The same feature works for events, sessions, workouts and more, without constant app refreshes.", symbol: "timer", tint: .purple),
