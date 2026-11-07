@@ -735,10 +735,19 @@ struct HTMLWebView: UIViewRepresentable {
             // The top-level HTMLApp document is loaded from its local
             // app-scoped WebView. If it navigates to an external origin, that
             // origin must never gain access to native message handlers.
-            if let url = message.frameInfo.request.url,
-               let scheme = url.scheme?.lowercased(),
-               !["file", "about", "applewebdata"].contains(scheme) {
-                return
+            if let url = message.frameInfo.request.url {
+                switch url.scheme?.lowercased() {
+                case "file", "about", "applewebdata":
+                    break
+                case HTMLAppResourceScheme.scheme:
+                    // Package-mode documents have a custom origin. Admit only
+                    // this WebView's own index, never another app or URL.
+                    guard let handler = webView?.configuration.urlSchemeHandler(
+                        forURLScheme: HTMLAppResourceScheme.scheme) as? HTMLAppResourceScheme,
+                          handler.isDocumentURL(url) else { return }
+                default:
+                    return
+                }
             }
             switch message.name {
             case "htmlappState":
