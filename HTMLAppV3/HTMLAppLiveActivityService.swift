@@ -40,6 +40,17 @@ enum HTMLAppLiveActivityService {
         let value = args["progress"] as? NSNumber
         let primary = args["primaryDeadlineMs"] as? NSNumber
         let secondary = args["secondaryDeadlineMs"] as? NSNumber
+        var actions = previous?.actions
+        if let raw = args["actions"] {
+            if raw is NSNull { actions = nil }
+            else {
+                guard JSONSerialization.isValidJSONObject(raw), let bytes = try? JSONSerialization.data(withJSONObject: raw),
+                      let decoded = try? JSONDecoder().decode([HTMLAppLiveActivityAction].self, from: bytes),
+                      decoded.count <= 3, Set(decoded.map(\.id)).count == decoded.count,
+                      decoded.allSatisfy({ !$0.id.isEmpty && $0.id.count <= 40 && !$0.title.isEmpty && $0.title.count <= 30 && ["open", "end"].contains($0.kind) }) else { throw Failure.badArguments }
+                actions = decoded
+            }
+        }
         var presentation = previous?.presentation
         if let raw = args["presentation"] {
             if raw is NSNull { presentation = nil }
@@ -91,7 +102,7 @@ enum HTMLAppLiveActivityService {
             }(),
             compactLabel: args["compactLabel"] == nil ? previous?.compactLabel
                 : clip(args["compactLabel"], max: 10),
-            presentation: presentation,
+            actions: actions, presentation: presentation,
             staleDate: args["staleDateMs"] is NSNull ? nil : staleMs.map { Date(timeIntervalSince1970: $0 / 1000) } ?? previous?.staleDate,
             timeRange: range, display: display, timeFormat: format
         )

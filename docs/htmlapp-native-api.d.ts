@@ -41,7 +41,10 @@ export type HTMLAppNativeMethod =
   | 'calendar.deleteEvent'
   | 'calendar.events'
   | 'calendar.updateEvent'
+  | 'camera.captureFrame'
   | 'camera.capturePhoto'
+  | 'camera.startFrames'
+  | 'camera.stopFrames'
   | 'capabilities.describe'
   | 'capabilities.list'
   | 'clipboard.readText'
@@ -49,6 +52,9 @@ export type HTMLAppNativeMethod =
   | 'contacts.create'
   | 'contacts.list'
   | 'contacts.pick'
+  | 'coreML.infer'
+  | 'coreML.load'
+  | 'coreML.unload'
   | 'db.count'
   | 'db.delete'
   | 'db.export'
@@ -85,6 +91,10 @@ export type HTMLAppNativeMethod =
   | 'liveActivities.list'
   | 'liveActivities.start'
   | 'liveActivities.update'
+  | 'location.backgroundDisable'
+  | 'location.backgroundEnable'
+  | 'location.backgroundRead'
+  | 'location.backgroundStatus'
   | 'location.distance'
   | 'location.geocode'
   | 'location.reverseGeocode'
@@ -92,10 +102,16 @@ export type HTMLAppNativeMethod =
   | 'map.embed'
   | 'map.hide'
   | 'map.show'
+  | 'midi.destinations'
+  | 'midi.send'
   | 'motion.altitude'
   | 'motion.pedometer'
   | 'motion.start'
   | 'motion.stop'
+  | 'music.loadBank'
+  | 'music.noteOff'
+  | 'music.noteOn'
+  | 'music.stop'
   | 'network.allowedDomains'
   | 'network.request'
   | 'network.revokeDomain'
@@ -118,6 +134,8 @@ export type HTMLAppNativeMethod =
   | 'reminders.delete'
   | 'reminders.list'
   | 'reminders.update'
+  | 'scene.hide'
+  | 'scene.show'
   | 'secureStorage.get'
   | 'secureStorage.remove'
   | 'secureStorage.set'
@@ -160,6 +178,8 @@ export type HTMLAppNativeMethod =
   | 'widgets.list'
   | 'widgets.reload'
   | 'widgets.remove';
+export interface HTMLAppNativeFrame { x: number; y: number; width: number; height: number }
+export interface HTMLAppXYZ { x: number; y: number; z: number }
 
 export interface HTMLAppNativeCapabilitySnapshot {
   protocolVersion: number;
@@ -217,6 +237,15 @@ export interface HTMLAppNativeAPI {
     request(permission: string): Promise<{ hostAllowed: boolean }>;
     openSettings(): Promise<{ opened: boolean }>;
   };
+  screens: { configure(options: {items: {id: string; title: string; symbol: string; badge?: string}[]; selected?: string}): Promise<{enabled: boolean}>; go(id: string): Promise<boolean> };
+  camera: { capturePhoto(options?: Record<string, unknown>): Promise<unknown>; startFrames(options: {frame: HTMLAppNativeFrame; camera?: "front" | "back"}): Promise<{started: boolean}>; captureFrame(): Promise<{url: string; sequence: number; width: number; height: number; reusedAfterCaptures: number}>; stopFrames(): Promise<unknown> };
+  map: { show(options: Record<string, unknown>): Promise<unknown>; embed(options: {frame: HTMLAppNativeFrame; center?: {latitude: number; longitude: number}; span?: number; annotations?: {id: string; latitude: number; longitude: number; title?: string}[]; routes?: {latitude: number; longitude: number}[][]}): Promise<unknown>; hide(): Promise<unknown>; onSelect(callback: (event: {id: string}) => void): () => void };
+  scene: { show(options: {frame: HTMLAppNativeFrame; ar?: boolean; objects: {id: string; shape: "box" | "sphere"; position: [number, number, number]; size: number; color?: string}[]}): Promise<unknown>; hide(): Promise<unknown>; onSelect(callback: (event: {id: string}) => void): () => void };
+  motion: { start(options?: {frequency?: number}): Promise<unknown>; stop(): Promise<unknown>; onData(callback: (event: {timestamp: number; acceleration: HTMLAppXYZ; gravity: HTMLAppXYZ; rotationRate: HTMLAppXYZ; attitude: {roll: number; pitch: number; yaw: number}}) => void): () => void; pedometer(days?: number): Promise<unknown>; altitude(): Promise<unknown> };
+  coreML: { load(url: string): Promise<{id: string; inputs: string[]; outputs: string[]}>; infer(modelID: string, imageURL: string): Promise<unknown>; unload(modelID: string): Promise<unknown> };
+  music: { loadBank(url: string, program?: number): Promise<unknown>; noteOn(note: number, velocity?: number): Promise<unknown>; noteOff(note: number): Promise<unknown>; stop(): Promise<unknown> };
+  midi: { destinations(): Promise<{destinations: {index: number; name: string}[]}>; send(destination: number, bytes: number[]): Promise<unknown> };
+  liveActivities: { start(definition: Record<string, unknown>): Promise<unknown>; update(id: string, state: Record<string, unknown>): Promise<unknown>; end(id: string): Promise<unknown>; list(): Promise<unknown> };
   widgets: {
     configure(definition: { id: string; name?: string; families: string[]; snapshot: HTMLAppDynamicWidgetSnapshot; [key: string]: unknown }): Promise<unknown>;
     list(): Promise<unknown>;
@@ -238,6 +267,10 @@ export interface HTMLAppNativeAPI {
     revokeDomain(host: string): Promise<{ revoked: boolean }>;
   };
   location: {
+    backgroundEnable(distanceMeters?: number): Promise<{enabled: boolean; authorization: string}>;
+    backgroundDisable(): Promise<{enabled: boolean}>;
+    backgroundStatus(): Promise<{enabled: boolean; authorization: string}>;
+    backgroundRead(): Promise<{samples: {latitude: number; longitude: number; accuracy: number; timestampMs: number}[]}>;
     geocode(query: string): Promise<{ results: { latitude: number; longitude: number; formattedAddress: string; approximate: boolean }[]; source: string }>;
     distance(latitude1: number, longitude1: number, latitude2: number, longitude2: number): Promise<{ meters: number; kilometers: number; miles: number; kind: "great_circle" }>;
     reverseGeocode(latitude: number, longitude: number): Promise<{ formattedAddress: string; approximate: boolean }>;

@@ -17,6 +17,7 @@ struct HTMLAppLiveActivityAttributes: ActivityAttributes {
         var footer: String?
         var backgroundHex: String?
         var compactLabel: String?
+        var actions: [HTMLAppLiveActivityAction]? = nil
         var presentation: [String: HTMLAppWidgetElement]? = nil
         var staleDate: Date? = nil
         var timeRange: HTMLAppWidgetTimeRange? = nil

@@ -39,6 +39,10 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private let gamepads = HTMLAppGamepadService()
     private var documentScanner: HTMLAppDocumentScanner?
     private var drawingPresenter: HTMLAppDrawingPresenter?
+    private var nativeMusic: HTMLAppNativeMusic?
+    private var coreMLService: HTMLAppCoreMLService?
+    private var modelTasks: [String: Task<Void, Never>] = [:]
+    private var cameraFrames: HTMLAppCameraFrames?
     private var cameraCapture: HTMLAppCameraCapture?
     private var audioService: HTMLAppAudioService?
     private var videoCapture: HTMLAppVideoCapture?
@@ -50,6 +54,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private let pedometer = CMPedometer()
     private let altimeter = CMAltimeter()
     private var liquidGlassView: UIVisualEffectView?
+    private var nativeScene: HTMLAppNativeScene?
     private var embeddedMap: HTMLAppEmbeddedMap?
     private var nativeTabBar: HTMLAppNativeTabBar?
     private let bluetoothDiscovery = HTMLAppBluetoothDiscovery()
@@ -106,8 +111,13 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     }
 
     func clearLiquidGlass() {
+        nativeMusic?.stop(); nativeMusic = nil
+        motionStream.stopDeviceMotionUpdates()
+        cameraFrames?.stop(); cameraFrames = nil
         embeddedMap?.hide()
         embeddedMap = nil
+        nativeScene?.shutdown()
+        nativeScene = nil
         liquidGlassView?.removeFromSuperview()
         liquidGlassView = nil
     }
@@ -118,6 +128,8 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     }
 
     func shutdown() {
+        nativeMusic?.stop(); nativeMusic = nil
+        modelTasks.values.forEach { $0.cancel() }; modelTasks.removeAll(); coreMLService = nil
         motionStream.stopDeviceMotionUpdates()
         if let observer = motionBackgroundObserver { NotificationCenter.default.removeObserver(observer) }
         motionBackgroundObserver = nil
@@ -246,6 +258,83 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                     }
                 }
             }
+        case "music.loadBank":
+            withPermission(.files, id: id) { [weak self] in
+                guard let self else { return }
+                guard let file = self.localResourceURL(args["url"] as? String ?? "") else {
+                    self.reject(id, code: "invalid_bank", message: "Choose an app-owned SF2/DLS sound bank."); return
+                }
+                do {
+                    if self.nativeMusic == nil { self.nativeMusic = HTMLAppNativeMusic() }
+                    let program = args["program"] as? Int ?? 0
+                    guard (0...127).contains(program) else { throw HTMLAppNativeMusic.Failure.invalid }
+                    try self.nativeMusic?.load(file, program: UInt8(program)); self.resolve(id, value: ["loaded": true])
+                } catch { self.reject(id, code: "music_failed", message: error.localizedDescription) }
+            }
+        case "music.noteOn", "music.noteOff":
+            do {
+                guard let nativeMusic else { throw HTMLAppNativeMusic.Failure.unavailable }
+                try nativeMusic.note(args, on: method == "music.noteOn"); resolve(id, value: ["played": true])
+            } catch { reject(id, code: "music_failed", message: error.localizedDescription) }
+        case "music.stop":
+            nativeMusic?.stop(); nativeMusic = nil; resolve(id, value: ["stopped": true])
+        case "midi.destinations", "midi.send":
+            if nativeMusic == nil { nativeMusic = HTMLAppNativeMusic() }
+            do {
+                if method == "midi.destinations" { resolve(id, value: ["destinations": nativeMusic?.destinations() ?? []]) }
+                else { try nativeMusic?.send(args); resolve(id, value: ["sent": true]) }
+            } catch { reject(id, code: "midi_failed", message: error.localizedDescription) }
+        case "coreML.load", "coreML.infer", "coreML.unload":
+            withPermission(.files, id: id) { [weak self] in
+                guard let self else { return }
+                if self.coreMLService == nil { self.coreMLService = HTMLAppCoreMLService(root: SourceCache.shared.baseURL(appID: self.appID)) }
+                guard let service = self.coreMLService else { return }
+                guard self.modelTasks.count < 2 else { self.reject(id, code: "model_busy", message: "Wait for the current model operation."); return }
+                self.modelTasks[id] = Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    defer { self.modelTasks.removeValue(forKey: id) }
+                    do {
+                        let result: [String: Any]
+                        if method == "coreML.load" { result = try await service.load(path: args["url"] as? String ?? "") }
+                        else if method == "coreML.infer" { result = try await service.infer(id: args["modelID"] as? String ?? "", imagePath: args["imageURL"] as? String ?? "") }
+                        else { await service.unload(id: args["modelID"] as? String ?? ""); result = ["unloaded": true] }
+                        try Task.checkCancellation(); self.resolve(id, value: result)
+                    } catch { self.reject(id, code: "model_failed", message: error.localizedDescription) }
+                }
+            }
+        case "camera.startFrames":
+            withPermission(.camera, id: id) { [weak self] in
+                Task { @MainActor in
+                    guard let self, self.appID != "PREVIEW", let webView = self.webView else { return }
+                    let status = AVCaptureDevice.authorizationStatus(for: .video)
+                    var allowed = status == .authorized
+                    if status == .notDetermined { allowed = await AVCaptureDevice.requestAccess(for: .video) }
+                    guard allowed else { self.reject(id, code: "camera_denied", message: "Camera permission denied."); return }
+                    self.cameraFrames?.stop()
+                    let capture = HTMLAppCameraFrames(root: SourceCache.shared.baseURL(appID: self.appID))
+                    do { try capture.mount(in: webView, frame: args["frame"] as? [String: Any] ?? [:]) }
+                    catch { self.reject(id, code: "camera_frame_invalid", message: error.localizedDescription); return }
+                    self.cameraFrames = capture
+                    capture.start(front: args["camera"] as? String == "front") { [weak self] result in
+                        guard let self else { return }
+                        switch result {
+                        case .success: self.resolve(id, value: ["started": true])
+                        case .failure(let error): capture.stop(); self.reject(id, code: "camera_failed", message: error.localizedDescription)
+                        }
+                    }
+                }
+            }
+        case "camera.captureFrame":
+            guard let cameraFrames else { reject(id, code: "camera_not_running", message: "Start the foreground camera first."); return }
+            cameraFrames.frame { [weak self] result in
+                switch result {
+                case .success(let frame): self?.resolve(id, value: frame)
+                case .failure(let error): self?.reject(id, code: "camera_frame_failed", message: error.localizedDescription)
+                }
+            }
+        case "camera.stopFrames":
+            cameraFrames?.stop(); cameraFrames = nil
+            resolve(id, value: ["stopped": true])
         case "camera.capturePhoto":
             withPermission(.camera, id: id) { [weak self] in
                 guard let self else { return }
@@ -1627,6 +1716,17 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                     }
                 }
             }
+        case "location.backgroundEnable", "location.backgroundStatus", "location.backgroundRead":
+            withPermission(.location, id: id) { [weak self] in
+                guard let self else { return }
+                if method == "location.backgroundEnable" {
+                    self.resolve(id, value: HTMLAppBackgroundLocation.enable(appID: self.appID, distance: (args["distanceMeters"] as? NSNumber)?.doubleValue ?? 25))
+                } else if method == "location.backgroundRead" {
+                    self.resolve(id, value: ["samples": HTMLAppBackgroundLocation.read(appID: self.appID)])
+                } else { self.resolve(id, value: HTMLAppBackgroundLocation.status(appID: self.appID)) }
+            }
+        case "location.backgroundDisable":
+            resolve(id, value: HTMLAppBackgroundLocation.disable(appID: appID))
         case "location.distance":
             guard let lat1 = args["latitude1"] as? Double,
                   let lon1 = args["longitude1"] as? Double,
@@ -1679,6 +1779,30 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                     }
                 }
             }
+        case "scene.show":
+            guard appID != "PREVIEW", let webView else { reject(id, code: "preview_unavailable", message: "Native scenes require a saved app."); return }
+            let present = { [weak self] in
+                guard let self else { return }
+                do {
+                    if self.nativeScene == nil { self.nativeScene = HTMLAppNativeScene(webView: webView) }
+                    try self.nativeScene?.show(args)
+                    self.resolve(id, value: ["visible": true])
+                } catch { self.reject(id, code: "scene_failed", message: error.localizedDescription) }
+            }
+            if args["ar"] as? Bool == true {
+                withPermission(.camera, id: id) { [weak self] in
+                    Task { @MainActor in
+                        let status = AVCaptureDevice.authorizationStatus(for: .video)
+                        var allowed = status == .authorized
+                        if status == .notDetermined { allowed = await AVCaptureDevice.requestAccess(for: .video) }
+                        if allowed { present() }
+                        else { self?.reject(id, code: "camera_denied", message: "AR requires camera permission.") }
+                    }
+                }
+            } else { present() }
+        case "scene.hide":
+            nativeScene?.shutdown(); nativeScene = nil
+            resolve(id, value: ["hidden": true])
         case "map.embed":
             guard appID != "PREVIEW", let webView else { reject(id, code: "preview_unavailable", message: "Embedded maps require a saved app."); return }
             do {
@@ -3923,7 +4047,25 @@ enum HTMLNativeAPIScript {
             return () => window.removeEventListener('htmlapp:' + name, listener);
           }
         },
+        music: {
+          loadBank: (url, program = 0) => call('music.loadBank', {url, program}),
+          noteOn: (note, velocity = 90) => call('music.noteOn', {note, velocity}),
+          noteOff: note => call('music.noteOff', {note}),
+          stop: () => call('music.stop')
+        },
+        midi: {
+          destinations: () => call('midi.destinations'),
+          send: (destination, bytes) => call('midi.send', {destination, bytes})
+        },
+        coreML: {
+          load: url => call('coreML.load', {url}),
+          infer: (modelID, imageURL) => call('coreML.infer', {modelID, imageURL}),
+          unload: modelID => call('coreML.unload', {modelID})
+        },
         camera: {
+          startFrames: options => call('camera.startFrames', options),
+          captureFrame: () => call('camera.captureFrame'),
+          stopFrames: () => call('camera.stopFrames'),
           capturePhoto: (options = {}) => call('camera.capturePhoto', options)
         },
         video: {
@@ -3966,11 +4108,20 @@ enum HTMLNativeAPIScript {
           range: (quantity, start, end) => call('health.range', { quantity, start, end })
         },
         location: {
+          backgroundEnable: (distanceMeters = 25) => call('location.backgroundEnable', {distanceMeters}),
+          backgroundDisable: () => call('location.backgroundDisable'),
+          backgroundStatus: () => call('location.backgroundStatus'),
+          backgroundRead: () => call('location.backgroundRead'),
           distance: (latitude1, longitude1, latitude2, longitude2) =>
             call('location.distance', { latitude1, longitude1, latitude2, longitude2 }),
           geocode: (query) => call('location.geocode', { query: String(query ?? '') }),
           reverseGeocode: (latitude, longitude) => call('location.reverseGeocode', { latitude, longitude }),
           roadSpeedLimit: (latitude, longitude) => call('location.roadSpeedLimit', { latitude, longitude })
+        },
+        scene: {
+          show: options => call('scene.show', options),
+          hide: () => call('scene.hide'),
+          onSelect: callback => { const handler = event => callback(event.detail); window.addEventListener('htmlapp:scene-select', handler); return () => window.removeEventListener('htmlapp:scene-select', handler); }
         },
         map: {
           embed: options => call('map.embed', options),

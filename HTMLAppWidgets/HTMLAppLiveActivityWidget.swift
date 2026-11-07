@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import ActivityKit
+import AppIntents
 
 @available(iOS 16.2, *)
 struct HTMLAppLiveActivityWidget: Widget {
@@ -29,10 +30,27 @@ struct HTMLAppLiveActivityWidget: Widget {
     }
 
     @ViewBuilder private func region(_ name: String, context: ActivityViewContext<HTMLAppLiveActivityAttributes>) -> some View {
-        if let node = context.state.presentation?[name], let snapshot = snapshot(context) {
-            HTMLAppWidgetElementView(node: node, snapshot: snapshot, date: Date())
-        } else {
-            fallback(name, context: context)
+        VStack(alignment: .leading, spacing: 6) {
+            if let node = context.state.presentation?[name], let snapshot = snapshot(context) {
+                HTMLAppWidgetElementView(node: node, snapshot: snapshot, date: Date())
+            } else { fallback(name, context: context) }
+            if name == "lockScreen" || name == "expandedBottom" {
+                HStack {
+                    ForEach(context.state.actions ?? []) { action in
+                        if action.kind == "end" {
+                            if #available(iOS 17.0, *) {
+                                Button(intent: HTMLAppEndLiveActivityIntent(appID: context.attributes.appID, activityID: context.attributes.activityID)) {
+                                    Text(action.title)
+                                }.buttonStyle(.bordered)
+                            } else if let url = activityURL(context.attributes) {
+                                Link("Open to " + action.title, destination: url)
+                            }
+                        } else if let url = activityURL(context.attributes) {
+                            Link(action.title, destination: url)
+                        }
+                    }
+                }.font(.caption)
+            }
         }
     }
 

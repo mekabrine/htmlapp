@@ -45,7 +45,10 @@
     "calendar.deleteEvent",
     "calendar.events",
     "calendar.updateEvent",
+    "camera.captureFrame",
     "camera.capturePhoto",
+    "camera.startFrames",
+    "camera.stopFrames",
     "capabilities.describe",
     "capabilities.list",
     "clipboard.readText",
@@ -53,6 +56,9 @@
     "contacts.create",
     "contacts.list",
     "contacts.pick",
+    "coreML.infer",
+    "coreML.load",
+    "coreML.unload",
     "db.count",
     "db.delete",
     "db.export",
@@ -89,6 +95,10 @@
     "liveActivities.list",
     "liveActivities.start",
     "liveActivities.update",
+    "location.backgroundDisable",
+    "location.backgroundEnable",
+    "location.backgroundRead",
+    "location.backgroundStatus",
     "location.distance",
     "location.geocode",
     "location.reverseGeocode",
@@ -96,10 +106,16 @@
     "map.embed",
     "map.hide",
     "map.show",
+    "midi.destinations",
+    "midi.send",
     "motion.altitude",
     "motion.pedometer",
     "motion.start",
     "motion.stop",
+    "music.loadBank",
+    "music.noteOff",
+    "music.noteOn",
+    "music.stop",
     "network.allowedDomains",
     "network.request",
     "network.revokeDomain",
@@ -122,6 +138,8 @@
     "reminders.delete",
     "reminders.list",
     "reminders.update",
+    "scene.hide",
+    "scene.show",
     "secureStorage.get",
     "secureStorage.remove",
     "secureStorage.set",
@@ -640,6 +658,15 @@
       "requiredArguments": [],
       "resultType": "unknown"
     },
+    "camera.captureFrame": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
     "camera.capturePhoto": {
       "minimumIOS": "16.0",
       "permission": "camera",
@@ -650,6 +677,29 @@
         "quality": "number",
         "maxDimension": "number"
       },
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "camera.startFrames": {
+      "minimumIOS": "16.0",
+      "permission": "camera",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "frame": "object",
+        "camera": "string"
+      },
+      "requiredArguments": [
+        "frame"
+      ],
+      "resultType": "unknown"
+    },
+    "camera.stopFrames": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
       "requiredArguments": [],
       "resultType": "unknown"
     },
@@ -720,6 +770,47 @@
       "nativeCancellation": false,
       "arguments": {},
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "coreML.infer": {
+      "minimumIOS": "16.0",
+      "permission": "files",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "modelID": "string",
+        "imageURL": "string"
+      },
+      "requiredArguments": [
+        "modelID",
+        "imageURL"
+      ],
+      "resultType": "unknown"
+    },
+    "coreML.load": {
+      "minimumIOS": "16.0",
+      "permission": "files",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "url": "string"
+      },
+      "requiredArguments": [
+        "url"
+      ],
+      "resultType": "unknown"
+    },
+    "coreML.unload": {
+      "minimumIOS": "16.0",
+      "permission": "files",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "modelID": "string"
+      },
+      "requiredArguments": [
+        "modelID"
+      ],
       "resultType": "unknown"
     },
     "db.count": {
@@ -1135,6 +1226,44 @@
       ],
       "resultType": "unknown"
     },
+    "location.backgroundDisable": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "location.backgroundEnable": {
+      "minimumIOS": "16.0",
+      "permission": "location",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "distanceMeters": "number"
+      },
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "location.backgroundRead": {
+      "minimumIOS": "16.0",
+      "permission": "location",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "location.backgroundStatus": {
+      "minimumIOS": "16.0",
+      "permission": "location",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
     "location.distance": {
       "minimumIOS": "16.0",
       "permission": null,
@@ -1232,6 +1361,30 @@
       "requiredArguments": [],
       "resultType": "unknown"
     },
+    "midi.destinations": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "midi.send": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "destination": "number",
+        "bytes": "array"
+      },
+      "requiredArguments": [
+        "destination",
+        "bytes"
+      ],
+      "resultType": "unknown"
+    },
     "motion.altitude": {
       "minimumIOS": "16.0",
       "permission": "motion",
@@ -1262,6 +1415,56 @@
       "resultType": "unknown"
     },
     "motion.stop": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "music.loadBank": {
+      "minimumIOS": "16.0",
+      "permission": "files",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "url": "string",
+        "program": "number"
+      },
+      "requiredArguments": [
+        "url"
+      ],
+      "resultType": "unknown"
+    },
+    "music.noteOff": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "note": "number"
+      },
+      "requiredArguments": [
+        "note"
+      ],
+      "resultType": "unknown"
+    },
+    "music.noteOn": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "note": "number",
+        "velocity": "number"
+      },
+      "requiredArguments": [
+        "note"
+      ],
+      "resultType": "unknown"
+    },
+    "music.stop": {
       "minimumIOS": "16.0",
       "permission": null,
       "userInitiationRecommended": false,
@@ -1503,6 +1706,31 @@
       "nativeCancellation": false,
       "arguments": {},
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "scene.hide": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "scene.show": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "frame": "object",
+        "ar": "boolean",
+        "objects": "array"
+      },
+      "requiredArguments": [
+        "frame",
+        "objects"
+      ],
       "resultType": "unknown"
     },
     "secureStorage.get": {

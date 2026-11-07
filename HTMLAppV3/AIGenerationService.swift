@@ -671,7 +671,12 @@ Requested edit:
                 requestedChange: cleanChange,
                 config: config
             )
-            let acceptance = ForgeEditAcceptance.issues(before: editSource.html, after: streamedHTML, request: cleanChange)
+            var acceptance = ForgeEditAcceptance.issues(before: editSource.html, after: streamedHTML, request: cleanChange)
+            if acceptance.isEmpty {
+                phase = "Checking requested edit"
+                acceptance = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
+                    contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
+            }
             if !acceptance.isEmpty {
                 phase = "Repairing incomplete edit"
                 streamedHTML = editSource.html
@@ -687,6 +692,9 @@ Requested edit:
                     """)], timeout: 120, maxTokens: 16000, retryOnTransient: true)
                 output = try await applyEditOutputWithRecovery(AIHTMLAgent.parse(retry), requestedChange: cleanChange, config: config)
                 lastEditSummary = AIHTMLAgent.shortEditSummary(AIHTMLAgent.value("edit_summary", in: retry))
+                let outcomeIssues = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
+                    contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
+                guard outcomeIssues.isEmpty else { throw AIGenerationError.invalidPatch }
                 guard ForgeEditAcceptance.issues(before: editSource.html, after: streamedHTML, request: cleanChange).isEmpty else {
                     throw AIGenerationError.invalidPatch
                 }
@@ -766,8 +774,14 @@ Requested edit:
             } else if editingExistingApp {
                 AIDebugTraceStore.shared.append("ICON", "Preserved the existing app icon because this edit did not request an icon or identity change.")
             }
+            let reviewedEditHTML = streamedHTML
             try await verifyAndRepair(config: config, omitIcon: true)
             try await ensureRuntimeBackend(config: config, request: originalPrompt + "\n" + cleanChange)
+            if streamedHTML != reviewedEditHTML {
+                let outcomeIssues = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
+                    contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
+                guard outcomeIssues.isEmpty else { throw AIGenerationError.invalidPatch }
+            }
             // The verification repair may also edit HTML; protect the final
             // artifact after that pass, not only the first patch candidate.
             let finalSafety = ForgeEditSafetyGate.violations(

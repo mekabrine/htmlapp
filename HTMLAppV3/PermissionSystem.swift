@@ -149,9 +149,13 @@ enum HTMLPermissionStore {
 
     static func set(_ choice: HTMLPermissionChoice, for permission: HTMLPermission, appID: String) {
         UserDefaults.standard.set(choice.rawValue, forKey: storageKey(permission, appID: appID))
+        if permission == .location && choice != .allow {
+            Task { @MainActor in _ = HTMLAppBackgroundLocation.disable(appID: appID) }
+        }
     }
 
     static func reset(appID: String) {
+        Task { @MainActor in _ = HTMLAppBackgroundLocation.disable(appID: appID) }
         for permission in HTMLPermission.allCases {
             UserDefaults.standard.removeObject(forKey: storageKey(permission, appID: appID))
         }

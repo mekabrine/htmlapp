@@ -990,6 +990,7 @@ final class AppStore: ObservableObject {
     }
 
     func delete(_ app: SavedHTMLApp) {
+        _ = HTMLAppBackgroundLocation.disable(appID: app.id)
         HTMLAppBackendProvisioning.cancel(app.id)
         HTMLAppBackendDeletionQueue.enqueue(app.id)
         HTMLAppICloudPreferences.markDeleted(app.id)

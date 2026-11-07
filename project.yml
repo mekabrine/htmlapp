@@ -132,6 +132,7 @@ targets:
         NFCReaderUsageDescription: Saved HTML apps can scan an NFC tag only while you explicitly run a scan.
         NSCameraUsageDescription: HTML apps can use the camera only after you allow that saved app and approve the iOS permission.
         NSMicrophoneUsageDescription: Dictate app ideas in Forge or allow a saved HTMLApp to use the microphone.
+        NSLocationAlwaysAndWhenInUseUsageDescription: A saved app can collect a bounded location history in the background only after you enable it and grant Always access.
         NSLocationWhenInUseUsageDescription: HTML apps can request your location only after you allow that saved app and approve the iOS permission.
         NSBluetoothAlwaysUsageDescription: HTMLApps may discover nearby Bluetooth Low Energy devices only after permission and your request to scan.
         NSBluetoothPeripheralUsageDescription: HTMLApps may discover nearby Bluetooth Low Energy devices only after permission and your request to scan.
@@ -169,6 +170,7 @@ targets:
           - com.mekabrine.htmlapp.refresh
           - com.mekabrine.htmlapp.forge.*
         UIBackgroundModes:
+          - location
           - audio
           - fetch
           - processing
