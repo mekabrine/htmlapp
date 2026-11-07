@@ -5,7 +5,7 @@ const swift = fs.readFileSync('HTMLAppV3/NativeAPIBridge.swift', 'utf8');
 const source = swift.split('static let source = #"""')[1].split('"""#')[0];
 const messages = [], nodes = new Map();
 const element = () => ({style:{},setAttribute(){},replaceChildren(){},append(...children){this.children=children},remove(){nodes.delete(this.id)}});
-const document = {getElementById:id=>nodes.get(id),createElement:element,body:{appendChild:n=>nodes.set(n.id,n)},addEventListener(){}};
+const document = {getElementById:id=>nodes.get(id),createElement:element,querySelectorAll:()=>[],body:{appendChild:n=>nodes.set(n.id,n)},addEventListener(){}};
 const listeners = new Map();
 const window = {
   webkit:{messageHandlers:{htmlappNative:{postMessage:message=>messages.push(message)}}},
