@@ -10,7 +10,7 @@ enum HTMLAppBridgeLint {
         let wrappers: Set<String> = [
             "ai.createSession", "db.searchFullText",
             "capabilities.has", "capabilities.describe",
-            "events.on"
+            "events.on", "screens.configure", "screens.go", "motion.onData", "map.onSelect"
         ]
         let known = HTMLAppBridgeRegistry.methodSet.union(wrappers)
         let pattern = #"\b(?:HTMLAppNative|HTMLApp)\.([A-Za-z][A-Za-z0-9]*)\.([A-Za-z][A-Za-z0-9]*)\s*\("#

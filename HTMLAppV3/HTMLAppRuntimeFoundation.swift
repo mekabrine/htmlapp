@@ -133,6 +133,26 @@ enum HTMLAppRuntimeFoundation {
       });
       window.addEventListener('pageshow', () => publishLifecycle('resume'));
 
+      // Host-owned declarative navigation: generated content supplies destinations,
+      // while UIKit supplies the primary tab bar. Preview fallback is explicit.
+      const configureNavigation = async () => {
+        const manifest = document.getElementById?.('htmlapp-navigation');
+        if (!manifest) return;
+        try {
+          const options = JSON.parse(manifest.textContent);
+          if (!window.HTMLAppNative?.screens?.configure) throw new Error('Native screen router unavailable');
+          const style = document.createElement('style');
+          style.textContent = '[data-htmlapp-screen][hidden],[data-htmlapp-tab-fallback][hidden]{display:none!important}';
+          document.head.appendChild(style);
+          await window.HTMLAppNative.screens.configure(options);
+          window.__htmlappNavigationConfigured = true;
+        } catch (error) {
+          window.__htmlappNavigationError = String(error.message || error);
+          console.error('Native navigation configuration failed', error);
+        }
+      };
+      document.addEventListener('DOMContentLoaded', configureNavigation, { once: true });
+
       const runtime = Object.freeze({
         runOperation, cancelOperation,
         get activeOperations() { return Array.from(operations.keys()); },

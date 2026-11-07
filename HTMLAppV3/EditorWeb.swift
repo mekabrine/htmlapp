@@ -363,6 +363,8 @@ struct HTMLWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        let resources = HTMLAppResourceScheme(root: SourceCache.shared.baseURL(appID: appID))
+        configuration.setURLSchemeHandler(resources, forURLScheme: HTMLAppResourceScheme.scheme)
         configuration.processPool = HTMLAppWebWarmup.pool
         configuration.defaultWebpagePreferences.allowsContentJavaScript = UserDefaults.standard.object(forKey: "allowJavaScript") as? Bool ?? true
         configuration.defaultWebpagePreferences.preferredContentMode = .mobile
@@ -371,6 +373,7 @@ struct HTMLWebView: UIViewRepresentable {
 
         let sensorPolicy = appID == "PREVIEW" ? "deny" : HTMLSensorPermissionPolicy.choice(appID: appID).rawValue
         let controller = configuration.userContentController
+        controller.addUserScript(WKUserScript(source: HTMLAppSourcePolicy.script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(
             source: HTMLAppCarDisplay.script,
             injectionTime: .atDocumentStart, forMainFrameOnly: true
@@ -488,7 +491,14 @@ struct HTMLWebView: UIViewRepresentable {
         webView.scrollView.minimumZoomScale = 1
         webView.scrollView.maximumZoomScale = 1
         webView.allowsBackForwardNavigationGestures = false
-        webView.loadHTMLString(initialDocument, baseURL: SourceCache.shared.baseURL(appID: appID))
+        HTMLAppSourcePolicy.prepare(webView) {
+        guard context.coordinator.lastHTML == html else { return }
+        if html.contains("name=\"htmlapp-runtime\" content=\"package\"") {
+            resources.load(initialDocument, into: webView)
+        } else {
+            webView.loadHTMLString(initialDocument, baseURL: SourceCache.shared.baseURL(appID: appID))
+        }
+        }
         return webView
     }
 
@@ -496,7 +506,12 @@ struct HTMLWebView: UIViewRepresentable {
         guard context.coordinator.lastHTML != html else { return }
         context.coordinator.lastHTML = html
         let document = context.coordinator.documentForReload(originalHTML: html)
-        uiView.loadHTMLString(document, baseURL: SourceCache.shared.baseURL(appID: appID))
+        if html.contains("name=\"htmlapp-runtime\" content=\"package\""),
+           let resources = uiView.configuration.urlSchemeHandler(forURLScheme: HTMLAppResourceScheme.scheme) as? HTMLAppResourceScheme {
+            resources.load(document, into: uiView)
+        } else {
+            uiView.loadHTMLString(document, baseURL: SourceCache.shared.baseURL(appID: appID))
+        }
     }
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
@@ -558,7 +573,7 @@ struct HTMLWebView: UIViewRepresentable {
                 pendingStateRestore = snapshot
                 document = snapshot.html
             }
-            if HTMLAppOfflineCache.shared.isOffline {
+            if !HTMLAppSourcePolicy.networkOnly, HTMLAppOfflineCache.shared.isOffline {
                 let rewritten = HTMLAppOfflineCache.shared.rewriteHTMLForOffline(appID: appID, html: document)
                 document = rewritten.0
                 offlineNoticePending = !HTMLAppOfflineCache.shared.manifest(appID: appID).entries.isEmpty
@@ -567,7 +582,7 @@ struct HTMLWebView: UIViewRepresentable {
         }
 
         func documentForReload(originalHTML: String) -> String {
-            guard appID != "PREVIEW", HTMLAppOfflineCache.shared.isOffline else { return originalHTML }
+            guard appID != "PREVIEW", !HTMLAppSourcePolicy.networkOnly, HTMLAppOfflineCache.shared.isOffline else { return originalHTML }
             let rewritten = HTMLAppOfflineCache.shared.rewriteHTMLForOffline(appID: appID, html: originalHTML)
             offlineNoticePending = offlineNoticePending || rewritten.1 > 0
             return rewritten.0

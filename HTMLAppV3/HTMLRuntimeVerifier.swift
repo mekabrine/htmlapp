@@ -46,6 +46,8 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
 
     private func start() {
         let configuration = WKWebViewConfiguration()
+        let resources = HTMLAppResourceScheme(root: SourceCache.shared.baseURL(appID: "PREVIEW"))
+        configuration.setURLSchemeHandler(resources, forURLScheme: HTMLAppResourceScheme.scheme)
         configuration.websiteDataStore = .nonPersistent()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.allowsInlineMediaPlayback = true
@@ -113,7 +115,11 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
                 if let error {
                     self.issues.append("QA network filter could not initialize: " + error.localizedDescription)
                 }
-                webView.loadHTMLString(self.html, baseURL: SourceCache.shared.baseURL(appID: "PREVIEW"))
+                if self.html.contains("name=\"htmlapp-runtime\" content=\"package\"") {
+                    resources.load(self.html, into: webView)
+                } else {
+                    webView.loadHTMLString(self.html, baseURL: SourceCache.shared.baseURL(appID: "PREVIEW"))
+                }
             }
         }
     }
@@ -251,6 +257,21 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
                 mockAppStorage[key] = text
                 ok = true
                 value = ["saved": true]
+            case "tabs.configure":
+                let items = args["items"] as? [[String: Any]] ?? []
+                let selected = args["selected"] as? String ?? items.first?["id"] as? String ?? ""
+                ok = !items.isEmpty && items.count <= 7
+                value = ["enabled": ok]
+                if ok, let bytes = try? JSONSerialization.data(withJSONObject: ["id": selected]),
+                   let json = String(data: bytes, encoding: .utf8) {
+                    webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('htmlapp:native-tab-select',{detail:\(json)}));")
+                }
+            case "tabs.select":
+                ok = true; value = ["selected": args["id"] as? String ?? ""]
+                if let bytes = try? JSONSerialization.data(withJSONObject: ["id": args["id"] as? String ?? ""]),
+                   let json = String(data: bytes, encoding: .utf8) {
+                    webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('htmlapp:native-tab-select',{detail:\(json)}));")
+                }
             case "appStorage.remove":
                 mockAppStorage.removeValue(forKey: args["key"] as? String ?? "")
                 ok = true
@@ -297,6 +318,9 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             blocked.forEach(appendIssue)
         }
 
+        if let navigation = (try? await evaluate(Self.navigationProbe, in: webView)) as? [String] {
+            navigation.forEach(appendIssue)
+        }
         let phone = await snapshot(webView, width: 390, height: 844)
         if let phone {
             if phone.domNonEmpty == false {
@@ -363,6 +387,21 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
 
         finish(extra: [])
     }
+
+    private static let navigationProbe = #"""
+    (() => {
+      const issues = [];
+      const manifest = document.getElementById('htmlapp-navigation');
+      if (window.__htmlappNavigationError) issues.push('Native navigation: ' + window.__htmlappNavigationError);
+      if (manifest && !window.__htmlappNavigationConfigured) issues.push('Native navigation: manifest did not configure.');
+      const screens = Array.from(document.querySelectorAll('[data-htmlapp-screen]'));
+      if (screens.length > 1 && !window.HTMLAppNative?.screens) issues.push('Native navigation: screen router missing.');
+      if (manifest && screens.filter(e => !e.hidden).length !== 1) issues.push('Native navigation: exactly one screen must be visible.');
+      if (manifest && Array.from(document.querySelectorAll('[data-htmlapp-tab-fallback]')).some(e => getComputedStyle(e).display !== 'none'))
+        issues.push('Native navigation: HTML fallback overlaps mounted native tabs.');
+      return issues;
+    })()
+    """#
 
     private struct Snapshot {
         let domNonEmpty: Bool

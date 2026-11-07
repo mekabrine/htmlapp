@@ -579,7 +579,7 @@ struct HTMLAppWidgetsBundle: WidgetBundle {
 
 #endif
 
-private extension Color {
+extension Color {
     init(htmlAppHex raw: String) {
         var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.hasPrefix("#") { value.removeFirst() }

@@ -7,8 +7,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: targeted
-    MARKETING_VERSION: "1.8.5"
-    CURRENT_PROJECT_VERSION: "104"
+    MARKETING_VERSION: "1.9.0"
+    CURRENT_PROJECT_VERSION: "105"
     TARGETED_DEVICE_FAMILY: "1,2"
     SUPPORTS_MACCATALYST: NO
     CODE_SIGN_STYLE: Automatic
@@ -25,6 +25,11 @@ targets:
       - path: HTMLAppV3
       - path: HTMLAppShared
       - path: HTMLApp/Resources/HTMLApp-AI-App-Builder-SKILL.md
+        buildPhase: resources
+      - path: HTMLApp/Resources/RuntimeLibraries
+        type: folder
+        buildPhase: resources
+      - path: HTMLApp/Resources/htmlapp-api-catalog.json
         buildPhase: resources
       - path: HTMLApp/Resources/htmlapp-native-api.d.ts
         buildPhase: resources

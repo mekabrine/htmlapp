@@ -390,7 +390,7 @@ final class HTMLAppOfflineCache {
 
     var isOffline: Bool {
         lock.lock(); defer { lock.unlock() }
-        return pathStatus != .satisfied
+        return pathStatus == .unsatisfied
     }
 
     private func root(appID: String) -> URL {
@@ -443,6 +443,7 @@ final class HTMLAppOfflineCache {
     }
 
     func runtimeOfflineScript(appID: String) -> String {
+        guard !HTMLAppSourcePolicy.networkOnly else { return "" }
         let pairs = manifest(appID: appID).entries.reduce(into: [String: String]()) {
             $0[$1.key] = $1.value.relativePath
         }

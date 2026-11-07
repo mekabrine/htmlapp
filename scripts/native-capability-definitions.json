@@ -1943,6 +1943,56 @@
         "session"
       ],
       "result": "unknown"
+    },
+    {
+      "method": "motion.start",
+      "permission": "motion",
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "frequency": "number"
+      },
+      "required": [],
+      "result": "unknown"
+    },
+    {
+      "method": "motion.stop",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "required": [],
+      "result": "unknown"
+    },
+    {
+      "method": "map.embed",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "frame": "object",
+        "center": "object",
+        "span": "number",
+        "annotations": "array",
+        "routes": "array"
+      },
+      "required": [
+        "frame"
+      ],
+      "result": "unknown"
+    },
+    {
+      "method": "map.hide",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "required": [],
+      "result": "unknown"
     }
   ]
 }

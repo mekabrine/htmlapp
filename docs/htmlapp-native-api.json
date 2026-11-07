@@ -93,9 +93,13 @@
     "location.geocode",
     "location.reverseGeocode",
     "location.roadSpeedLimit",
+    "map.embed",
+    "map.hide",
     "map.show",
     "motion.altitude",
     "motion.pedometer",
+    "motion.start",
+    "motion.stop",
     "network.allowedDomains",
     "network.request",
     "network.revokeDomain",
@@ -1193,6 +1197,32 @@
       ],
       "resultType": "unknown"
     },
+    "map.embed": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "frame": "object",
+        "center": "object",
+        "span": "number",
+        "annotations": "array",
+        "routes": "array"
+      },
+      "requiredArguments": [
+        "frame"
+      ],
+      "resultType": "unknown"
+    },
+    "map.hide": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
     "map.show": {
       "minimumIOS": "16.0",
       "permission": null,
@@ -1214,6 +1244,26 @@
     "motion.pedometer": {
       "minimumIOS": "16.0",
       "permission": "motion",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "motion.start": {
+      "minimumIOS": "16.0",
+      "permission": "motion",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "frequency": "number"
+      },
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "motion.stop": {
+      "minimumIOS": "16.0",
+      "permission": null,
       "userInitiationRecommended": false,
       "nativeCancellation": false,
       "arguments": {},

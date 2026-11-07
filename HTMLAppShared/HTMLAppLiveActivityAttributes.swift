@@ -17,6 +17,11 @@ struct HTMLAppLiveActivityAttributes: ActivityAttributes {
         var footer: String?
         var backgroundHex: String?
         var compactLabel: String?
+        var presentation: [String: HTMLAppWidgetElement]? = nil
+        var staleDate: Date? = nil
+        var timeRange: HTMLAppWidgetTimeRange? = nil
+        var display: String? = nil
+        var timeFormat: String? = nil
     }
 
     var appID: String

@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const source=fs.readFileSync(new URL('../HTMLApp/Resources/RuntimeLibraries/htmlapp/kits.js',import.meta.url),'utf8');
+const {gameLoop,fetchJSON}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+let callback, cancelled=0, updates=[];
+globalThis.requestAnimationFrame=f=>{callback=f;return 1;};globalThis.cancelAnimationFrame=()=>cancelled++;
+const events=new Map();globalThis.document={hidden:false,addEventListener:(n,f)=>events.set(n,f),removeEventListener:n=>events.delete(n)};
+const loop=gameLoop({update:dt=>updates.push(dt)});callback(100);callback(2100);assert.deepEqual(updates,[0,.05]);
+document.hidden=true;events.get('visibilitychange')();assert.ok(cancelled);loop.destroy();assert.equal(events.size,0);
+globalThis.fetch=async(_url,options)=>{assert.equal(options.cache,'no-store');return {ok:true,json:async()=>({ok:1})};};
+assert.deepEqual(await fetchJSON('https://example.com'),{ok:1});
+globalThis.fetch=async()=>({ok:false,status:503});await assert.rejects(fetchJSON('https://example.com'),/503/);
+console.log('Runtime kit lifecycle, delta clamp and network error fixtures passed.');

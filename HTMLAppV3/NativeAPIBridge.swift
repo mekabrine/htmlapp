@@ -45,9 +45,12 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private var aiTasks: [String: Task<Void, Never>] = [:]
     private var networkTasks: [String: Task<Void, Never>] = [:]
     private var networkStatusObserver: NSObjectProtocol?
+    private let motionStream = CMMotionManager()
+    private var motionBackgroundObserver: NSObjectProtocol?
     private let pedometer = CMPedometer()
     private let altimeter = CMAltimeter()
     private var liquidGlassView: UIVisualEffectView?
+    private var embeddedMap: HTMLAppEmbeddedMap?
     private var nativeTabBar: HTMLAppNativeTabBar?
     private let bluetoothDiscovery = HTMLAppBluetoothDiscovery()
     private var previousBrightness: CGFloat?
@@ -58,6 +61,9 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         self.appID = appID
         self.permissionCoordinator = permissionCoordinator
         super.init()
+        motionBackgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.motionStream.stopDeviceMotionUpdates() }
+        }
         _ = HTMLAppNetworkStatus.shared
         networkStatusObserver = NotificationCenter.default.addObserver(
             forName: HTMLAppNetworkStatus.notification,
@@ -100,6 +106,8 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     }
 
     func clearLiquidGlass() {
+        embeddedMap?.hide()
+        embeddedMap = nil
         liquidGlassView?.removeFromSuperview()
         liquidGlassView = nil
     }
@@ -110,6 +118,9 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     }
 
     func shutdown() {
+        motionStream.stopDeviceMotionUpdates()
+        if let observer = motionBackgroundObserver { NotificationCenter.default.removeObserver(observer) }
+        motionBackgroundObserver = nil
         clearLiquidGlass()
         HTMLAppNativeListService.dismiss(appID: appID)
         clearNativeTabs()
@@ -1323,6 +1334,33 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 }
                 self.resolve(id, value: ["level": Double(UIScreen.main.brightness)])
             }
+        case "motion.start":
+            withPermission(.motion, id: id) { [weak self] in
+                guard let self else { return }
+                guard self.motionStream.isDeviceMotionAvailable else {
+                    self.reject(id, code: "motion_unavailable", message: "Device motion is unavailable."); return
+                }
+                let hz = (args["frequency"] as? NSNumber)?.doubleValue ?? 30
+                guard hz.isFinite else { self.reject(id, code: "invalid_frequency", message: "Frequency must be finite."); return }
+                self.motionStream.stopDeviceMotionUpdates()
+                self.motionStream.deviceMotionUpdateInterval = 1 / min(60, max(1, hz))
+                self.motionStream.startDeviceMotionUpdates(to: .main) { [weak self] data, error in
+                    guard let self else { return }
+                    guard let data, error == nil else { self.motionStream.stopDeviceMotionUpdates(); return }
+                    let payload: [String: Any] = ["timestamp": data.timestamp,
+                        "acceleration": ["x": data.userAcceleration.x, "y": data.userAcceleration.y, "z": data.userAcceleration.z],
+                        "gravity": ["x": data.gravity.x, "y": data.gravity.y, "z": data.gravity.z],
+                        "rotationRate": ["x": data.rotationRate.x, "y": data.rotationRate.y, "z": data.rotationRate.z],
+                        "attitude": ["roll": data.attitude.roll, "pitch": data.attitude.pitch, "yaw": data.attitude.yaw]]
+                    guard let bytes = try? JSONSerialization.data(withJSONObject: payload),
+                          let json = String(data: bytes, encoding: .utf8) else { return }
+                    self.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('htmlapp:motion',{detail:\(json)}));")
+                }
+                self.resolve(id, value: ["started": true, "frequency": min(60, max(1, hz))])
+            }
+        case "motion.stop":
+            motionStream.stopDeviceMotionUpdates()
+            resolve(id, value: ["stopped": true])
         case "motion.pedometer":
             withPermission(.motion, id: id) { [weak self] in
                 guard let self else { return }
@@ -1641,6 +1679,16 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                     }
                 }
             }
+        case "map.embed":
+            guard appID != "PREVIEW", let webView else { reject(id, code: "preview_unavailable", message: "Embedded maps require a saved app."); return }
+            do {
+                if embeddedMap == nil { embeddedMap = HTMLAppEmbeddedMap(webView: webView) }
+                try embeddedMap?.show(args)
+                resolve(id, value: ["visible": true])
+            } catch { embeddedMap?.hide(); reject(id, code: "invalid_map", message: error.localizedDescription) }
+        case "map.hide":
+            embeddedMap?.hide(); embeddedMap = nil
+            resolve(id, value: ["hidden": true])
         case "map.show":
             withPermission(.location, id: id) { [weak self] in
                 guard let self else { return }
@@ -3925,6 +3973,9 @@ enum HTMLNativeAPIScript {
           roadSpeedLimit: (latitude, longitude) => call('location.roadSpeedLimit', { latitude, longitude })
         },
         map: {
+          embed: options => call('map.embed', options),
+          hide: () => call('map.hide'),
+          onSelect: callback => { const handler = event => callback(event.detail); window.addEventListener('htmlapp:map-select', handler); return () => window.removeEventListener('htmlapp:map-select', handler); },
           show: (options = {}) => call('map.show', options)
         },
         image: {
@@ -4007,6 +4058,9 @@ enum HTMLNativeAPIScript {
           createSession: (settings = {}) => createAISession(settings)
         },
         motion: {
+          start: (options = {}) => call('motion.start', options),
+          stop: () => call('motion.stop'),
+          onData: callback => { const handler = event => callback(event.detail); window.addEventListener('htmlapp:motion', handler); return () => window.removeEventListener('htmlapp:motion', handler); },
           pedometer: (days = 1) => call('motion.pedometer', { days: Number(days) }),
           altitude: () => call('motion.altitude')
         },
