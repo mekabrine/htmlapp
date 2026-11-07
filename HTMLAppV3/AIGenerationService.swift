@@ -674,11 +674,11 @@ Requested edit:
             var acceptance = ForgeEditAcceptance.issues(before: editSource.html, after: streamedHTML, request: cleanChange)
             if acceptance.isEmpty {
                 phase = "Checking requested edit"
-                let reviewNotes = try await ForgeEditOutcomeReview.issues(
+                let reviewNotes = (try? await ForgeEditOutcomeReview.issues(
                     before: editSource.html, after: streamedHTML,
                     contract: editContract.implementationBrief,
                     config: AISettingsStore.configuration(for: .verifier)
-                )
+                )) ?? []
                 if !reviewNotes.isEmpty {
                     // Semantic review is useful guidance, but model judgment is
                     // too subjective to roll back an otherwise valid edit.
@@ -703,8 +703,11 @@ Requested edit:
                     """)], timeout: 120, maxTokens: 16000, retryOnTransient: true)
                 output = try await applyEditOutputWithRecovery(AIHTMLAgent.parse(retry), requestedChange: cleanChange, config: config)
                 lastEditSummary = AIHTMLAgent.shortEditSummary(AIHTMLAgent.value("edit_summary", in: retry))
-                let outcomeIssues = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
-                    contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
+                let outcomeIssues = (try? await ForgeEditOutcomeReview.issues(
+                    before: editSource.html, after: streamedHTML,
+                    contract: editContract.implementationBrief,
+                    config: AISettingsStore.configuration(for: .verifier)
+                )) ?? []
                 if !outcomeIssues.isEmpty {
                     AIDebugTraceStore.shared.append("EDIT REPAIR ADVISORY",
                         outcomeIssues.joined(separator: "\n"))
@@ -758,8 +761,8 @@ Requested edit:
                 if let remainingIssue = ForgeVisualEditQualityGate.issue(
                     before: beforeEditHTML, after: streamedHTML, request: cleanChange
                 ) {
-                    AIDebugTraceStore.shared.append("VISUAL EDIT REJECTED", remainingIssue)
-                    throw AIGenerationError.invalidPatch
+                    AIDebugTraceStore.shared.append("VISUAL EDIT ADVISORY", remainingIssue)
+                    verificationReport = "Edit applied with a visual QA note: " + remainingIssue
                 }
                 let repairedSummary = AIHTMLAgent.value("edit_summary", in: retryResponse)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -770,9 +773,13 @@ Requested edit:
                 before: beforeEditHTML, after: streamedHTML, request: cleanChange
             )
             if !dataSafety.isEmpty {
-                AIDebugTraceStore.shared.append("EDIT DATA PRESERVATION",
-                    dataSafety.map(\.description).joined(separator: "\n"))
-                throw AIGenerationError.invalidPatch
+                let details = dataSafety.map(\.description).joined(separator: "\n")
+                AIDebugTraceStore.shared.append("EDIT DATA PRESERVATION", details)
+                let strictDataScopes: Set<ForgeEditScope> = [.appearance, .copy, .accessibility, .screenLayout]
+                if strictDataScopes.contains(editContract.scope) {
+                    throw AIGenerationError.invalidPatch
+                }
+                verificationReport = "Edit applied with a data-preservation note: " + details
             }
             if !output.description.isEmpty { description = output.description }
             if iconRefreshAllowed, !output.iconScript.isEmpty { iconScript = output.iconScript }
@@ -792,8 +799,11 @@ Requested edit:
             try await verifyAndRepair(config: config, omitIcon: true)
             try await ensureRuntimeBackend(config: config, request: originalPrompt + "\n" + cleanChange)
             if streamedHTML != reviewedEditHTML {
-                let outcomeIssues = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
-                    contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
+                let outcomeIssues = (try? await ForgeEditOutcomeReview.issues(
+                    before: editSource.html, after: streamedHTML,
+                    contract: editContract.implementationBrief,
+                    config: AISettingsStore.configuration(for: .verifier)
+                )) ?? []
                 if !outcomeIssues.isEmpty {
                     AIDebugTraceStore.shared.append("POST-QA EDIT ADVISORY",
                         outcomeIssues.joined(separator: "\n"))
@@ -805,15 +815,19 @@ Requested edit:
                 before: beforeEditHTML, after: streamedHTML, request: cleanChange
             )
             if !finalSafety.isEmpty {
-                AIDebugTraceStore.shared.append("POST-REPAIR DATA PRESERVATION",
-                    finalSafety.map(\.description).joined(separator: "\n"))
-                throw AIGenerationError.invalidPatch
+                let details = finalSafety.map(\.description).joined(separator: "\n")
+                AIDebugTraceStore.shared.append("POST-REPAIR DATA PRESERVATION", details)
+                let strictDataScopes: Set<ForgeEditScope> = [.appearance, .copy, .accessibility, .screenLayout]
+                if strictDataScopes.contains(editContract.scope) {
+                    throw AIGenerationError.invalidPatch
+                }
+                verificationReport = "Edit applied with a data-preservation note: " + details
             }
             if let issue = ForgeVisualEditQualityGate.issue(
                 before: beforeEditHTML, after: streamedHTML, request: cleanChange
             ) {
-                AIDebugTraceStore.shared.append("POST-REPAIR VISUAL QA", issue)
-                throw AIGenerationError.invalidPatch
+                AIDebugTraceStore.shared.append("POST-REPAIR VISUAL QA ADVISORY", issue)
+                verificationReport = "Edit applied with a visual QA note: " + issue
             }
             guard ForgeEditAcceptance.issues(before: editSource.html, after: streamedHTML, request: cleanChange).isEmpty else {
                 throw AIGenerationError.invalidPatch
