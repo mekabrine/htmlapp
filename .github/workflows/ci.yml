@@ -1,9 +1,6 @@
 name: HTMLApp Continuous Checks
 
 on:
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
