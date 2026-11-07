@@ -110,11 +110,12 @@ vm.runInNewContext(source, {window,document,CustomEvent,Map,Error,Date,Promise,c
   assert.equal(configureCall.args.items.length, 2);
   window.__htmlappNativeResolve(configureCall.id, true, {enabled:true,count:2});
   assert.equal((await tabs).enabled, true);
-  assert.equal(fallback.hidden, true, 'Native tabs must hide the HTML navigation fallback');
+  assert.equal(fallback.hidden, false, 'HTML navigation must remain until UIKit mounts its bar');
   // The native UITabBar signals the initially selected tab after configuration.
   // Simulate that native-to-JavaScript callback in this bridge-only test.
   assert.equal(configureCall.args.selected, 'home');
   window.dispatchEvent(new CustomEvent('htmlapp:native-tab-select', {detail:{id:'home'}}));
+  assert.equal(fallback.hidden, true, 'Native tabs must hide the fallback after their mount event');
   assert.equal(selectedTab, 'home', 'Native tabs must select their first destination');
   let selectedPerItem = null;
   const seven = window.HTMLAppNative.tabs.configure([
