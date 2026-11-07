@@ -1,8 +1,6 @@
 name: Verify HTMLApp iOS Compilation
 
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
