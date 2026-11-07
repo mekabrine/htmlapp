@@ -115,7 +115,7 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
                 if let error {
                     self.issues.append("QA network filter could not initialize: " + error.localizedDescription)
                 }
-                if self.html.contains("name=\"htmlapp-runtime\" content=\"package\"") {
+                if self.HTMLAppDocumentMode.usesPackageRuntime(self.html) {
                     resources.load(self.html, into: webView)
                 } else {
                     webView.loadHTMLString(self.html, baseURL: SourceCache.shared.baseURL(appID: "PREVIEW"))
