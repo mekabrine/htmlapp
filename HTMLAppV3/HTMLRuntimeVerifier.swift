@@ -324,6 +324,9 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
         if let navigation = (try? await evaluate(Self.navigationProbe, in: webView)) as? [String] {
             navigation.forEach(appendIssue)
         }
+        if let canvas = (try? await evaluate(Self.canvasProbe, in: webView)) as? [String] {
+            canvas.forEach(appendIssue)
+        }
         let phone = await snapshot(webView, width: 390, height: 844)
         if let phone {
             if phone.domNonEmpty == false {
@@ -419,6 +422,49 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
       if (manifest && screens.filter(e => !e.hidden).length !== 1) issues.push('Native navigation: exactly one screen must be visible.');
       if (manifest && Array.from(document.querySelectorAll('[data-htmlapp-tab-fallback]')).some(e => getComputedStyle(e).display !== 'none'))
         issues.push('Native navigation: HTML fallback overlaps mounted native tabs.');
+      return issues;
+    })()
+    """#
+
+
+    // Opt-in only: a solid-color splash screen is legitimate, but an app
+    // claiming its canvas should already be drawn must not silently pass.
+    private static let canvasProbe = #"""
+    (() => {
+      const issues = [];
+      const canvases = Array.from(document.querySelectorAll('canvas[data-htmlapp-verify-drawing]')).slice(0, 8);
+      for (const canvas of canvases) {
+        const r = canvas.getBoundingClientRect();
+        const style = getComputedStyle(canvas);
+        if (r.width < 100 || r.height < 100 || style.display === 'none' ||
+            style.visibility === 'hidden' || canvas.closest('[hidden], [inert]')) continue;
+        if (!canvas.width || !canvas.height) {
+          issues.push('Canvas QA: visible canvas has zero backing resolution.');
+          continue;
+        }
+        // Downsample without reading a potentially enormous 4K backing store.
+        // Tainted canvases and WebGL readbacks are left to on-device testing.
+        try {
+          const thumb = document.createElement('canvas');
+          thumb.width = thumb.height = 48;
+          const ctx = thumb.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(canvas, 0, 0, 48, 48);
+          const pixels = ctx.getImageData(0, 0, 48, 48).data;
+          let painted = 0, first = -1, different = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            if (pixels[i + 3] < 5) continue;
+            painted++;
+            // Quantization ignores insignificant GPU/antialiasing noise.
+            const key = ((pixels[i] >> 4) << 8) | ((pixels[i + 1] >> 4) << 4) | (pixels[i + 2] >> 4);
+            if (first === -1) first = key;
+            else if (key !== first) different++;
+          }
+          if (!painted || different < 6)
+            issues.push('Canvas QA: opt-in canvas appears blank or uniform after startup; verify the initial draw and animation loop on a device.');
+        } catch (_) {
+          // Origin-tainted canvas or unsupported readback: no false pass/fail.
+        }
+      }
       return issues;
     })()
     """#

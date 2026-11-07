@@ -1,0 +1,61 @@
+name: Weekly public API catalog health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "13 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  public-endpoints:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate the 168-entry catalog without network
+        run: python3 scripts/check-api-catalog.py --offline
+      - name: Check keyless public GET examples
+        shell: bash
+        run: |
+          set -uo pipefail
+          # This updates only the disposable Actions workspace. It never
+          # commits status changes to GitHub automatically.
+          python3 scripts/check-api-catalog.py --timeout 6 --write > api-health.log 2>&1 || true
+          tail -n 40 api-health.log
+      - name: Alert on previously passing endpoints that now fail
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          path = "HTMLApp/Resources/htmlapp-api-catalog.json"
+          baseline = json.loads(subprocess.check_output(["git", "show", "HEAD:" + path]))
+          current = json.loads(Path(path).read_text())
+          prior = {item["id"]: item.get("verified", {}).get("result", item.get("verificationStatus"))
+                   for item in baseline["apis"]}
+          regressions = [
+              item["id"] for item in current["apis"]
+              if prior.get(item["id"]) == "pass" and item.get("verified", {}).get("result") == "fail"
+          ]
+          print(f"Newly failing previously verified endpoints: {len(regressions)}")
+          for name in regressions:
+              print("::error::API health regression: " + name)
+          if regressions:
+              raise SystemExit(1)
+          PY
+      - name: Attach endpoint results for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-api-health-results
+          path: |
+            api-health.log
+            HTMLApp/Resources/htmlapp-api-catalog.json
+          retention-days: 21
