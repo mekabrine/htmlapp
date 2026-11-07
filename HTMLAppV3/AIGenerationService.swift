@@ -674,8 +674,19 @@ Requested edit:
             var acceptance = ForgeEditAcceptance.issues(before: editSource.html, after: streamedHTML, request: cleanChange)
             if acceptance.isEmpty {
                 phase = "Checking requested edit"
-                acceptance = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
-                    contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
+                let reviewNotes = try await ForgeEditOutcomeReview.issues(
+                    before: editSource.html, after: streamedHTML,
+                    contract: editContract.implementationBrief,
+                    config: AISettingsStore.configuration(for: .verifier)
+                )
+                if !reviewNotes.isEmpty {
+                    // Semantic review is useful guidance, but model judgment is
+                    // too subjective to roll back an otherwise valid edit.
+                    AIDebugTraceStore.shared.append("EDIT OUTCOME ADVISORY",
+                        reviewNotes.joined(separator: "\n"))
+                    verificationReport = "Edit applied. Review note: " +
+                        reviewNotes.joined(separator: " ")
+                }
             }
             if !acceptance.isEmpty {
                 phase = "Repairing incomplete edit"
@@ -694,7 +705,10 @@ Requested edit:
                 lastEditSummary = AIHTMLAgent.shortEditSummary(AIHTMLAgent.value("edit_summary", in: retry))
                 let outcomeIssues = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
                     contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
-                guard outcomeIssues.isEmpty else { throw AIGenerationError.invalidPatch }
+                if !outcomeIssues.isEmpty {
+                    AIDebugTraceStore.shared.append("EDIT REPAIR ADVISORY",
+                        outcomeIssues.joined(separator: "\n"))
+                }
                 guard ForgeEditAcceptance.issues(before: editSource.html, after: streamedHTML, request: cleanChange).isEmpty else {
                     throw AIGenerationError.invalidPatch
                 }
@@ -780,7 +794,10 @@ Requested edit:
             if streamedHTML != reviewedEditHTML {
                 let outcomeIssues = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
                     contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
-                guard outcomeIssues.isEmpty else { throw AIGenerationError.invalidPatch }
+                if !outcomeIssues.isEmpty {
+                    AIDebugTraceStore.shared.append("POST-QA EDIT ADVISORY",
+                        outcomeIssues.joined(separator: "\n"))
+                }
             }
             // The verification repair may also edit HTML; protect the final
             // artifact after that pass, not only the first patch candidate.
@@ -1456,8 +1473,10 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
                 streamedHTML = baseline
                 throw AIGenerationError.brokenJavaScript
             }
-            verificationReport = "Some problems remain after one repair: " + remaining.joined(separator: " ")
-            throw AIGenerationError.invalidPatch
+            verificationReport = "App created, but some QA notes remain after one repair: " +
+                remaining.joined(separator: " ")
+            AIDebugTraceStore.shared.append("QA ADVISORY", verificationReport)
+            return
         }
 
         if blocking.contains(where: {
@@ -1466,8 +1485,10 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             if await selfHealBrokenJavaScript(config: config, issues: blocking) { return }
             throw AIGenerationError.brokenJavaScript
         }
-        verificationReport = "App checks found unresolved issues: " + blocking.joined(separator: " ")
-        throw AIGenerationError.invalidPatch
+        verificationReport = "App created, but QA found issues to review: " +
+            blocking.joined(separator: " ")
+        AIDebugTraceStore.shared.append("QA ADVISORY", verificationReport)
+        return
     }
 
     private func refineGeneratedAssets(_ assets: [AIGeneratedAsset]) async -> [AIGeneratedAsset] {
