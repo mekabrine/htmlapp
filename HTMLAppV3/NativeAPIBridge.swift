@@ -4239,7 +4239,11 @@ enum HTMLNativeAPIScript {
             const selected = opts.selected || input?.selected || items[0].id;
             api.tabs._handlers = handlers;
             const result = await call('tabs.configure', { items: cleaned, selected });
-             return result;
+            // HTML fallbacks must not overlap UIKit even if generated CSS
+            // originally displayed them with a high-specificity rule.
+            for (const fallback of document.querySelectorAll('[data-htmlapp-tab-fallback]'))
+              fallback.hidden = true;
+            return result;
           },
           _handlers: {},
           select: (id) => call('tabs.select', { id: String(id || '') }),
@@ -4249,7 +4253,13 @@ enum HTMLNativeAPIScript {
           setHidden: (hidden, animated = true) =>
             call('tabs.setHidden', { hidden: !!hidden, animated: !!animated }),
           pulse: () => call('tabs.pulse'),
-          remove: () => { api.tabs._handlers = {}; return call('tabs.remove'); },
+          remove: async () => {
+            const result = await call('tabs.remove');
+            api.tabs._handlers = {};
+            for (const fallback of document.querySelectorAll('[data-htmlapp-tab-fallback]'))
+              fallback.hidden = false;
+            return result;
+          },
           onSelect: (handler) => {
             if (typeof handler !== 'function') throw new TypeError('onSelect requires a function');
             window.addEventListener('htmlapp:native-tab-select', e => handler(e.detail.id));
