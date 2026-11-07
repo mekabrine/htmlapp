@@ -493,7 +493,7 @@ struct HTMLWebView: UIViewRepresentable {
         webView.allowsBackForwardNavigationGestures = false
         HTMLAppSourcePolicy.prepare(webView) {
         guard context.coordinator.lastHTML == html else { return }
-        if html.contains("name=\"htmlapp-runtime\" content=\"package\"") {
+        if HTMLAppDocumentMode.usesPackageRuntime(html) {
             resources.load(initialDocument, into: webView)
         } else {
             webView.loadHTMLString(initialDocument, baseURL: SourceCache.shared.baseURL(appID: appID))
@@ -506,7 +506,7 @@ struct HTMLWebView: UIViewRepresentable {
         guard context.coordinator.lastHTML != html else { return }
         context.coordinator.lastHTML = html
         let document = context.coordinator.documentForReload(originalHTML: html)
-        if html.contains("name=\"htmlapp-runtime\" content=\"package\""),
+        if HTMLAppDocumentMode.usesPackageRuntime(html),
            let resources = uiView.configuration.urlSchemeHandler(forURLScheme: HTMLAppResourceScheme.scheme) as? HTMLAppResourceScheme {
             resources.load(document, into: uiView)
         } else {
