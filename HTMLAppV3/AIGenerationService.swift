@@ -382,6 +382,7 @@ final class AIGenerationSession: ObservableObject {
                 }
             }
 
+            lastResearch += "\n\n" + ForgePublicAPICatalog.context(for: originalPrompt)
             let generationBrief = """
             BACKEND REQUIREMENT: \(runtimeBackendRequired ? "A complete runtime v2 source/manifest bundle and connected frontend are mandatory. Do not substitute a local-only demo." : "Use a runtime backend if needed by the actual requested workflow.")
 
@@ -496,6 +497,12 @@ final class AIGenerationSession: ObservableObject {
             }
             guard !final.html.trimmed.isEmpty else { throw AIGenerationError.missingHTML }
             apply(final, partial: false)
+            let modulePlan = AIHTMLAgent.value("htmlapp_modules", in: full)
+            if !modulePlan.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                phase = "Building app modules"
+                streamedHTML = try await ForgeModuleBundle.generate(plan: modulePlan, html: streamedHTML,
+                                                                    brief: generationBrief, config: config)
+            }
             let finalAssets = await refineGeneratedAssets(final.assetScripts)
             await installGeneratedAssets(finalAssets)
             var speculativeIconAccepted = false
@@ -600,7 +607,7 @@ final class AIGenerationSession: ObservableObject {
             } else {
                 publicResearch = ""
             }
-            let research = [deviceResearch, suppliedResearch, publicResearch]
+            let research = [deviceResearch, suppliedResearch, publicResearch, ForgePublicAPICatalog.context(for: cleanChange)]
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
@@ -628,6 +635,9 @@ Current app:
 Semantic app model and preserved invariants:
 \(semanticModel.summary)
 \(checkpointExistingAppID.flatMap { ForgeAppManifestStore.load(for: $0)?.planningSummary } ?? "")
+
+EDIT IMPLEMENTATION CONTRACT:
+\(editContract.implementationBrief)
 
 Requested edit:
 \(cleanChange)
@@ -661,6 +671,34 @@ Requested edit:
                 requestedChange: cleanChange,
                 config: config
             )
+            var acceptance = ForgeEditAcceptance.issues(before: editSource.html, after: streamedHTML, request: cleanChange)
+            if acceptance.isEmpty {
+                phase = "Checking requested edit"
+                acceptance = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
+                    contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
+            }
+            if !acceptance.isEmpty {
+                phase = "Repairing incomplete edit"
+                streamedHTML = editSource.html
+                let retry = try await AIProviderClient.complete(
+                    config: config, system: AIHTMLAgent.patchSystemPrompt(research: lastResearch),
+                    messages: [("user", """
+                    The prior edit FAILED acceptance. Do not repeat it or claim success.
+                    \(acceptance.joined(separator: "\n"))
+                    \(editContract.implementationBrief)
+                    ORIGINAL SOURCE (patch against this):
+                    <htmlapp_existing>\(editSource.html)</htmlapp_existing>
+                    Return an effective patch implementing the requested behavior.
+                    """)], timeout: 120, maxTokens: 16000, retryOnTransient: true)
+                output = try await applyEditOutputWithRecovery(AIHTMLAgent.parse(retry), requestedChange: cleanChange, config: config)
+                lastEditSummary = AIHTMLAgent.shortEditSummary(AIHTMLAgent.value("edit_summary", in: retry))
+                let outcomeIssues = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
+                    contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
+                guard outcomeIssues.isEmpty else { throw AIGenerationError.invalidPatch }
+                guard ForgeEditAcceptance.issues(before: editSource.html, after: streamedHTML, request: cleanChange).isEmpty else {
+                    throw AIGenerationError.invalidPatch
+                }
+            }
             if let issue = ForgeVisualEditQualityGate.issue(
                 before: beforeEditHTML, after: streamedHTML, request: cleanChange
             ) {
@@ -736,8 +774,14 @@ Requested edit:
             } else if editingExistingApp {
                 AIDebugTraceStore.shared.append("ICON", "Preserved the existing app icon because this edit did not request an icon or identity change.")
             }
+            let reviewedEditHTML = streamedHTML
             try await verifyAndRepair(config: config, omitIcon: true)
             try await ensureRuntimeBackend(config: config, request: originalPrompt + "\n" + cleanChange)
+            if streamedHTML != reviewedEditHTML {
+                let outcomeIssues = try await ForgeEditOutcomeReview.issues(before: editSource.html, after: streamedHTML,
+                    contract: editContract.implementationBrief, config: AISettingsStore.configuration(for: .verifier))
+                guard outcomeIssues.isEmpty else { throw AIGenerationError.invalidPatch }
+            }
             // The verification repair may also edit HTML; protect the final
             // artifact after that pass, not only the first patch candidate.
             let finalSafety = ForgeEditSafetyGate.violations(
@@ -752,6 +796,9 @@ Requested edit:
                 before: beforeEditHTML, after: streamedHTML, request: cleanChange
             ) {
                 AIDebugTraceStore.shared.append("POST-REPAIR VISUAL QA", issue)
+                throw AIGenerationError.invalidPatch
+            }
+            guard ForgeEditAcceptance.issues(before: editSource.html, after: streamedHTML, request: cleanChange).isEmpty else {
                 throw AIGenerationError.invalidPatch
             }
             try Task.checkCancellation()
@@ -1319,7 +1366,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
                 issue.hasPrefix("Runtime: page zoom allowed") ||
                 issue.hasPrefix("Runtime tapability:") ||
                 issue.hasPrefix("uncaught error:") ||
-                issue.hasPrefix("Runtime: document became blank")
+                issue.hasPrefix("Runtime: document became blank") || issue.hasPrefix("Native navigation:")
             }
         let advisory = (structural + runtime + functional).filter { !blocking.contains($0) }
         AIDebugTraceStore.shared.append("QA CLASSIFICATION",
@@ -1389,7 +1436,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
                     $0.hasPrefix("Runtime: page zoom allowed") ||
                     $0.hasPrefix("Runtime tapability:") ||
                     $0.hasPrefix("uncaught error:") ||
-                    $0.hasPrefix("Runtime: document became blank")
+                    $0.hasPrefix("Runtime: document became blank") || $0.hasPrefix("Native navigation:")
                 }
             if remaining.isEmpty {
                 verificationReport = "Focused repair passed the local checks."
@@ -1410,7 +1457,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
                 throw AIGenerationError.brokenJavaScript
             }
             verificationReport = "Some problems remain after one repair: " + remaining.joined(separator: " ")
-            return
+            throw AIGenerationError.invalidPatch
         }
 
         if blocking.contains(where: {
@@ -1420,6 +1467,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             throw AIGenerationError.brokenJavaScript
         }
         verificationReport = "App checks found unresolved issues: " + blocking.joined(separator: " ")
+        throw AIGenerationError.invalidPatch
     }
 
     private func refineGeneratedAssets(_ assets: [AIGeneratedAsset]) async -> [AIGeneratedAsset] {
@@ -2309,7 +2357,7 @@ It is valid to return both kinds. If neither device capabilities nor external se
         let base = AISettingsStore.resolvedSystemPrompt(research: research)
         // The catalog directory is always visible; detailed entries are injected from planner queries.
         let contract = base.contains("FORGE CORE CONTRACT") ? "" : "\n\n" + ForgeProductContract.rules
-        return base + contract + ForgeNativeTypedCatalog.promptContract + "\n\n" + ForgeBackendContract.instructions + "\n" + HTMLAppRuntimeContract.instructions + """
+        return base + contract + ForgeRuntimeAuthoring.instructions + ForgeNativeTypedCatalog.promptContract + "\n\n" + ForgeBackendContract.instructions + "\n" + HTMLAppRuntimeContract.instructions + """
 
 REMOTE PUSH AND BACKGROUND VOICE:
 - HTMLAppNative.push.register() requests opt-in iOS push registration and returns a token only on APNs-provisioned builds. This does not create a server. Remote notifications require the user's backend to register tokens and send APNs messages; never claim notifications will arrive before that infrastructure exists.
@@ -2331,7 +2379,7 @@ APP NAME: Use a very short HTML title of one or two words, maximum 12 characters
 DEVICE CHROME AND STATUS BAR RULES:
 - A saved HTMLApp displays the REAL iOS system status bar by default. During initial generation and functional/visual edits, decide whether keeping that real status bar visible is best for the app; ordinarily keep it visible. Only if an immersive full-screen game, media experience, or similar genuinely benefits from hiding it, include <meta name="htmlapp-status-bar" content="hidden"> inside the generated HTML <head>. To keep it visible, omit this tag. The native host reads it when opening the app. Never fake status bar content in HTML, and preserve the previously chosen visibility during unrelated AI edits.
 - NEVER generate or draw a fake iOS status bar, time (9:41), battery indicators, cellular/Wi-Fi signals, notch, Dynamic Island, phone frame, mock iPhone bezel, home indicator, or simulated OS navigation chrome inside an app. HTMLApp runs in a real iOS WebView where the system owns those surfaces. Begin UI content directly with the app's content and respect safe-area insets.
-- Do not render a fake CSS bottom tab strip when native tabs are available. A true iOS 26 Liquid Glass tab bar requires the host's UITabBarController; it cannot be recreated reliably with CSS.
+- Do not render a fake CSS bottom tab strip when native tabs are available. Use the host UIKit tab bar; do not promise a specific system material on unsupported iOS versions.
 - Do not put native status bar or Dynamic Island graphics inside previewHTML/mockups either.
 
 - APNs is not configured for this deployment. Use durable backend inboxes and foreground polling with local alerts, not mandatory push registration. Only if APNs is later configured may resource notifications use await HTMLAppNative.backend.subscribe(sessionToken) after explicit user consent and unsubscribe(sessionToken) before leaving the resource. Never send plaintext in encrypted-app push content.
@@ -2342,8 +2390,9 @@ DEVICE CHROME AND STATUS BAR RULES:
 - Animate meaningful changes: tab and screen transitions, sheets opening and closing, expanding controls, reordering, and save feedback. Use short transform or opacity transitions and honor prefers-reduced-motion. Keep the interaction responsive while animation runs.
 - Use real SF Symbol names appropriate to each tab. The host validates names against the installed iOS catalog; prefer familiar symbols with broad OS availability. In web fallback navigation use inline SVG or text.\n\nHTMLAPP GESTURES AND REAL NATIVE TAB BARS:
 - Use gestures when appropriate: swipe between cards and views, pinch-to-zoom photos/maps where applicable, long-press for contextual options, pull-to-refresh where data can refresh, drag-to-reorder, and tactile feedback. Provide accessible buttons as equivalent actions and avoid accidental destructive gestures.
-- For EVERY app with 2–7 top-level destinations, ALWAYS call HTMLAppNative.tabs.configure to create its real native navigation in the installed app. Never use a CSS tab bar as the primary navigation. Implement a working HTML navigation fallback ONLY for editing/preview or when the native bridge is unavailable; hide that fallback immediately when native tabs configure successfully. On real iOS 26, native tab bars can receive the system's Liquid Glass styling; fake HTML tab bars cannot. Bind every tab ID to a working section. Keep a CSS fallback only if capabilities() says the native API is missing and hide it when native tabs are active.
-- For new apps with native tabs, prefer the built-in screen router: give each destination a unique <section data-htmlapp-screen="home"> with an ID value matching its native tab item. Initialize once after the DOM is ready with await HTMLAppNative.screens.configure({items, selected:"home"}). Put data-htmlapp-go="settings" on any in-app button that opens Settings and use HTMLAppNative.screens.go("settings") for scripted navigation. The router switches the section and selected native tab together. Do not mix managed screens with a separate tabs.configure/onSelect router. Mark fallback navigation with data-htmlapp-tab-fallback, use the same data-htmlapp-go controls, and enforce [data-htmlapp-screen][hidden], [data-htmlapp-tab-fallback][hidden] { display:none !important; }. Feature-detect screens.configure and keep a local shared route function for browser preview or older hosts, where the native script may be absent. Keep existing route IDs and storage when migrating an app.
+- For EVERY app with 2–7 top-level destinations, use HTMLAppNative.screens.configure (preferred), the declarative navigation manifest, or HTMLAppNative.tabs.configure for an existing custom router to create its real native navigation in the installed app. Never use a CSS tab bar as the primary navigation. Implement a working HTML navigation fallback ONLY for editing/preview or when the native bridge is unavailable; hide that fallback immediately when native tabs configure successfully. On real iOS 26, native tab bars can receive the system's Liquid Glass styling; fake HTML tab bars cannot. Bind every tab ID to a working section. Keep a CSS fallback only if capabilities() says the native API is missing and hide it when native tabs are active.
+- For every NEW app with 2–7 top-level destinations, prefer the declarative native navigation manifest inside <head>: <script type="application/json" id="htmlapp-navigation">{"items":[{"id":"home","title":"Home","symbol":"house"},{"id":"settings","title":"Settings","symbol":"gearshape"}],"selected":"home"}</script>. Create one real <section data-htmlapp-screen="home"> and corresponding section for EVERY tab ID. HTMLApp automatically configures the native UIKit tab bar when DOMContentLoaded fires; do NOT also call screens.configure or tabs.configure when the manifest exists. Add data-htmlapp-go="settings" to in-content navigation, with the same IDs. Preserve existing screen/data IDs when editing. Mark any preview-only HTML navigation with data-htmlapp-tab-fallback; host styling enforces [data-htmlapp-tab-fallback][hidden]{display:none!important} after native mount. A single-screen game or immersive experience does not require tabs.
+- Only for EXISTING apps with custom routing that cannot switch to the declarative manifest, call HTMLAppNative.screens.configure once after DOM ready (and use screens.go) or tabs.configure with a corresponding real onSelect router. Never submit only tab labels/icons without handlers that switch actual screens. If UIKit is unavailable, HTML navigation must still work in browser preview. Do not mix declarative and manual tab configuration.
 - When editing an older HTMLApp that already has fake bottom navigation, and the user requests native iOS appearance, upgrade it to this bridge without changing the app's screens, state or tab destinations.
 - For apps using custom routing instead of managed screens, a saved HTMLApp can ask its native iOS host to display a REAL UIKit tab bar (including Apple's native iOS 26 visual material) by calling:
   await HTMLAppNative.tabs.configure({items: [{id:"home",title:"Home",symbol:"house.fill"},{id:"settings",title:"Settings",symbol:"gearshape.fill"}]});
@@ -2383,8 +2432,8 @@ HTMLAPP FACT-CHECK OVERRIDES:
     }
 
     static func patchSystemPrompt(research: String) -> String {
-        """
-You are HTMLApp's code-editing agent. Preserve the existing HTML title unless the user asks for a rename. Edit the existing single-file HTML app with the smallest safe patch that satisfies the requested change. Preserve all unrelated behavior, IDs, storage keys, API integrations, permissions, navigation and working code. Prefer patching over rewriting.
+        ForgeRuntimeAuthoring.instructions + "\n" + """
+You are HTMLApp's code-editing agent. Completion requires implementing the literal request, not a reassuring summary. Inspect handlers, routes, storage and native integrations before patching. The edit contract is advisory interpretation; the user's words remain authoritative. For vague aesthetic edits make reversible improvements without removing features. For behavioral edits implement the actual workflow including loading, empty, denied and failure states. Never substitute styling for functionality. State exactly what changed in edit_summary; never claim tests you did not perform. Preserve the existing HTML title unless the user asks for a rename. Edit the existing single-file HTML app with the smallest safe patch that satisfies the requested change. Preserve all unrelated behavior, IDs, storage keys, API integrations, permissions, navigation and working code. Prefer patching over rewriting.
 If adding Home Screen widgets, support all three WidgetKit families (systemSmall, systemMedium, systemLarge); if adding Lock Screen widgets, support all three (accessoryCircular, accessoryRectangular, accessoryInline). If supporting both screens, declare all six or equivalent screen-specific configurations. Use actual HTMLAppNative.widgets.configure families, not invented APIs.
 Keep the saved app's real iOS status bar visible by default. When an immersive redesign genuinely needs to hide it, place <meta name="htmlapp-status-bar" content="hidden"> in the HTML head; otherwise omit it. Preserve the current visibility in unrelated edits. Never draw a fake status bar or Dynamic Island.
 

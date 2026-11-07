@@ -363,6 +363,8 @@ struct HTMLWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        let resources = HTMLAppResourceScheme(root: SourceCache.shared.baseURL(appID: appID))
+        configuration.setURLSchemeHandler(resources, forURLScheme: HTMLAppResourceScheme.scheme)
         configuration.processPool = HTMLAppWebWarmup.pool
         configuration.defaultWebpagePreferences.allowsContentJavaScript = UserDefaults.standard.object(forKey: "allowJavaScript") as? Bool ?? true
         configuration.defaultWebpagePreferences.preferredContentMode = .mobile
@@ -371,6 +373,7 @@ struct HTMLWebView: UIViewRepresentable {
 
         let sensorPolicy = appID == "PREVIEW" ? "deny" : HTMLSensorPermissionPolicy.choice(appID: appID).rawValue
         let controller = configuration.userContentController
+        controller.addUserScript(WKUserScript(source: HTMLAppSourcePolicy.script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(
             source: HTMLAppCarDisplay.script,
             injectionTime: .atDocumentStart, forMainFrameOnly: true
@@ -488,7 +491,14 @@ struct HTMLWebView: UIViewRepresentable {
         webView.scrollView.minimumZoomScale = 1
         webView.scrollView.maximumZoomScale = 1
         webView.allowsBackForwardNavigationGestures = false
-        webView.loadHTMLString(initialDocument, baseURL: SourceCache.shared.baseURL(appID: appID))
+        HTMLAppSourcePolicy.prepare(webView) {
+        guard context.coordinator.lastHTML == html else { return }
+        if HTMLAppDocumentMode.usesPackageRuntime(html) {
+            resources.load(initialDocument, into: webView)
+        } else {
+            webView.loadHTMLString(initialDocument, baseURL: SourceCache.shared.baseURL(appID: appID))
+        }
+        }
         return webView
     }
 
@@ -496,7 +506,12 @@ struct HTMLWebView: UIViewRepresentable {
         guard context.coordinator.lastHTML != html else { return }
         context.coordinator.lastHTML = html
         let document = context.coordinator.documentForReload(originalHTML: html)
-        uiView.loadHTMLString(document, baseURL: SourceCache.shared.baseURL(appID: appID))
+        if HTMLAppDocumentMode.usesPackageRuntime(html),
+           let resources = uiView.configuration.urlSchemeHandler(forURLScheme: HTMLAppResourceScheme.scheme) as? HTMLAppResourceScheme {
+            resources.load(document, into: uiView)
+        } else {
+            uiView.loadHTMLString(document, baseURL: SourceCache.shared.baseURL(appID: appID))
+        }
     }
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
@@ -558,7 +573,7 @@ struct HTMLWebView: UIViewRepresentable {
                 pendingStateRestore = snapshot
                 document = snapshot.html
             }
-            if HTMLAppOfflineCache.shared.isOffline {
+            if !HTMLAppSourcePolicy.networkOnly, HTMLAppOfflineCache.shared.isOffline {
                 let rewritten = HTMLAppOfflineCache.shared.rewriteHTMLForOffline(appID: appID, html: document)
                 document = rewritten.0
                 offlineNoticePending = !HTMLAppOfflineCache.shared.manifest(appID: appID).entries.isEmpty
@@ -567,7 +582,7 @@ struct HTMLWebView: UIViewRepresentable {
         }
 
         func documentForReload(originalHTML: String) -> String {
-            guard appID != "PREVIEW", HTMLAppOfflineCache.shared.isOffline else { return originalHTML }
+            guard appID != "PREVIEW", !HTMLAppSourcePolicy.networkOnly, HTMLAppOfflineCache.shared.isOffline else { return originalHTML }
             let rewritten = HTMLAppOfflineCache.shared.rewriteHTMLForOffline(appID: appID, html: originalHTML)
             offlineNoticePending = offlineNoticePending || rewritten.1 > 0
             return rewritten.0
@@ -720,10 +735,19 @@ struct HTMLWebView: UIViewRepresentable {
             // The top-level HTMLApp document is loaded from its local
             // app-scoped WebView. If it navigates to an external origin, that
             // origin must never gain access to native message handlers.
-            if let url = message.frameInfo.request.url,
-               let scheme = url.scheme?.lowercased(),
-               !["file", "about", "applewebdata"].contains(scheme) {
-                return
+            if let url = message.frameInfo.request.url {
+                switch url.scheme?.lowercased() {
+                case "file", "about", "applewebdata":
+                    break
+                case HTMLAppResourceScheme.scheme:
+                    // Package-mode documents have a custom origin. Admit only
+                    // this WebView's own index, never another app or URL.
+                    guard let handler = webView?.configuration.urlSchemeHandler(
+                        forURLScheme: HTMLAppResourceScheme.scheme) as? HTMLAppResourceScheme,
+                          handler.isDocumentURL(url) else { return }
+                default:
+                    return
+                }
             }
             switch message.name {
             case "htmlappState":

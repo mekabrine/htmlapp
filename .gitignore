@@ -11,3 +11,11 @@ HTMLApp.xcodeproj/
 
 # macOS
 .DS_Store
+
+# Python checks
+__pycache__/
+*.pyc
+
+# Vendored runtime distributions are intentional source assets
+!HTMLApp/Resources/RuntimeLibraries/**/build/
+!HTMLApp/Resources/RuntimeLibraries/**/build/**

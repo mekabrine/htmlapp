@@ -133,6 +133,31 @@ enum HTMLAppRuntimeFoundation {
       });
       window.addEventListener('pageshow', () => publishLifecycle('resume'));
 
+      // Host-owned declarative navigation: generated content supplies destinations,
+      // while UIKit supplies the primary tab bar. Preview fallback is explicit.
+      const configureNavigation = async () => {
+        // Enforce native-tab fallback visibility even when app CSS uses !important.
+        // This rule also protects apps using screens.configure directly.
+        if (!document.getElementById('htmlapp-navigation-hidden-style')) {
+          const style = document.createElement('style');
+          style.id = 'htmlapp-navigation-hidden-style';
+          style.textContent = '[data-htmlapp-screen][hidden],[data-htmlapp-tab-fallback][hidden]{display:none!important}';
+          (document.head || document.documentElement).appendChild(style);
+        }
+        const manifest = document.getElementById?.('htmlapp-navigation');
+        if (!manifest) return;
+        try {
+          const options = JSON.parse(manifest.textContent);
+          if (!window.HTMLAppNative?.screens?.configure) throw new Error('Native screen router unavailable');
+          await window.HTMLAppNative.screens.configure(options);
+          window.__htmlappNavigationConfigured = true;
+        } catch (error) {
+          window.__htmlappNavigationError = String(error.message || error);
+          console.error('Native navigation configuration failed', error);
+        }
+      };
+      document.addEventListener('DOMContentLoaded', configureNavigation, { once: true });
+
       const runtime = Object.freeze({
         runOperation, cancelOperation,
         get activeOperations() { return Array.from(operations.keys()); },

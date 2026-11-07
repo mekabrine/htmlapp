@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.8.5"
-    static let compiledBuild = "104"
+    static let compiledVersion = "1.9.0"
+    static let compiledBuild = "105"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,19 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.9.0" { return [
+            Entry(id: "effective-edits", title: "Edits must make a change", description: "Forge uses the edit contract, retries unchanged output and missing requested native navigation, and restores the previous app when acceptance fails.", symbol: "checkmark.seal", tint: .blue),
+            Entry(id: "native-navigation", title: "Built-in navigation", description: "Apps can declare their screens once and let HTMLApp configure native tabs. Verification checks declared navigation and hidden preview fallbacks.", symbol: "square.split.2x1", tint: .purple),
+            Entry(id: "runtime-pack", title: "More capable app foundations", description: "Bundled 3D, physics, charts, maps and audio libraries work with a package resource loader, portable modules and reusable game, canvas and sound helpers.", symbol: "shippingbox", tint: .orange),
+            Entry(id: "api-discovery", title: "More real data sources", description: "Forge selects relevant entries from a 168-provider catalog. Endpoint check results, credential requirements and provider-policy warnings stay explicit.", symbol: "network", tint: .green),
+            Entry(id: "activity-design", title: "Design richer Live Activities", description: "Arrange native text, symbols, timers, progress and shapes separately for the Lock Screen and Dynamic Island. Layout and payload limits are validated.", symbol: "waveform.path", tint: .purple),
+            Entry(id: "fresh-sources", title: "Fresh sources when online", description: "Choose fresh online loading with offline fallback, network only, or standard browser caching. Bundled resources and saved app data remain local.", symbol: "arrow.clockwise", tint: .blue),
+            Entry(id: "native-vision-scene", title: "Camera, models and native scenes", description: "New APIs support foreground camera frame files, compatible local Core ML image models, and bounded RealityKit scenes with optional AR.", symbol: "camera.viewfinder", tint: .orange),
+            Entry(id: "native-music-location", title: "Native music and location history", description: "Apps can use a supplied sound bank, send MIDI channel messages, and explicitly enable bounded background location collection with Always permission.", symbol: "music.note", tint: .blue),
+            Entry(id: "activity-actions", title: "Live Activity controls", description: "Add Open and End controls to Live Activities. End uses a native App Intent on iOS 17 and later.", symbol: "hand.tap", tint: .purple),
+            Entry(id: "native-motion-map", title: "Interactive maps and motion", description: "Apps can embed a native map with annotations and route geometry, and subscribe to foreground motion readings with explicit cleanup.", symbol: "map", tint: .green)
+        ] }
+
         if version == "1.8.5" { return [
             Entry(id: "custom-widget-design", title: "Design widgets your way", description: "Forge can arrange text, icons, images, shapes, rings and progress bars, with different layouts for each Home Screen and Lock Screen size.", symbol: "square.grid.2x2", tint: .purple),
             Entry(id: "widget-time-formats", title: "Choose what time shows", description: "Ask for hours and minutes, seconds only, or a countdown without seconds. iOS 18 and later support live selected units; older versions use compatible fallbacks.", symbol: "timer", tint: .blue),

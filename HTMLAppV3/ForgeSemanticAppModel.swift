@@ -29,7 +29,7 @@ struct ForgeSemanticAppModel: Codable {
             + captures(#"HTMLAppData\.collection\(\s*["']([^"']+)["']"#, source)
         let methods = captures(#"\bHTMLAppNative\.([A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*)\s*\("#, source)
             + captures(#"HTMLAppNative\.call\(\s*["']([^"']+)["']"#, source)
-        let screens = captures(#"(?:data-forge-screen|data-screen|data-view|data-page)\s*=\s*["']([^"']+)["']"#, source)
+        let screens = captures(#"(?:data-htmlapp-screen|data-forge-screen|data-screen|data-view|data-page)\s*=\s*["']([^"']+)["']"#, source)
         let routes = captures(#"(?:data-route|data-path)\s*=\s*["']([^"']+)["']"#, source)
             + captures(#"\bhref\s*=\s*["']#([^"']+)["']"#, source)
         let tokens = captures(#"(--(?:space|radius|font|color|text|surface|app)-[A-Za-z0-9_-]{2,})"#, source)

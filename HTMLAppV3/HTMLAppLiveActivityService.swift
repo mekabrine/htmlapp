@@ -1,5 +1,6 @@
 import Foundation
 import ActivityKit
+import UIKit
 
 @available(iOS 16.2, *)
 enum HTMLAppLiveActivityService {
@@ -8,7 +9,7 @@ enum HTMLAppLiveActivityService {
         var errorDescription: String? {
             switch self {
             case .unavailable: return "Live Activities are disabled or not available on this iOS device."
-            case .badArguments: return "A Live Activity needs a safe id and a nonempty title."
+            case .badArguments: return "Invalid Live Activity: check id/title, layout, finite time values and the 3.8 KB combined payload budget."
             case .limit: return "This HTML app can run up to three Live Activities at once."
             case .notFound: return "No active Live Activity with that id belongs to this HTML app."
             }
@@ -28,24 +29,62 @@ enum HTMLAppLiveActivityService {
 
     private static func symbol(_ value: Any?) -> String {
         let requested = clip(value, max: 48)
-        let allowed: Set<String> = [
-            "timer", "clock.fill", "calendar", "checklist", "checkmark.circle.fill",
-            "airplane", "shippingbox.fill", "car.fill", "bicycle", "figure.walk",
-            "heart.fill", "star.fill", "bell.fill", "bolt.fill", "flame.fill",
-            "moon.stars.fill", "sun.max.fill", "music.note", "flag.fill", "fork.knife",
-            "map.fill", "location.fill", "book.fill", "figure.run", "leaf.fill"
-        ]
-        return allowed.contains(requested) ? requested : "app.fill"
+        return UIImage(systemName: requested) == nil ? "app.fill" : requested
     }
 
     private static func content(_ args: [String: Any],
                                 previous: HTMLAppLiveActivityAttributes.ContentState? = nil
-    ) -> HTMLAppLiveActivityAttributes.ContentState {
+    ) throws -> HTMLAppLiveActivityAttributes.ContentState {
         let hex = clip(args["accentHex"], max: 7)
         let goodHex = hex.range(of: #"^#[0-9A-Fa-f]{6}$"#, options: .regularExpression) != nil
         let value = args["progress"] as? NSNumber
         let primary = args["primaryDeadlineMs"] as? NSNumber
         let secondary = args["secondaryDeadlineMs"] as? NSNumber
+        var actions = previous?.actions
+        if let raw = args["actions"] {
+            if raw is NSNull { actions = nil }
+            else {
+                guard JSONSerialization.isValidJSONObject(raw), let bytes = try? JSONSerialization.data(withJSONObject: raw),
+                      let decoded = try? JSONDecoder().decode([HTMLAppLiveActivityAction].self, from: bytes),
+                      decoded.count <= 3, Set(decoded.map(\.id)).count == decoded.count,
+                      decoded.allSatisfy({ !$0.id.isEmpty && $0.id.count <= 40 && !$0.title.isEmpty && $0.title.count <= 30 && ["open", "end"].contains($0.kind) }) else { throw Failure.badArguments }
+                actions = decoded
+            }
+        }
+        var presentation = previous?.presentation
+        if let raw = args["presentation"] {
+            if raw is NSNull { presentation = nil }
+            else {
+                guard JSONSerialization.isValidJSONObject(raw),
+                      let bytes = try? JSONSerialization.data(withJSONObject: raw), bytes.count < 3500,
+                      let decoded = try? JSONDecoder().decode([String: HTMLAppWidgetElement].self, from: bytes),
+                      Set(decoded.keys).isSubset(of: Set(["lockScreen", "compactLeading", "compactTrailing", "minimal", "expandedLeading", "expandedCenter", "expandedTrailing", "expandedBottom"])) else { throw Failure.badArguments }
+                var count = 0
+                guard decoded.values.allSatisfy({ $0.isValid(count: &count) }), count <= 48 else { throw Failure.badArguments }
+                presentation = decoded
+            }
+        }
+        var range = previous?.timeRange
+        if let raw = args["timeRange"] {
+            if raw is NSNull { range = nil }
+            else {
+                guard let object = raw as? [String: Any], let start = object["startMs"] as? Double,
+                      let end = object["endMs"] as? Double,
+                      HTMLAppWidgetSnapshot.validDeadline(start) != nil,
+                      HTMLAppWidgetSnapshot.validDeadline(end) != nil, start < end else { throw Failure.badArguments }
+                range = HTMLAppWidgetTimeRange(startMs: start, endMs: end)
+            }
+        }
+        let staleMs = (args["staleDateMs"] as? NSNumber)?.doubleValue
+        if let staleMs, HTMLAppWidgetSnapshot.validDeadline(staleMs) == nil { throw Failure.badArguments }
+        if let value, !value.doubleValue.isFinite { throw Failure.badArguments }
+        for deadline in [primary, secondary].compactMap({ $0 }) {
+            guard HTMLAppWidgetSnapshot.validDeadline(deadline.doubleValue) != nil else { throw Failure.badArguments }
+        }
+        let display = args["display"] as? String ?? previous?.display
+        let format = args["timeFormat"] as? String ?? previous?.timeFormat
+        guard display == nil || HTMLAppWidgetSnapshot.timeDisplays.contains(display!),
+              format == nil || HTMLAppWidgetSnapshot.timeFormats.contains(format!) else { throw Failure.badArguments }
         return .init(
             primaryDeadline: primary.map { Date(timeIntervalSince1970: $0.doubleValue / 1000) } ?? previous?.primaryDeadline,
             secondaryDeadline: secondary.map { Date(timeIntervalSince1970: $0.doubleValue / 1000) } ?? previous?.secondaryDeadline,
@@ -62,7 +101,10 @@ enum HTMLAppLiveActivityService {
                     ? candidate : previous?.backgroundHex
             }(),
             compactLabel: args["compactLabel"] == nil ? previous?.compactLabel
-                : clip(args["compactLabel"], max: 10)
+                : clip(args["compactLabel"], max: 10),
+            actions: actions, presentation: presentation,
+            staleDate: args["staleDateMs"] is NSNull ? nil : staleMs.map { Date(timeIntervalSince1970: $0 / 1000) } ?? previous?.staleDate,
+            timeRange: range, display: display, timeFormat: format
         )
     }
 
@@ -102,9 +144,11 @@ enum HTMLAppLiveActivityService {
             title: clip(args["title"], max: 75),
             systemSymbol: symbol(args["systemSymbol"])
         )
+        let state = try content(args)
+        try validatePayload(attributes: attrs, state: state)
         let activity = try Activity.request(
             attributes: attrs,
-            content: ActivityContent(state: content(args), staleDate: nil),
+            content: ActivityContent(state: state, staleDate: state.staleDate),
             pushType: nil
         )
         return ["id": id, "activityID": activity.id, "started": true]
@@ -113,8 +157,17 @@ enum HTMLAppLiveActivityService {
     static func update(appID: String, args: [String: Any]) async throws -> [String: Any] {
         guard let id = validID(args["id"]) else { throw Failure.badArguments }
         guard let activity = matching(appID: appID, id: id) else { throw Failure.notFound }
-        await activity.update(ActivityContent(state: content(args, previous: activity.content.state), staleDate: nil))
+        let state = try content(args, previous: activity.content.state)
+        try validatePayload(attributes: activity.attributes, state: state)
+        await activity.update(ActivityContent(state: state, staleDate: state.staleDate))
         return ["id": id, "updated": true]
+    }
+
+    private static func validatePayload(attributes: HTMLAppLiveActivityAttributes,
+                                        state: HTMLAppLiveActivityAttributes.ContentState) throws {
+        let encoder = JSONEncoder()
+        // Leave headroom below ActivityKit's combined 4 KB ceiling.
+        guard try encoder.encode(attributes).count + encoder.encode(state).count <= 3800 else { throw Failure.badArguments }
     }
 
     static func end(appID: String, args: [String: Any]) async throws -> [String: Any] {

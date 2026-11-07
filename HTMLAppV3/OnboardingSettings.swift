@@ -426,6 +426,7 @@ struct SettingsView: View {
     @AppStorage("closeOnFlipShake") private var closeOnFlipShake = false
     @AppStorage("htmlapp.shakeExitSeconds") private var shakeExitSeconds = 1.0
     @AppStorage("htmlapp.shakeFadeEndAngle") private var shakeFadeEndAngle = 70.0
+    @AppStorage("htmlapp.sourcePolicy") private var sourcePolicy = "networkFirst"
     @AppStorage("sourceRefreshDays") private var sourceRefreshDays = 3
     @AppStorage("autoApplyWebsiteUpdates") private var autoApplyWebsiteUpdates = false
     @AppStorage("webClipFullScreen") private var webClipFullScreen = true
@@ -550,6 +551,13 @@ struct SettingsView: View {
                             }
                             Slider(value: $shakeExitSeconds, in: 0.5...5.0, step: 0.1)
                         }
+                        Picker("Online sources", selection: $sourcePolicy) {
+                            Text("Fresh online, saved offline").tag("networkFirst")
+                            Text("Network only").tag("networkOnly")
+                            Text("Standard browser cache").tag("standard")
+                        }
+                        Text("Fresh loading bypasses browser resource caches on launch. Bundled libraries and imported local files remain local. Network only disables saved remote-resource fallback. Reopen apps after changing this setting.")
+                            .font(.caption).foregroundStyle(.secondary)
                         Toggle("Developer Mode", isOn: $developerMode)
 
                         if developerMode {

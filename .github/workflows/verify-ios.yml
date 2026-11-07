@@ -29,6 +29,14 @@ jobs:
         run: |
           swiftc HTMLAppV3/ForgeSemanticAppModel.swift HTMLAppV3/ForgeAppManifest.swift HTMLAppV3/ForgeCapabilityResolver.swift HTMLAppV3/ForgeEditSafetyGate.swift HTMLAppV3/ForgeFocusedEditContext.swift scripts/test-forge-contract.swift -o "$RUNNER_TEMP/htmlapp-forge-contract-test"
           "$RUNNER_TEMP/htmlapp-forge-contract-test"
+      - name: Test edit acceptance and API catalog
+        run: |
+          swiftc HTMLAppV3/ForgeEditAcceptance.swift scripts/test-edit-acceptance.swift -o "$RUNNER_TEMP/htmlapp-edit-acceptance"
+          "$RUNNER_TEMP/htmlapp-edit-acceptance"
+          swiftc HTMLAppV3/HTMLAppDocumentMode.swift scripts/test-document-mode.swift -o "$RUNNER_TEMP/htmlapp-document-mode"
+          "$RUNNER_TEMP/htmlapp-document-mode"
+          python3 scripts/check-api-catalog.py --offline
+          python3 scripts/test-api-catalog.py
       - name: Test provider completion and atomic patch application
         run: python3 scripts/test-generation-reliability.py
       - name: Test public-address safety rules on macOS

@@ -7,8 +7,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: targeted
-    MARKETING_VERSION: "1.8.5"
-    CURRENT_PROJECT_VERSION: "104"
+    MARKETING_VERSION: "1.9.0"
+    CURRENT_PROJECT_VERSION: "105"
     TARGETED_DEVICE_FAMILY: "1,2"
     SUPPORTS_MACCATALYST: NO
     CODE_SIGN_STYLE: Automatic
@@ -25,6 +25,11 @@ targets:
       - path: HTMLAppV3
       - path: HTMLAppShared
       - path: HTMLApp/Resources/HTMLApp-AI-App-Builder-SKILL.md
+        buildPhase: resources
+      - path: HTMLApp/Resources/RuntimeLibraries
+        type: folder
+        buildPhase: resources
+      - path: HTMLApp/Resources/htmlapp-api-catalog.json
         buildPhase: resources
       - path: HTMLApp/Resources/htmlapp-native-api.d.ts
         buildPhase: resources
@@ -127,6 +132,7 @@ targets:
         NFCReaderUsageDescription: Saved HTML apps can scan an NFC tag only while you explicitly run a scan.
         NSCameraUsageDescription: HTML apps can use the camera only after you allow that saved app and approve the iOS permission.
         NSMicrophoneUsageDescription: Dictate app ideas in Forge or allow a saved HTMLApp to use the microphone.
+        NSLocationAlwaysAndWhenInUseUsageDescription: A saved app can collect a bounded location history in the background only after you enable it and grant Always access.
         NSLocationWhenInUseUsageDescription: HTML apps can request your location only after you allow that saved app and approve the iOS permission.
         NSBluetoothAlwaysUsageDescription: HTMLApps may discover nearby Bluetooth Low Energy devices only after permission and your request to scan.
         NSBluetoothPeripheralUsageDescription: HTMLApps may discover nearby Bluetooth Low Energy devices only after permission and your request to scan.
@@ -164,6 +170,7 @@ targets:
           - com.mekabrine.htmlapp.refresh
           - com.mekabrine.htmlapp.forge.*
         UIBackgroundModes:
+          - location
           - audio
           - fetch
           - processing

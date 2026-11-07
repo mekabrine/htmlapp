@@ -20,6 +20,11 @@ jobs:
           python-version: '3.12'
       - name: Require a release bump for product changes
         run: python3 scripts/check-version-bump.py
+      - name: API catalog and runtime kits
+        run: |
+          python3 scripts/check-api-catalog.py --offline
+          python3 scripts/test-api-catalog.py
+          node scripts/test-runtime-kits.mjs
       - name: Existing source invariants
         run: python3 scripts/test-source-invariants.py
       - name: Bridge registry and generated runtime consistency
