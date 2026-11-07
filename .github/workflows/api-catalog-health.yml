@@ -2,8 +2,6 @@ name: Weekly public API catalog health
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "13 6 * * 1"
 
 permissions:
   contents: read
