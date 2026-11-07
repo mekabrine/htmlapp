@@ -36,6 +36,9 @@ resource_scheme = source("HTMLAppV3/HTMLAppResourceScheme.swift")
 assert "func isDocumentURL(_ url: URL) -> Bool" in resource_scheme
 assert "url.host == host" in resource_scheme and 'url.path == "/index.html"' in resource_scheme
 assert 'url.user == nil && url.password == nil' in resource_scheme
+assert "htmlapp-navigation-hidden-style" in source("HTMLAppV3/HTMLAppRuntimeFoundation.swift")
+assert "for (const fallback of document.querySelectorAll('[data-htmlapp-tab-fallback]'))" in native
+assert "fallback.hidden = true;" in native and "fallback.hidden = false;" in native
 assert 'withPermission(.clipboard, id: id)' in native, "Clipboard read requires per-app consent"
 assert 'withPermission(.files, id: id)' in native, "Files picker requires per-app consent"
 assert 'case files' in source("HTMLAppV3/PermissionSystem.swift")
