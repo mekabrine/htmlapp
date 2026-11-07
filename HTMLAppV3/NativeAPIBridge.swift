@@ -3786,6 +3786,9 @@ enum HTMLNativeAPIScript {
       };
 
       window.addEventListener('htmlapp:native-tab-select', event => {
+        // Wait for UIKit mount to hide HTML fallback; an RPC alone is insufficient.
+        for (const fallback of document.querySelectorAll('[data-htmlapp-tab-fallback]'))
+          fallback.hidden = true;
         const fn = window.HTMLAppNative?.tabs?._handlers?.[event.detail?.id];
         if (typeof fn === 'function') fn(event.detail.id);
       });
@@ -4239,10 +4242,7 @@ enum HTMLNativeAPIScript {
             const selected = opts.selected || input?.selected || items[0].id;
             api.tabs._handlers = handlers;
             const result = await call('tabs.configure', { items: cleaned, selected });
-            // HTML fallbacks must not overlap UIKit even if generated CSS
-            // originally displayed them with a high-specificity rule.
-            for (const fallback of document.querySelectorAll('[data-htmlapp-tab-fallback]'))
-              fallback.hidden = true;
+            // Keep HTML preview navigation visible until UIKit confirms mount.
             return result;
           },
           _handlers: {},

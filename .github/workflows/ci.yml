@@ -1,6 +1,9 @@
 name: HTMLApp Continuous Checks
 
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -25,6 +28,8 @@ jobs:
           python3 scripts/check-api-catalog.py --offline
           python3 scripts/test-api-catalog.py
           node scripts/test-runtime-kits.mjs
+      - name: Game graphics and frame-rate fixture
+        run: node scripts/test-game-qa.mjs
       - name: Existing source invariants
         run: python3 scripts/test-source-invariants.py
       - name: Bridge registry and generated runtime consistency
