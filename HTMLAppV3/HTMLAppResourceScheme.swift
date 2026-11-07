@@ -17,6 +17,16 @@ final class HTMLAppResourceScheme: NSObject, WKURLSchemeHandler {
         host = "app-" + SHA256.hash(data: Data(root.lastPathComponent.utf8)).map { String(format: "%02x", $0) }.joined()
         super.init()
     }
+    /// Trust only this particular app's loaded top-level document to call native APIs.
+    /// A custom URL scheme by itself is not an authorization boundary.
+    func isDocumentURL(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == Self.scheme &&
+        url.host == host &&
+        url.path == "/index.html" &&
+        url.user == nil && url.password == nil &&
+        url.port == nil && url.query == nil
+    }
+
     func load(_ html: String, into webView: WKWebView) {
         document = Data(html.utf8)
         modules = ForgeModuleBundle.files(in: html)
