@@ -30,7 +30,12 @@ assert 'workflow_dispatch:' in workflow and '\n  push:' not in workflow, "Workfl
 assert 'awk -F' in workflow and "Repair and validate built app and widget version metadata" in workflow
 assert "mekapc.hostish.site" not in workflow and "mekapc.hostish.site" not in source("scripts/deliver-widgets.sh")
 assert "message.frameInfo.isMainFrame" in bridge, "Iframe-to-native messaging must remain blocked"
-assert '["file", "about", "applewebdata"].contains(scheme)' in bridge
+assert 'case "file", "about", "applewebdata":' in bridge
+assert 'case HTMLAppResourceScheme.scheme:' in bridge and 'handler.isDocumentURL(url)' in bridge, "Package-mode native bridge must verify the app-specific resource document"
+resource_scheme = source("HTMLAppV3/HTMLAppResourceScheme.swift")
+assert "func isDocumentURL(_ url: URL) -> Bool" in resource_scheme
+assert "url.host == host" in resource_scheme and 'url.path == "/index.html"' in resource_scheme
+assert 'url.user == nil && url.password == nil' in resource_scheme
 assert 'withPermission(.clipboard, id: id)' in native, "Clipboard read requires per-app consent"
 assert 'withPermission(.files, id: id)' in native, "Files picker requires per-app consent"
 assert 'case files' in source("HTMLAppV3/PermissionSystem.swift")
