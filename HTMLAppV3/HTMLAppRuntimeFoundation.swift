@@ -158,8 +158,45 @@ enum HTMLAppRuntimeFoundation {
       };
       document.addEventListener('DOMContentLoaded', configureNavigation, { once: true });
 
+      // Measure compositor frame cadence only while the app is actually visible.
+      // This is a smoke metric, not a GPU benchmark or a guarantee of steady FPS.
+      const measureFPS = ({ frames = 45, timeoutMs = 6000 } = {}) => {
+        const samples = Math.max(10, Math.min(120, Math.floor(Number(frames) || 45)));
+        const limit = Math.max(1000, Math.min(15000, Number(timeoutMs) || 6000));
+        if (document.hidden || typeof requestAnimationFrame !== 'function')
+          return Promise.reject(new Error('FPS measurement requires a visible app.'));
+        return new Promise((resolve, reject) => {
+          let start, count = 0, frameID, settled = false;
+          const cleanup = () => {
+            if (frameID !== undefined) cancelAnimationFrame(frameID);
+            clearTimeout(timer);
+            window.removeEventListener('pagehide', onPageHide);
+          };
+          const finish = (error, result) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            if (error) reject(error);
+            else resolve(result);
+          };
+          const onPageHide = () => finish(new Error('App was hidden during FPS measurement.'));
+          const timer = setTimeout(() => finish(new Error('FPS measurement timed out: test while the app is visible.')), limit);
+          window.addEventListener('pagehide', onPageHide, { once: true });
+          const step = now => {
+            if (document.hidden) return finish(new Error('App was hidden during FPS measurement.'));
+            if (start === undefined) start = now;
+            if (++count > samples) {
+              const durationMs = Math.max(1, now - start);
+              return finish(null, { fps: Math.round(samples * 100000 / durationMs) / 100, frames: samples, durationMs });
+            }
+            frameID = requestAnimationFrame(step);
+          };
+          frameID = requestAnimationFrame(step);
+        });
+      };
+
       const runtime = Object.freeze({
-        runOperation, cancelOperation,
+        runOperation, cancelOperation, measureFPS,
         get activeOperations() { return Array.from(operations.keys()); },
         get isVisible() { return !document.hidden; },
         onActive: cb => onLifecycle('active', cb),

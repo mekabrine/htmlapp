@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.0"
-    static let compiledBuild = "105"
+    static let compiledVersion = "1.9.1"
+    static let compiledBuild = "106"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.9.1" {
+            return [
+                Entry(id: "game-qa", title: "Check canvas rendering and frame rate", description: "Opt-in canvas checks flag blank game scenes during Forge QA, and running apps can measure visible-device frame cadence.", symbol: "gamecontroller", tint: .purple)
+            ] + entries(for: "1.9.0")
+        }
         if version == "1.9.0" { return [
             Entry(id: "effective-edits", title: "Edits must make a change", description: "Forge uses the edit contract, retries unchanged output and missing requested native navigation, and restores the previous app when acceptance fails.", symbol: "checkmark.seal", tint: .blue),
             Entry(id: "native-navigation", title: "Built-in navigation", description: "Apps can declare their screens once and let HTMLApp configure native tabs. Verification checks declared navigation and hidden preview fallbacks.", symbol: "square.split.2x1", tint: .purple),
