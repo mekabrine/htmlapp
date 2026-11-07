@@ -5,7 +5,14 @@ const swift = fs.readFileSync('HTMLAppV3/NativeAPIBridge.swift', 'utf8');
 const source = swift.split('static let source = #"""')[1].split('"""#')[0];
 const messages = [], nodes = new Map();
 const element = () => ({style:{},setAttribute(){},replaceChildren(){},append(...children){this.children=children},remove(){nodes.delete(this.id)}});
-const document = {getElementById:id=>nodes.get(id),createElement:element,body:{appendChild:n=>nodes.set(n.id,n)},addEventListener(){}};
+const fallback = {hidden: false};
+const document = {
+  getElementById:id=>nodes.get(id),
+  createElement:element,
+  body:{appendChild:n=>nodes.set(n.id,n)},
+  addEventListener(){},
+  querySelectorAll:selector => selector === '[data-htmlapp-tab-fallback]' ? [fallback] : []
+};
 const listeners = new Map();
 const window = {
   webkit:{messageHandlers:{htmlappNative:{postMessage:message=>messages.push(message)}}},
@@ -103,6 +110,7 @@ vm.runInNewContext(source, {window,document,CustomEvent,Map,Error,Date,Promise,c
   assert.equal(configureCall.args.items.length, 2);
   window.__htmlappNativeResolve(configureCall.id, true, {enabled:true,count:2});
   assert.equal((await tabs).enabled, true);
+  assert.equal(fallback.hidden, true, 'Native tabs must hide the HTML navigation fallback');
   // The native UITabBar signals the initially selected tab after configuration.
   // Simulate that native-to-JavaScript callback in this bridge-only test.
   assert.equal(configureCall.args.selected, 'home');
@@ -149,6 +157,12 @@ vm.runInNewContext(source, {window,document,CustomEvent,Map,Error,Date,Promise,c
   assert.equal(bleCall.args.seconds, 5);
   window.__htmlappNativeResolve(bleCall.id, true, {devices:[]});
   assert.equal((await ble).devices.length, 0);
+  const removeTabs = window.HTMLAppNative.tabs.remove();
+  const removeTabsCall = messages.shift();
+  assert.equal(removeTabsCall.method, 'tabs.remove');
+  window.__htmlappNativeResolve(removeTabsCall.id, true, {removed: true});
+  assert.equal((await removeTabs).removed, true);
+  assert.equal(fallback.hidden, false, 'Removing native tabs must restore the HTML fallback');
   assert.equal(scheduled.size, 0, 'No pending native request timers should remain after test completion');
   console.log('Widget bridge: request timeouts, callback cleanup, rejection diagnostics, and publication states passed.');
 })().catch(e=>{console.error(e);process.exitCode=1});
