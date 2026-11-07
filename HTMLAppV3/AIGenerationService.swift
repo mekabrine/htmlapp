@@ -719,55 +719,10 @@ Requested edit:
             if let issue = ForgeVisualEditQualityGate.issue(
                 before: beforeEditHTML, after: streamedHTML, request: cleanChange
             ) {
-                // The HTML can pass syntax/bridge checks yet have a visibly
-                // broken form. Rebuild the PATCH from the original document,
-                // not from the rejected proposal; never stack a second bad CSS
-                // layer on top of it.
-                AIDebugTraceStore.shared.append("VISUAL EDIT REPAIR", issue)
-                phase = "Correcting the popup layout"
-                streamedHTML = editSource.html
-                let retryUser = """
-                Your prior visual patch was rejected because it creates a broken layout:
-                \(issue)
-
-                ORIGINAL APP SOURCE (authoritative):
-                <htmlapp_existing>
-                \(editSource.html)
-                </htmlapp_existing>
-
-                USER REQUEST:
-                \(cleanChange)
-
-                \(visualTargetHint)
-
-                Return a DIFFERENT, correct, meaningful redesign as a minimal
-                <htmlapp_patch> against the original source. Preserve every
-                behavior, input ID, event handler, data key and route. Ensure
-                each label remains above its matching field; group controls
-                explicitly when using columns. Reuse existing helper copy.
-                Do not report success without a real effective visual change.
-                """
-                let retryResponse = try await AIProviderClient.complete(
-                    config: config,
-                    system: AIHTMLAgent.patchSystemPrompt(research: lastResearch),
-                    messages: [("user", retryUser)],
-                    timeout: 120, maxTokens: 9500, retryOnTransient: true
-                )
-                output = try await applyEditOutputWithRecovery(
-                    AIHTMLAgent.parse(retryResponse),
-                    requestedChange: cleanChange,
-                    config: config
-                )
-                if let remainingIssue = ForgeVisualEditQualityGate.issue(
-                    before: beforeEditHTML, after: streamedHTML, request: cleanChange
-                ) {
-                    AIDebugTraceStore.shared.append("VISUAL EDIT ADVISORY", remainingIssue)
-                    verificationReport = "Edit applied with a visual QA note: " + remainingIssue
-                }
-                let repairedSummary = AIHTMLAgent.value("edit_summary", in: retryResponse)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                lastEditSummary = AIHTMLAgent.shortEditSummary(repairedSummary)
-                AIDebugTraceStore.shared.append("VISUAL EDIT REPAIR", "Applied corrected visual patch.")
+                // Visual heuristics can catch suspicious layouts, but they do
+                // not have enough context to reject a user's usable edit.
+                AIDebugTraceStore.shared.append("VISUAL EDIT ADVISORY", issue)
+                verificationReport = "Edit applied with a visual QA note: " + issue
             }
             let dataSafety = ForgeEditSafetyGate.violations(
                 before: beforeEditHTML, after: streamedHTML, request: cleanChange
