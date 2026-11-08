@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import AppIntents
+import Intents
 import UIKit
 
 extension WidgetFamily {
@@ -68,6 +69,40 @@ struct HTMLAppPrimaryWidgetProvider: TimelineProvider {
             let definition = HTMLAppWidgetResolver.load(selectedID: nil, family: context.family.storageName, phase: "timeline")
             completion(await HTMLAppWidgetTimeline.make(definition: definition))
         }
+    }
+}
+
+/// Callback provider works on iOS 16 and later and avoids App Intents entity dispatch.
+struct HTMLAppCompatibleProvider: IntentTimelineProvider {
+    func placeholder(in context: Context) -> HTMLAppWidgetEntry {
+        .init(date: Date(), definition: .placeholder())
+    }
+    func getSnapshot(for configuration: SelectHTMLAppIntent, in context: Context,
+                     completion: @escaping (HTMLAppWidgetEntry) -> Void) {
+        completion(.init(date: Date(), definition: HTMLAppWidgetResolver.load(
+            selectedID: configuration.widget?.identifier ?? "htmlapp-unconfigured",
+            family: context.family.storageName, phase: "compatible-snapshot")))
+    }
+    func getTimeline(for configuration: SelectHTMLAppIntent, in context: Context,
+                     completion: @escaping (Timeline<HTMLAppWidgetEntry>) -> Void) {
+        let definition = HTMLAppWidgetResolver.load(
+            selectedID: configuration.widget?.identifier ?? "htmlapp-unconfigured",
+            family: context.family.storageName, phase: "compatible-timeline")
+        Task { completion(await HTMLAppWidgetTimeline.make(definition: definition)) }
+    }
+}
+
+struct HTMLAppCompatibleWidget: Widget {
+    let kind = HTMLAppWidgetKinds.compatible
+    var body: some WidgetConfiguration {
+        IntentConfiguration(kind: kind, intent: SelectHTMLAppIntent.self,
+                            provider: HTMLAppCompatibleProvider()) { entry in
+            HTMLAppWidgetView(entry: entry)
+        }
+        .configurationDisplayName("HTMLApp Compatible")
+        .description("Choose a saved app’s widget. Supports independent selections on iOS 16 and later.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge,
+                            .accessoryInline, .accessoryCircular, .accessoryRectangular])
     }
 }
 
@@ -551,6 +586,7 @@ struct HTMLAppPrimaryWidget: Widget {
 struct HTMLAppWidgetsBundle: WidgetBundle {
     @WidgetBundleBuilder
     var body: some Widget {
+        HTMLAppCompatibleWidget()
         if #available(iOS 17.0, *) { HTMLAppSelectableWidget() }
         HTMLAppPrimaryWidget()
         HTMLAppVoiceCreateWidget()

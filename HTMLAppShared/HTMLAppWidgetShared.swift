@@ -591,7 +591,12 @@ enum HTMLAppWidgetDiagnostics {
         guard let data = try? Data(contentsOf: url("widget-probe.json")),
               let probe = try? JSONDecoder().decode(HTMLAppWidgetProbe.self, from: data) else { return lines.joined(separator: "\n") }
         lines.append("Probe: \(probe.nonce)")
-        if let data = try? Data(contentsOf: url("widget-receipt-timeline.json")),
+        let receipts = ["compatible-timeline", "timeline"].compactMap { phase -> Data? in
+            try? Data(contentsOf: url("widget-receipt-\(phase).json"))
+        }
+        if let data = receipts.first(where: { data in
+            (try? JSONDecoder().decode(HTMLAppWidgetReceipt.self, from: data).nonce) == probe.nonce
+        }),
            let receipt = try? JSONDecoder().decode(HTMLAppWidgetReceipt.self, from: data), receipt.nonce == probe.nonce {
             lines.append("Extension acknowledged: \(receipt.status), \(receipt.family), \(receipt.date.formatted())")
             let matches = HTMLAppWidgetStore.all().contains { digest($0) == receipt.definitionDigest }
@@ -861,5 +866,6 @@ enum HTMLAppWidgetNetwork {
 enum HTMLAppWidgetKinds {
     static let primary = "HTMLAppPrimaryWidget"
     static let selectable = "HTMLAppSelectableWidget"
-    static let published = [primary, selectable]
+    static let compatible = "HTMLAppCompatibleWidget"
+    static let published = [primary, selectable, compatible]
 }

@@ -140,7 +140,7 @@ final class WidgetTests: XCTestCase {
     }
     @available(iOS 17.0, *)
     func testAllPublishedKindsReceiveReloads() {
-        XCTAssertEqual(Set(HTMLAppWidgetKinds.published), Set([HTMLAppPrimaryWidget().kind, HTMLAppSelectableWidget().kind]))
+        XCTAssertEqual(Set(HTMLAppWidgetKinds.published), Set([HTMLAppPrimaryWidget().kind, HTMLAppSelectableWidget().kind, HTMLAppCompatibleWidget().kind]))
     }
     func testSelectionAndFamilyErrors() throws {
         var d = definition("focus-streak"); d.families = ["systemSmall"]

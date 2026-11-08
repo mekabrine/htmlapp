@@ -2378,7 +2378,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             reject(id, code: failure.code, message: failure.message)
             return
         }
-        resolve(id, value: ["widgets": values, "count": values.count, "appGroupAvailable": HTMLAppSharedContainer.appGroupAvailable, "iOS16PrimaryOnly": ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 17])
+        resolve(id, value: ["widgets": values, "count": values.count, "appGroupAvailable": HTMLAppSharedContainer.appGroupAvailable, "iOS16PrimaryOnly": false])
     }
 
     private func removeWidget(id: String, args: [String: Any]) {

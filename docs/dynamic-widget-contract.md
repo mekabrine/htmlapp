@@ -125,3 +125,12 @@ end other saved apps’ activities with immediate dismissal, and request the new
 A session generation check rejects stale requests after switching apps. Forge build
 activities use a separate attributes type and are unaffected. System authorization,
 limits and ActivityKit request errors remain possible and are returned to JavaScript.
+
+## Compatible selection on iOS 16 and later
+Add HTMLApp Compatible and edit Widget to select a published definition. This uses
+IntentConfiguration with an IntentTimelineProvider on iOS 16 and newer, including
+Lock Screen families. A dedicated Intents extension supplies names from the same
+approved shared container. Every placement stores its own composite ID. Replace
+blank older HTMLApp instances with this new kind; selections are not guessed or
+copied globally. Sign the app, Widgets extension and WidgetIntents extension with
+matching App Group authorization. The packaging workflow includes the new extension.

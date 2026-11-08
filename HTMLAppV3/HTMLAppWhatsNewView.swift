@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.4"
-    static let compiledBuild = "109"
+    static let compiledVersion = "1.9.5"
+    static let compiledBuild = "110"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -38,6 +38,9 @@ enum HTMLAppReleaseNotes {
     }
 
     private static func changes(for version: String) -> [Entry] {
+        if version == "1.9.5" {
+            return [Entry(id: "compatible-selection", title: "Compatible widget selection", description: "Add HTMLApp Compatible to choose a different app for each widget on iPhone and iPad, including iOS 16.2.", symbol: "square.grid.2x2", tint: .blue)]
+        }
         if version == "1.9.4" {
             return [
                 Entry(id: "focused-update-notes", title: "Just this update", description: "What’s New now shows only the changes from the latest edit, with short, easy-to-read notes.", symbol: "text.alignleft", tint: .blue)
