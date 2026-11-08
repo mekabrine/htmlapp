@@ -2,6 +2,9 @@ name: Build HTMLApp IPA
 
 # Manual-only workflow. Source commits and build-request changes must not trigger builds.
 on:
+  push:
+    branches: [main]
+    paths: ['.github/build-once']
   workflow_dispatch:
     inputs:
       macos_runner:
