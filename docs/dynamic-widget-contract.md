@@ -109,7 +109,7 @@ accessibility, tinted rendering and interval boundaries.
 
 
 ## Independent selections and four Home Screen sizes
-On iOS 17+, add **HTMLApp** and edit each instance's **HTMLApp / Widget** selection.
+On iOS 17+, add **HTMLApp** and edit each instance's **Widget** selection.
 Home Screen and Lock Screen instances keep separate composite app/widget IDs, so
 multiple saved apps can be displayed simultaneously. Launching another saved app
 never changes those selections. Deleted definitions show an unavailable state.

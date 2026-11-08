@@ -12,9 +12,12 @@ enum HTMLAppWidgetReloadCoordinator {
             pending = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                 pending = false
-                WidgetCenter.shared.reloadTimelines(ofKind: "HTMLAppPrimaryWidget")
+                for kind in HTMLAppWidgetKinds.published {
+                    WidgetCenter.shared.reloadTimelines(ofKind: kind)
+                }
                 WidgetCenter.shared.reloadTimelines(ofKind: "HTMLAppVoiceCreate")
             }
         }
     }
 }
+

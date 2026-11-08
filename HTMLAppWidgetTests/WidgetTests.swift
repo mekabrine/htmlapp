@@ -138,6 +138,10 @@ final class WidgetTests: XCTestCase {
         XCTAssertEqual(timeline.entries.first?.definition.snapshot.subtitle, "Goal: 10 days")
         XCTAssertNotEqual(timeline.entries.first?.definition.appID, "placeholder")
     }
+    @available(iOS 17.0, *)
+    func testAllPublishedKindsReceiveReloads() {
+        XCTAssertEqual(Set(HTMLAppWidgetKinds.published), Set([HTMLAppPrimaryWidget().kind, HTMLAppSelectableWidget().kind]))
+    }
     func testSelectionAndFamilyErrors() throws {
         var d = definition("focus-streak"); d.families = ["systemSmall"]
         XCTAssertThrowsError(try HTMLAppWidgetResolver.resolve(values: [d], selectedID: "deleted", family: "systemSmall"))

@@ -92,6 +92,7 @@ struct HTMLAppMain: App {
                     #endif
                     store.claimShareExtensionFiles()
                     checkVersionOnLaunch()
+                    HTMLAppWidgetReloadCoordinator.request()
                     store.setExternalHTMLImportReady(
                         onboardingComplete && !presentingWhatsNew
                     )
@@ -129,6 +130,7 @@ struct HTMLAppMain: App {
                 }
                 .onChange(of: scenePhase) { phase in
                     if phase == .active {
+                        HTMLAppWidgetReloadCoordinator.request()
                         Task { await HTMLAppOfflineSpeech.shared.preloadIfSelected() }
                         Task {
                             store.prepareAutomaticBackends()
@@ -147,6 +149,7 @@ struct HTMLAppMain: App {
                     }
                     checkedVersionThisLaunch = false
                     checkVersionOnLaunch()
+                    HTMLAppWidgetReloadCoordinator.request()
                     store.setExternalHTMLImportReady(!presentingWhatsNew)
                 }
                 // Root-owned external import sheet survives cold launches,

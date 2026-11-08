@@ -1006,3 +1006,20 @@ assert '- remote-notification' in source("project.yml")
 assert '"permission": "network"' in source("scripts/native-capability-definitions.json")
 
 
+
+# Every generated-widget kind must be refreshed after committed publication.
+widget_reload = source("HTMLAppV3/HTMLAppWidgetReloadCoordinator.swift")
+widget_shared = source("HTMLAppShared/HTMLAppWidgetShared.swift")
+widget_config = source("HTMLAppShared/HTMLAppWidgetConfiguration.swift")
+widget_extension = source("HTMLAppWidgets/HTMLAppWidgets.swift")
+assert 'static let published = [primary, selectable]' in widget_shared
+assert 'for kind in HTMLAppWidgetKinds.published' in widget_reload
+assert 'reloadTimelines(ofKind: kind)' in widget_reload
+assert 'let kind = HTMLAppWidgetKinds.selectable' in widget_extension
+assert 'let kind = HTMLAppWidgetKinds.primary' in widget_extension
+assert 'struct HTMLAppWidgetConfigurationIntent' in widget_config
+assert 'struct HTMLAppWidgetEntityQuery' in widget_config
+assert '@Parameter(title: "Widget")' in widget_config
+assert 'struct HTMLAppWidgetConfigurationIntent' not in widget_extension
+print("Configured-widget refresh kinds and shared configuration regression checks passed")
+assert core.count("HTMLAppWidgetReloadCoordinator.request()") >= 3, "Refresh installed widgets after app launch, foregrounding and saved changes"

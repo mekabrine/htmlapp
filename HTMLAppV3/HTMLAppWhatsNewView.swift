@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.2"
-    static let compiledBuild = "107"
+    static let compiledVersion = "1.9.3"
+    static let compiledBuild = "108"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,11 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.9.3" {
+            return [
+                Entry(id: "configured-widget-refresh", title: "Refresh configured widgets", description: "Published updates now refresh independently selected widgets as well as Primary. Widget selection has a shorter label and shared configuration support.", symbol: "arrow.clockwise", tint: .blue)
+            ] + entries(for: "1.9.2")
+        }
         if version == "1.9.2" {
             return [
                 Entry(id: "independent-widgets", title: "Choose an app for each widget", description: "Add HTMLApp widgets for different saved apps together on your Home Screen and Lock Screen. Edit each widget to choose its app on iOS 17 and later.", symbol: "square.grid.2x2", tint: .blue),

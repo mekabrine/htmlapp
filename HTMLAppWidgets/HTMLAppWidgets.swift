@@ -72,57 +72,6 @@ struct HTMLAppPrimaryWidgetProvider: TimelineProvider {
 }
 
 @available(iOS 17.0, *)
-struct HTMLAppWidgetEntity: AppEntity {
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "HTMLApp Widget"
-    static var defaultQuery = HTMLAppWidgetEntityQuery()
-
-    var id: String
-    var name: String
-
-    var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(name)")
-    }
-}
-
-@available(iOS 17.0, *)
-struct HTMLAppWidgetEntityQuery: EntityQuery {
-    private var choices: [HTMLAppWidgetEntity] {
-        do {
-            let available = try HTMLAppWidgetStore.readAll().map {
-                HTMLAppWidgetEntity(id: $0.id, name: "\($0.appName ?? $0.appID) · \($0.name) [\($0.appID.prefix(6))]")
-            }
-            return available
-        } catch {
-            return []
-        }
-    }
-
-    func entities(for identifiers: [HTMLAppWidgetEntity.ID]) async throws -> [HTMLAppWidgetEntity] {
-        let available = choices
-        return identifiers.map { id in
-            available.first { $0.id == id } ?? HTMLAppWidgetEntity(id: id, name: "Unavailable widget — choose another HTMLApp")
-        }
-    }
-
-    func suggestedEntities() async throws -> [HTMLAppWidgetEntity] {
-        choices
-    }
-
-    func defaultResult() async -> HTMLAppWidgetEntity? {
-        choices.first
-    }
-}
-
-@available(iOS 17.0, *)
-struct HTMLAppWidgetConfigurationIntent: WidgetConfigurationIntent {
-    static var title: LocalizedStringResource = "Choose HTMLApp Widget"
-    static var description = IntentDescription("Choose a widget published by one of your saved HTMLApps.")
-
-    @Parameter(title: "HTMLApp / Widget")
-    var widget: HTMLAppWidgetEntity?
-}
-
-@available(iOS 17.0, *)
 struct HTMLAppConfiguredWidgetProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> HTMLAppWidgetEntry {
         .init(date: Date(), definition: .placeholder())
@@ -567,7 +516,7 @@ struct HTMLAppWidgetView: View {
 
 @available(iOS 17.0, *)
 struct HTMLAppSelectableWidget: Widget {
-    let kind = "HTMLAppSelectableWidget"
+    let kind = HTMLAppWidgetKinds.selectable
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: kind, intent: HTMLAppWidgetConfigurationIntent.self,
                                provider: HTMLAppConfiguredWidgetProvider()) { entry in
@@ -581,7 +530,7 @@ struct HTMLAppSelectableWidget: Widget {
 }
 
 struct HTMLAppPrimaryWidget: Widget {
-    let kind = "HTMLAppPrimaryWidget"
+    let kind = HTMLAppWidgetKinds.primary
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: HTMLAppPrimaryWidgetProvider()) { entry in

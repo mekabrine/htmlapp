@@ -856,3 +856,10 @@ enum HTMLAppWidgetNetwork {
 
 
 
+
+/// Widget configuration and reload requests must use exactly the same kinds.
+enum HTMLAppWidgetKinds {
+    static let primary = "HTMLAppPrimaryWidget"
+    static let selectable = "HTMLAppSelectableWidget"
+    static let published = [primary, selectable]
+}
