@@ -843,14 +843,16 @@ assert "DisclosureGroup(\"Advanced Settings\")" in settings
 assert "APPLE SPEECH · LIVE" in forgeview and "liveDictationCaptions" in forgeview
 assert "appleSpeechActive" in speech and "shouldReportPartialResults = true" in speech
 
-# Spoken edits keep recorded audio through retry; form redesigns are validated.
+# Spoken edits keep recorded audio through retry; form redesign heuristics stay advisory.
 visual_guard = source("HTMLAppV3/ForgeVisualEditQualityGate.swift")
 dictation = source("HTMLAppV3/ForgeDictation.swift")
 speech = source("HTMLAppV3/HTMLAppOfflineSpeech.swift")
 forge_source = source("HTMLAppV3/AIGenerationService.swift")
 assert "grid-template-columns" in visual_guard and "sibling labels" in visual_guard
 assert "ForgeVisualEditQualityGate.issue(" in forge_source
-assert "VISUAL EDIT REPAIR" in forge_source
+assert "VISUAL EDIT ADVISORY" in forge_source
+assert "POST-REPAIR VISUAL QA ADVISORY" in forge_source
+assert "throw AIGenerationError.invalidPatch" not in forge_source[forge_source.find("VISUAL EDIT ADVISORY"):forge_source.find("let dataSafety")]
 assert "transcribeRetainedAudio()" in dictation and "retryTranscription()" in dictation
 assert "resetModel: attempt == 3" in dictation
 assert "canRetryTranscription" in source("HTMLAppV3/AIGenerationView.swift")
