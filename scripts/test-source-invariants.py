@@ -178,7 +178,7 @@ assert 'static func shouldHideStatusBar(in html: String)' in source("HTMLAppV3/E
 assert 'statusBarHidden(carDisplay || carWindow || Self.shouldHideStatusBar(in: liveHTML))' in source("HTMLAppV3/EditorWeb.swift")
 assert 'DisclosureGroup("Built-in Forge system prompt")' not in source("HTMLAppV3/AISettingsView.swift")
 assert 'get { defaultSystemPrompt }' in source("HTMLAppV3/AIConfiguration.swift")
-assert 'systemSmall, systemMedium, and systemLarge' in ai
+assert 'systemSmall, systemMedium, systemLarge, and systemExtraLarge' in ai
 assert 'accessoryCircular (square/circular compact widget)' in ai
 assert 'Toggle("Sync Saved Apps"' in source("HTMLAppV3/OnboardingSettings.swift")
 assert 'if iCloudSyncApps {' in source("HTMLAppV3/OnboardingSettings.swift")
@@ -1004,4 +1004,5 @@ assert 'HTMLAppNetworkDomainConsent.request(host: host, appID: self.appID)' in n
 assert 'didReceiveRemoteNotification userInfo:' in pushDelegate and '"htmlapp_refresh"' in pushDelegate
 assert '- remote-notification' in source("project.yml")
 assert '"permission": "network"' in source("scripts/native-capability-definitions.json")
+
 

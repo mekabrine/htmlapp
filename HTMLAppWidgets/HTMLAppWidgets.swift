@@ -89,18 +89,18 @@ struct HTMLAppWidgetEntityQuery: EntityQuery {
     private var choices: [HTMLAppWidgetEntity] {
         do {
             let available = try HTMLAppWidgetStore.readAll().map {
-                HTMLAppWidgetEntity(id: $0.id, name: $0.name)
+                HTMLAppWidgetEntity(id: $0.id, name: "\($0.appName ?? $0.appID) · \($0.name) [\($0.appID.prefix(6))]")
             }
-            return [HTMLAppWidgetEntity(id: HTMLAppWidgetResolver.primaryID, name: "Selected Primary (choose in HTMLApp)")] + available
+            return available
         } catch {
-            return [HTMLAppWidgetEntity(id: HTMLAppWidgetResolver.primaryID, name: "Storage unavailable — open HTMLApp diagnostics")]
+            return []
         }
     }
 
     func entities(for identifiers: [HTMLAppWidgetEntity.ID]) async throws -> [HTMLAppWidgetEntity] {
         let available = choices
         return identifiers.map { id in
-            available.first { $0.id == id } ?? HTMLAppWidgetEntity(id: id, name: "Unavailable widget — republish or choose Primary")
+            available.first { $0.id == id } ?? HTMLAppWidgetEntity(id: id, name: "Unavailable widget — choose another HTMLApp")
         }
     }
 
@@ -118,7 +118,7 @@ struct HTMLAppWidgetConfigurationIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Choose HTMLApp Widget"
     static var description = IntentDescription("Choose a widget published by one of your saved HTMLApps.")
 
-    @Parameter(title: "Widget")
+    @Parameter(title: "HTMLApp / Widget")
     var widget: HTMLAppWidgetEntity?
 }
 
@@ -129,11 +129,11 @@ struct HTMLAppConfiguredWidgetProvider: AppIntentTimelineProvider {
     }
 
     func snapshot(for configuration: HTMLAppWidgetConfigurationIntent, in context: Context) async -> HTMLAppWidgetEntry {
-        .init(date: Date(), definition: HTMLAppWidgetResolver.load(selectedID: configuration.widget?.id, family: context.family.storageName, phase: "snapshot"))
+        .init(date: Date(), definition: HTMLAppWidgetResolver.load(selectedID: configuration.widget?.id ?? "htmlapp-unconfigured", family: context.family.storageName, phase: "snapshot"))
     }
 
     func timeline(for configuration: HTMLAppWidgetConfigurationIntent, in context: Context) async -> Timeline<HTMLAppWidgetEntry> {
-        let definition = HTMLAppWidgetResolver.load(selectedID: configuration.widget?.id, family: context.family.storageName, phase: "timeline")
+        let definition = HTMLAppWidgetResolver.load(selectedID: configuration.widget?.id ?? "htmlapp-unconfigured", family: context.family.storageName, phase: "timeline")
         return await HTMLAppWidgetTimeline.make(definition: definition)
     }
 
@@ -195,8 +195,10 @@ struct HTMLAppWidgetView: View {
             compactCard
         case .systemMedium:
             mediumCard
-        case .systemLarge, .systemExtraLarge:
+        case .systemLarge:
             largeCard
+        case .systemExtraLarge:
+            extraLargeCard
         @unknown default:
             compactCard
         }
@@ -350,6 +352,25 @@ struct HTMLAppWidgetView: View {
         }
         .padding(14)
         .foregroundStyle(foreground)
+    }
+
+    private var extraLargeCard: some View {
+        HStack(alignment: .top, spacing: 24) {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                Spacer(minLength: 0)
+                heroValue
+                if snapshot.showsTimeProgress { timeProgress.progressViewStyle(.linear) }
+                else if let progress = snapshot.progress { ProgressView(value: min(max(progress, 0), 1)).tint(accent) }
+                footer
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            if !(snapshot.items ?? []).isEmpty {
+                VStack { itemList(limit: 8); Spacer(minLength: 0) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else if let image = decodedImage {
+                image.resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }.padding(20).foregroundStyle(foreground)
     }
 
     private var largeCard: some View {
@@ -544,6 +565,21 @@ struct HTMLAppWidgetView: View {
     }
 }
 
+@available(iOS 17.0, *)
+struct HTMLAppSelectableWidget: Widget {
+    let kind = "HTMLAppSelectableWidget"
+    var body: some WidgetConfiguration {
+        AppIntentConfiguration(kind: kind, intent: HTMLAppWidgetConfigurationIntent.self,
+                               provider: HTMLAppConfiguredWidgetProvider()) { entry in
+            HTMLAppWidgetView(entry: entry)
+        }
+        .configurationDisplayName("HTMLApp")
+        .description("Edit each widget to choose its HTMLApp and published widget. Add multiple widgets for different apps.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge,
+                            .accessoryInline, .accessoryCircular, .accessoryRectangular])
+    }
+}
+
 struct HTMLAppPrimaryWidget: Widget {
     let kind = "HTMLAppPrimaryWidget"
 
@@ -566,10 +602,10 @@ struct HTMLAppPrimaryWidget: Widget {
 struct HTMLAppWidgetsBundle: WidgetBundle {
     @WidgetBundleBuilder
     var body: some Widget {
+        if #available(iOS 17.0, *) { HTMLAppSelectableWidget() }
         HTMLAppPrimaryWidget()
         HTMLAppVoiceCreateWidget()
-        // Removed broken picker-based widget variants. The primary widget
-        // always displays the latest snapshot and needs no manual app selection.
+        // Keep the legacy kind so existing installed widgets survive the upgrade.
         if #available(iOS 16.2, *) {
             HTMLAppLiveActivityWidget()
             HTMLAppForgeActivityWidget()
@@ -792,3 +828,4 @@ struct HTMLAppWidgetElementView: View {
         }
     }
 }
+

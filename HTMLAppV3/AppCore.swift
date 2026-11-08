@@ -338,7 +338,11 @@ final class AppStore: ObservableObject {
     @Published private(set) var canPresentExternalHTMLImport = false
     @Published private(set) var apps: [SavedHTMLApp] = []
     @Published private(set) var folders: [LibraryFolder] = []
-    @Published var runningApp: SavedHTMLApp?
+    @Published var runningApp: SavedHTMLApp? {
+        didSet {
+            if oldValue?.id != runningApp?.id { HTMLAppLiveActivitySession.activate(appID: runningApp?.id) }
+        }
+    }
     @Published var pendingSwitchApp: SavedHTMLApp?
     @Published var pendingWebClipGuideApp: SavedHTMLApp?
     @Published var pendingWebClipProfileURL: URL?
@@ -723,7 +727,7 @@ final class AppStore: ObservableObject {
         // Loading an app must not synchronously re-encode, validate and
         // backup the entire library before its WebView can appear.
         HTMLAppRuntimeStateStore.opened(appID: app.id)
-        if HTMLAppWidgetStore.activate(appID: app.id) { HTMLAppWidgetReloadCoordinator.request() }
+
         runningApp = apps[index]
         deferredLaunchSave?.cancel()
         deferredLaunchSave = Task { [weak self] in
@@ -1598,6 +1602,10 @@ final class AppStore: ObservableObject {
                 try previous.write(to: libraryBackupURL, options: .atomic)
             }
             try result.write(to: libraryURL, options: .atomic)
+            let names = Dictionary(uniqueKeysWithValues: apps.map { ($0.id, $0.name) })
+            HTMLAppSharedContainer.defaults.set(names, forKey: "htmlapp.widget.appNames")
+            HTMLAppWidgetStore.updateAppNames(names)
+            HTMLAppWidgetReloadCoordinator.request()
             requestICloudSync()
         } catch {
             errorMessage = "The library couldn't be saved. Existing data and its backup were kept."
@@ -1711,5 +1719,6 @@ final class AppStore: ObservableObject {
         }
     }
 }
+
 
 

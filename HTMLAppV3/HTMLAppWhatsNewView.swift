@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.1"
-    static let compiledBuild = "106"
+    static let compiledVersion = "1.9.2"
+    static let compiledBuild = "107"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,13 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.9.2" {
+            return [
+                Entry(id: "independent-widgets", title: "Choose an app for each widget", description: "Add HTMLApp widgets for different saved apps together on your Home Screen and Lock Screen. Edit each widget to choose its app on iOS 17 and later.", symbol: "square.grid.2x2", tint: .blue),
+                Entry(id: "ipad-widgets", title: "All four Home Screen sizes", description: "Forge includes small, medium, large and extra-large iPad widgets. Older Home Screen publications gain compatible size fallbacks.", symbol: "ipad", tint: .purple),
+                Entry(id: "activity-handoff", title: "Live Activities follow app requests", description: "When the active app requests a Live Activity, the previous app’s activity ends and the new one starts. Requests from old app sessions are rejected.", symbol: "waveform", tint: .green)
+            ] + entries(for: "1.9.1")
+        }
         if version == "1.9.1" {
             return [
                 Entry(id: "game-qa", title: "Check canvas rendering and frame rate", description: "Opt-in canvas checks flag blank game scenes during Forge QA, and running apps can measure visible-device frame cadence.", symbol: "gamecontroller", tint: .purple)
@@ -668,5 +675,6 @@ struct HTMLAppWhatsNewView: View {
         .accessibilityElement(children: .combine)
     }
 }
+
 
 

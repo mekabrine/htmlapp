@@ -294,6 +294,13 @@ struct HTMLAppWidgetDefinition: Codable, Hashable, Identifiable {
     var dataBindings: [String: String]? = nil
     var action: HTMLAppWidgetAction? = nil
     var openBehavior: String? = nil
+    var appName: String? = nil
+
+    static let homeFamilies = ["systemSmall", "systemMedium", "systemLarge", "systemExtraLarge"]
+    static func completeFamilies(_ families: [String]) -> [String] {
+        guard families.contains(where: { homeFamilies.contains($0) }) else { return families }
+        return homeFamilies + families.filter { !homeFamilies.contains($0) }
+    }
 
     var id: String { appID + "::" + widgetID }
 
@@ -315,7 +322,7 @@ struct HTMLAppWidgetDefinition: Codable, Hashable, Identifiable {
             widgetID: id,
             name: "HTMLApp Widget",
             primary: true,
-            families: ["systemSmall", "systemMedium", "systemLarge", "accessoryInline", "accessoryCircular", "accessoryRectangular"],
+            families: ["systemSmall", "systemMedium", "systemLarge", "systemExtraLarge", "accessoryInline", "accessoryCircular", "accessoryRectangular"],
             snapshot: .placeholder,
             refresh: nil,
             updatedAt: Date(),
@@ -383,7 +390,19 @@ final class HTMLAppWidgetRepository {
         var seen = Set<String>()
         var unique = sorted.filter { seen.insert($0.id).inserted }
         let primary = unique.first(where: { $0.primary })?.id ?? unique.first?.id
-        for i in unique.indices { unique[i].primary = unique[i].id == primary }
+        for i in unique.indices {
+            unique[i].primary = unique[i].id == primary
+            // Idempotent compatibility upgrade for previously published sizes.
+            let original = unique[i].families
+            unique[i].families = HTMLAppWidgetDefinition.completeFamilies(original)
+            if original != unique[i].families, let content = unique[i].snapshot.content {
+                // Preserve old layouts; newly added sizes use the native template.
+                var overrides = unique[i].snapshot.familyContent ?? [:]
+                for family in original where overrides[family] == nil { overrides[family] = content }
+                unique[i].snapshot.familyContent = overrides
+                unique[i].snapshot.content = nil
+            }
+        }
         return unique
     }
 
@@ -438,6 +457,13 @@ enum HTMLAppWidgetStore {
     }
     static func readAll() throws -> [HTMLAppWidgetDefinition] { try repository().all() }
     static func all() -> [HTMLAppWidgetDefinition] { (try? readAll()) ?? [] }
+    static func updateAppNames(_ names: [String: String]) {
+        report {
+            try repository().mutate { definitions in
+                for i in definitions.indices { definitions[i].appName = names[definitions[i].appID] }
+            }
+        }
+    }
     static func definitions(appID: String) -> [HTMLAppWidgetDefinition] { all().filter { $0.appID == appID } }
     static func updateFromPortableData(appID: String, key: String, value: String?) {
         guard definitions(appID: appID).contains(where: { $0.dataBindings?.values.contains(key) == true }) else { return }
@@ -827,5 +853,6 @@ enum HTMLAppWidgetNetwork {
         }
     }
 }
+
 
 

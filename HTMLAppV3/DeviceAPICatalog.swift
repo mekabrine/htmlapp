@@ -560,7 +560,7 @@ enum HTMLAppDeviceAPIResearch {
             // Explicitly end when the task finishes or is cancelled:
             await HTMLAppNative.liveActivities.end("trip-packing");
             """,
-            constraints: "Requires iOS 16.2+, Live Activities enabled, a saved app, and consent. Up to three activities per app; supports native text, primary/secondary metrics, progress, SF Symbol, accent color, backgroundHex and compactLabel for the Dynamic Island, and a footer. Design thoughtful activity transitions and update on meaningful state changes, with an explicit end path. Dynamic Island only on supported iPhones; no custom HTML, arbitrary JavaScript, remote push updates, autonomous background execution, or guaranteed real-time refresh. Do not expose private content on the Lock Screen."
+            constraints: "Requires iOS 16.2+, Live Activities enabled, a saved app, and consent. Up to three activities for the active saved app; a valid start request ends other saved apps’ activities immediately before starting this app’s activity. Old foreground sessions cannot restart or update activities; supports native text, primary/secondary metrics, progress, SF Symbol, accent color, backgroundHex and compactLabel for the Dynamic Island, and a footer. Design thoughtful activity transitions and update on meaningful state changes, with an explicit end path. Dynamic Island only on supported iPhones; no custom HTML, arbitrary JavaScript, remote push updates, autonomous background execution, or guaranteed real-time refresh. Do not expose private content on the Lock Screen."
         ),
         .init(
             id: "background.fetch",
@@ -997,5 +997,6 @@ enum HTMLAppDeviceAPIResearch {
         }
     }
 }
+
 
 

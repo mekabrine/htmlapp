@@ -2,12 +2,28 @@ import Foundation
 import ActivityKit
 import UIKit
 
+/// The foreground saved-app session is independent of persistent widget selections.
+@MainActor
+enum HTMLAppLiveActivitySession {
+    private(set) static var appID: String?
+    private(set) static var generation = UUID()
+    static func activate(appID: String?) {
+        self.appID = appID
+        generation = UUID()
+    }
+    static func matches(appID: String, generation: UUID) -> Bool {
+        self.appID == appID && self.generation == generation
+    }
+}
+
 @available(iOS 16.2, *)
+@MainActor
 enum HTMLAppLiveActivityService {
     enum Failure: LocalizedError {
-        case unavailable, badArguments, limit, notFound
+        case unavailable, badArguments, limit, notFound, inactiveSession
         var errorDescription: String? {
             switch self {
+            case .inactiveSession: return "This HTMLApp session is no longer active. Open the app and request the Live Activity again."
             case .unavailable: return "Live Activities are disabled or not available on this iOS device."
             case .badArguments: return "Invalid Live Activity: check id/title, layout, finite time values and the 3.8 KB combined payload budget."
             case .limit: return "This HTML app can run up to three Live Activities at once."
@@ -131,21 +147,42 @@ enum HTMLAppLiveActivityService {
             }
     }
 
-    static func start(appID: String, args: [String: Any]) throws -> [String: Any] {
+    // A tail task serializes across awaits; actor isolation alone allows reentrancy.
+    private static var handoffTail: Task<Void, Never>?
+
+    static func start(appID: String, session: UUID, args: [String: Any]) async throws -> [String: Any] {
+        let previous = handoffTail
+        let operation = Task { @MainActor in
+            await previous?.value
+            return try await startSerialized(appID: appID, session: session, args: args)
+        }
+        handoffTail = Task { @MainActor in _ = await operation.result }
+        return try await operation.value
+    }
+
+    private static func startSerialized(appID: String, session: UUID, args: [String: Any]) async throws -> [String: Any] {
+        guard HTMLAppLiveActivitySession.matches(appID: appID, generation: session) else { throw Failure.inactiveSession }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { throw Failure.unavailable }
         guard let id = validID(args["id"]),
               !clip(args["title"], max: 75).isEmpty else { throw Failure.badArguments }
-        if let existing = matching(appID: appID, id: id) {
-            return ["id": id, "activityID": existing.id, "alreadyActive": true]
-        }
-        guard list(appID: appID).count < 3 else { throw Failure.limit }
+        let existing = matching(appID: appID, id: id)
+        guard existing != nil || list(appID: appID).count < 3 else { throw Failure.limit }
         let attrs = HTMLAppLiveActivityAttributes(
             appID: appID, activityID: id,
             title: clip(args["title"], max: 75),
             systemSymbol: symbol(args["systemSymbol"])
         )
-        let state = try content(args)
-        try validatePayload(attributes: attrs, state: state)
+        let state = try content(args, previous: existing?.content.state)
+        try validatePayload(attributes: existing?.attributes ?? attrs, state: state)
+        for old in Activity<HTMLAppLiveActivityAttributes>.activities where old.attributes.appID != appID {
+            guard HTMLAppLiveActivitySession.matches(appID: appID, generation: session) else { throw Failure.inactiveSession }
+            await old.end(ActivityContent(state: old.content.state, staleDate: nil), dismissalPolicy: .immediate)
+        }
+        guard HTMLAppLiveActivitySession.matches(appID: appID, generation: session) else { throw Failure.inactiveSession }
+        if let existing {
+            await existing.update(ActivityContent(state: state, staleDate: state.staleDate))
+            return ["id": id, "activityID": existing.id, "alreadyActive": true, "updated": true]
+        }
         let activity = try Activity.request(
             attributes: attrs,
             content: ActivityContent(state: state, staleDate: state.staleDate),
@@ -154,7 +191,8 @@ enum HTMLAppLiveActivityService {
         return ["id": id, "activityID": activity.id, "started": true]
     }
 
-    static func update(appID: String, args: [String: Any]) async throws -> [String: Any] {
+    static func update(appID: String, session: UUID, args: [String: Any]) async throws -> [String: Any] {
+        guard HTMLAppLiveActivitySession.matches(appID: appID, generation: session) else { throw Failure.inactiveSession }
         guard let id = validID(args["id"]) else { throw Failure.badArguments }
         guard let activity = matching(appID: appID, id: id) else { throw Failure.notFound }
         let state = try content(args, previous: activity.content.state)
@@ -178,3 +216,4 @@ enum HTMLAppLiveActivityService {
         return ["id": id, "ended": true]
     }
 }
+

@@ -163,3 +163,18 @@ enum ForgeWidgetTimeContract {
         return []
     }
 }
+
+
+/// Generation repair complements native enforcement for dynamically built definitions.
+enum ForgeWidgetFamilyContract {
+    static func issues(html: String) -> [String] {
+        guard html.contains("widgets.configure") else { return [] }
+        let home = ["systemSmall", "systemMedium", "systemLarge", "systemExtraLarge"]
+        let hasHome = home.contains(where: html.contains)
+        let onlyAccessories = !hasHome && html.contains("accessory")
+        guard !onlyAccessories else { return [] }
+        let missing = home.filter { !html.contains($0) }
+        guard !missing.isEmpty else { return [] }
+        return ["Every Home Screen widget must support all four families: systemSmall, systemMedium, systemLarge, systemExtraLarge. Missing: " + missing.joined(separator: ", ") + ". Supply useful size-appropriate familyContent when using custom composition."]
+    }
+}

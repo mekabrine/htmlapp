@@ -46,7 +46,7 @@ struct GeneratedIntegrationsView: View {
 
             Section {
                 Label("Generated apps can publish native Home Screen and Lock Screen widgets.", systemImage: "square.grid.2x2")
-                Text("On iOS 17 and later, add an HTMLApp widget and choose a widget published by one of your saved apps. On iOS 16, HTMLApp shows the current primary widget.")
+                Text("On iOS 17 and later, add HTMLApp widgets to your Home Screen or Lock Screen, then edit each widget and choose its HTMLApp / Widget. Each selection is independent: widgets for multiple apps can appear together. Home Screen widgets support small, medium, large, and extra-large on iPad. Existing HTMLApp Primary widgets can be replaced with the configurable HTMLApp widget. On iOS 16, HTMLApp shows the current primary widget.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -337,4 +337,5 @@ struct GeneratedIntegrationsView: View {
         }
     }
 }
+
 
