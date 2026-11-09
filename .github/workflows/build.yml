@@ -200,7 +200,7 @@ jobs:
           VERSION="$(awk -F '"' '/static let compiledVersion =/ {print $2; exit}' HTMLAppV3/HTMLAppWhatsNewView.swift)"
           BUILD="$(awk -F '"' '/static let compiledBuild =/ {print $2; exit}' HTMLAppV3/HTMLAppWhatsNewView.swift)"
           test -n "$VERSION" && test -n "$BUILD"
-          for BUNDLE in "$APP_PATH" "$APP_PATH/PlugIns/HTMLAppWidgets.appex" "$APP_PATH/PlugIns/HTMLAppWidgetIntents.appex"; do
+          for BUNDLE in "$APP_PATH" "$APP_PATH/PlugIns/HTMLAppWidgets.appex"; do
             PLIST="$BUNDLE/Info.plist"
             test -f "$PLIST"
             for PAIR in "CFBundleShortVersionString:$VERSION" "CFBundleVersion:$BUILD"; do
@@ -252,7 +252,6 @@ jobs:
           cp -R "$APP_PATH" Payload/
           cp HTMLApp/HTMLApp.entitlements Payload/HTMLApp.app/WidgetSigningRequirements.plist
           cp HTMLAppWidgets/HTMLAppWidgets.entitlements Payload/HTMLApp.app/PlugIns/HTMLAppWidgets.appex/WidgetSigningRequirements.plist
-          cp HTMLAppWidgets/HTMLAppWidgets.entitlements Payload/HTMLApp.app/PlugIns/HTMLAppWidgetIntents.appex/WidgetSigningRequirements.plist
       - name: Create entitlement-preserving HTMLApp IPA
         shell: bash
         run: |
@@ -263,7 +262,6 @@ jobs:
           cp -R Payload TrollStorePayload
           ldid -SHTMLApp/HTMLApp.entitlements "TrollStorePayload/HTMLApp.app/HTMLApp"
           ldid -SHTMLAppWidgets/HTMLAppWidgets.entitlements "TrollStorePayload/HTMLApp.app/PlugIns/HTMLAppWidgets.appex/HTMLAppWidgets"
-          ldid -SHTMLAppWidgets/HTMLAppWidgets.entitlements "TrollStorePayload/HTMLApp.app/PlugIns/HTMLAppWidgetIntents.appex/HTMLAppWidgetIntents"
           for path in "TrollStorePayload/HTMLApp.app/HTMLApp" "TrollStorePayload/HTMLApp.app/PlugIns/HTMLAppWidgets.appex/HTMLAppWidgets"; do
             ldid -e "$path" > "$path.entitlements.check"
             plutil -lint "$path.entitlements.check"
@@ -320,5 +318,4 @@ jobs:
           curl --fail --silent --show-error --retry 2 --connect-timeout 10 --max-time 25 \
             -H 'Content-Type: application/json' \
             --data-binary "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
-
 

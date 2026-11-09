@@ -106,31 +106,3 @@ Existing apps automatically receive the template alignment fix. They need a Forg
 edit and republish to request new formats or layouts. Xcode/device checks still
 need to cover each family on iOS 16/17/18/26, including long timers, large text,
 accessibility, tinted rendering and interval boundaries.
-
-
-## Independent selections and four Home Screen sizes
-On iOS 17+, add **HTMLApp** and edit each instance's **Widget** selection.
-Home Screen and Lock Screen instances keep separate composite app/widget IDs, so
-multiple saved apps can be displayed simultaneously. Launching another saved app
-never changes those selections. Deleted definitions show an unavailable state.
-The legacy **HTMLApp Primary** kind remains for existing placements and iOS 16;
-replace it with **HTMLApp** for independent selections on supported systems.
-Any Home Screen publication includes systemSmall, systemMedium, systemLarge and
-systemExtraLarge. Prior publications are upgraded idempotently during shared-store
-normalization, preserving original layouts and using native template fallbacks for
-new sizes. Custom familyContent overrides take precedence. iPad extra-large uses a
-wide two-column template. WidgetKit controls refresh delivery.
-Valid Live Activity starts from the current saved-app session serialize their handoff,
-end other saved apps’ activities with immediate dismissal, and request the new one.
-A session generation check rejects stale requests after switching apps. Forge build
-activities use a separate attributes type and are unaffected. System authorization,
-limits and ActivityKit request errors remain possible and are returned to JavaScript.
-
-## Compatible selection on iOS 16 and later
-Add HTMLApp Compatible and edit Widget to select a published definition. This uses
-IntentConfiguration with an IntentTimelineProvider on iOS 16 and newer, including
-Lock Screen families. A dedicated Intents extension supplies names from the same
-approved shared container. Every placement stores its own composite ID. Replace
-blank older HTMLApp instances with this new kind; selections are not guessed or
-copied globally. Sign the app, Widgets extension and WidgetIntents extension with
-matching App Group authorization. The packaging workflow includes the new extension.

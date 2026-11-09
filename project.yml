@@ -6,10 +6,9 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    INTENTS_CODEGEN_LANGUAGE: Swift
     SWIFT_STRICT_CONCURRENCY: targeted
-    MARKETING_VERSION: "1.9.5"
-    CURRENT_PROJECT_VERSION: "110"
+    MARKETING_VERSION: "1.9.1"
+    CURRENT_PROJECT_VERSION: "106"
     TARGETED_DEVICE_FAMILY: "1,2"
     SUPPORTS_MACCATALYST: NO
     CODE_SIGN_STYLE: Automatic
@@ -182,8 +181,6 @@ targets:
         embed: true
       - target: HTMLAppShareExtension
         embed: true
-      - target: HTMLAppWidgetIntents
-        embed: true
 
   HTMLAppWidgets:
     type: app-extension
@@ -242,36 +239,6 @@ targets:
             NSExtensionActivationRule:
               NSExtensionActivationSupportsFileWithMaxCount: 1
 
-  HTMLAppWidgetIntents:
-    type: app-extension
-    platform: iOS
-    deploymentTarget: "16.0"
-    sources:
-      - path: HTMLAppWidgetIntents
-      - path: HTMLAppShared
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mekabrine.htmlapp.widgetintents
-        PRODUCT_NAME: HTMLAppWidgetIntents
-        TARGETED_DEVICE_FAMILY: "1,2"
-        CODE_SIGN_ENTITLEMENTS: HTMLAppWidgets/HTMLAppWidgets.entitlements
-        GENERATE_INFOPLIST_FILE: NO
-        INFOPLIST_FILE: HTMLAppWidgetIntents/Info.plist
-        APPLICATION_EXTENSION_API_ONLY: YES
-        SKIP_INSTALL: YES
-    info:
-      path: HTMLAppWidgetIntents/Info.plist
-      properties:
-        CFBundleDisplayName: HTMLApp Widget Options
-        CFBundleShortVersionString: "$(MARKETING_VERSION)"
-        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSExtension:
-          NSExtensionPointIdentifier: com.apple.intents-service
-          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).IntentHandler"
-          NSExtensionAttributes:
-            IntentsSupported: [SelectHTMLAppIntent]
-            IntentsRestrictedWhileLocked: []
-
   HTMLAppWidgetTests:
     type: bundle.unit-test
     platform: iOS
@@ -280,7 +247,6 @@ targets:
       - path: HTMLAppShared
       - path: HTMLAppWidgets/HTMLAppWidgets.swift
       - path: HTMLAppV3/AIIconRenderer.swift
-      - path: HTMLAppV3/HTMLAppLiveActivityService.swift
       - path: HTMLAppWidgetTests
     settings:
       base:
@@ -328,6 +294,5 @@ schemes:
     test:
       targets:
         - HTMLAppWidgetTests
-
 
 

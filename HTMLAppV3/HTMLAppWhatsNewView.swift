@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.5"
-    static let compiledBuild = "110"
+    static let compiledVersion = "1.9.1"
+    static let compiledBuild = "106"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -29,39 +29,11 @@ enum HTMLAppReleaseNotes {
         packagedVersion == compiledVersion && packagedBuild == compiledBuild
     }
 
-    // Normal edits show only their own changes. For a build-error-only fix,
-    // explicitly name the feature release whose notes should remain visible.
-    private static let buildFixNotes: [String: String] = ["1.8.4": "1.8.3"]
-
     static func entries(for version: String) -> [Entry] {
-        changes(for: buildFixNotes[version] ?? version)
-    }
-
-    private static func changes(for version: String) -> [Entry] {
-        if version == "1.9.5" {
-            return [Entry(id: "compatible-selection", title: "Compatible widget selection", description: "Add HTMLApp Compatible to choose a different app for each widget on iPhone and iPad, including iOS 16.2.", symbol: "square.grid.2x2", tint: .blue)]
-        }
-        if version == "1.9.4" {
-            return [
-                Entry(id: "focused-update-notes", title: "Just this update", description: "What’s New now shows only the changes from the latest edit, with short, easy-to-read notes.", symbol: "text.alignleft", tint: .blue)
-            ]
-        }
-        if version == "1.9.3" {
-            return [
-                Entry(id: "configured-widget-refresh", title: "Refresh configured widgets", description: "Widgets now refresh after their app publishes changes. The widget picker also has a shorter, clearer label.", symbol: "arrow.clockwise", tint: .blue)
-            ]
-        }
-        if version == "1.9.2" {
-            return [
-                Entry(id: "independent-widgets", title: "Choose an app for each widget", description: "Add HTMLApp widgets for different saved apps together on your Home Screen and Lock Screen. Edit each widget to choose its app on iOS 17 and later.", symbol: "square.grid.2x2", tint: .blue),
-                Entry(id: "ipad-widgets", title: "All four Home Screen sizes", description: "Forge includes small, medium, large and extra-large iPad widgets. Older Home Screen publications gain compatible size fallbacks.", symbol: "ipad", tint: .purple),
-                Entry(id: "activity-handoff", title: "Live Activities follow app requests", description: "When the active app requests a Live Activity, the previous app’s activity ends and the new one starts. Requests from old app sessions are rejected.", symbol: "waveform", tint: .green)
-            ]
-        }
         if version == "1.9.1" {
             return [
                 Entry(id: "game-qa", title: "Check canvas rendering and frame rate", description: "Opt-in canvas checks flag blank game scenes during Forge QA, and running apps can measure visible-device frame cadence.", symbol: "gamecontroller", tint: .purple)
-            ]
+            ] + entries(for: "1.9.0")
         }
         if version == "1.9.0" { return [
             Entry(id: "effective-edits", title: "Edits must make a change", description: "Forge uses the edit contract, retries unchanged output and missing requested native navigation, and restores the previous app when acceptance fails.", symbol: "checkmark.seal", tint: .blue),
@@ -622,7 +594,7 @@ struct HTMLAppWhatsNewView: View {
                             .font(.largeTitle.bold())
                             .minimumScaleFactor(0.8)
                         Text(previousVersion.map { "You went from version \($0) to \(version)." }
-                             ?? "See what changed in this update.")
+                             ?? "Discover the latest features in your installed version.")
                             .font(.title3)
                             .foregroundStyle(.secondary)
                         Text("VERSION \(version) · BUILD \(HTMLAppReleaseNotes.installedBuild)")
@@ -640,7 +612,7 @@ struct HTMLAppWhatsNewView: View {
                                     detail: "Detailed release notes have not been published for this version.",
                                     symbol: "checkmark.seal.fill", tint: .blue)
                     } else {
-                        Text("In this update")
+                        Text("Highlights in this version")
                             .font(.headline)
                         ForEach(updates) { item in
                             whatsNewRow(title: item.title, detail: item.description,
@@ -696,6 +668,5 @@ struct HTMLAppWhatsNewView: View {
         .accessibilityElement(children: .combine)
     }
 }
-
 
 

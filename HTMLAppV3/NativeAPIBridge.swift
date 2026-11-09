@@ -23,7 +23,6 @@ import SwiftUI
 final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
     private weak var webView: WKWebView?
     private let appID: String
-    private let liveActivitySession: UUID
     private weak var permissionCoordinator: NativePermissionCoordinator?
 
     private var contactPickerCallbackID: String?
@@ -65,7 +64,6 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     init(webView: WKWebView, appID: String, permissionCoordinator: NativePermissionCoordinator?) {
         self.webView = webView
         self.appID = appID
-        self.liveActivitySession = HTMLAppLiveActivitySession.generation
         self.permissionCoordinator = permissionCoordinator
         super.init()
         motionBackgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
@@ -1961,12 +1959,10 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             if #available(iOS 16.2, *) {
                 withPermission(.liveActivities, id: id) { [weak self] in
                     guard let self else { return }
-                    Task {
-                        do {
-                            let info = try await HTMLAppLiveActivityService.start(appID: self.appID, session: self.liveActivitySession, args: args)
-                            self.resolve(id, value: info)
-                        } catch { self.reject(id, code: "live_activity_failed", message: error.localizedDescription) }
-                    }
+                    do {
+                        let info = try HTMLAppLiveActivityService.start(appID: self.appID, args: args)
+                        self.resolve(id, value: info)
+                    } catch { self.reject(id, code: "live_activity_failed", message: error.localizedDescription) }
                 }
             } else {
                 reject(id, code: "unsupported_ios", message: "Live Activities require iOS 16.2 or later.")
@@ -1977,7 +1973,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                     guard let self else { return }
                     Task {
                         do {
-                            let result = try await HTMLAppLiveActivityService.update(appID: self.appID, session: self.liveActivitySession, args: args)
+                            let result = try await HTMLAppLiveActivityService.update(appID: self.appID, args: args)
                             self.resolve(id, value: result)
                         } catch { self.reject(id, code: "live_activity_failed", message: error.localizedDescription) }
                     }
@@ -2269,19 +2265,12 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         let requestedFamilies = (args["families"] as? [String] ?? [])
             .filter { allowedFamilies.contains($0) }
         let families = requestedFamilies.isEmpty
-            ? HTMLAppWidgetDefinition.homeFamilies
-            : HTMLAppWidgetDefinition.completeFamilies(Array(requestedFamilies.prefix(7)))
+            ? ["systemSmall", "systemMedium", "systemLarge"]
+            : Array(requestedFamilies.prefix(7))
 
-        guard var snapshot = widgetSnapshot(from: snapshotArgs) else {
+        guard let snapshot = widgetSnapshot(from: snapshotArgs) else {
             reject(id, code: "invalid_widget", message: "The widget snapshot contains invalid or oversized content.")
             return
-        }
-
-        if !requestedFamilies.isEmpty, Set(families) != Set(requestedFamilies), let content = snapshot.content {
-            var overrides = snapshot.familyContent ?? [:]
-            for family in requestedFamilies where overrides[family] == nil { overrides[family] = content }
-            snapshot.familyContent = overrides
-            snapshot.content = nil
         }
 
         var refreshSpec: HTMLAppWidgetRefreshSpec?
@@ -2320,7 +2309,6 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             lastRefreshAt: existing.first(where: { $0.widgetID == widgetID })?.lastRefreshAt,
             lastError: nil
         )
-        definition.appName = (HTMLAppSharedContainer.defaults.dictionary(forKey: "htmlapp.widget.appNames") as? [String: String])?[appID]
         definition.action = validWidgetAction(args["action"])
         if let behavior = args["openBehavior"] as? String, ["openApp", "action"].contains(behavior) {
             definition.openBehavior = behavior
@@ -2378,7 +2366,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             reject(id, code: failure.code, message: failure.message)
             return
         }
-        resolve(id, value: ["widgets": values, "count": values.count, "appGroupAvailable": HTMLAppSharedContainer.appGroupAvailable, "iOS16PrimaryOnly": false])
+        resolve(id, value: ["widgets": values, "count": values.count, "appGroupAvailable": HTMLAppSharedContainer.appGroupAvailable, "iOS16PrimaryOnly": ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 17])
     }
 
     private func removeWidget(id: String, args: [String: Any]) {
@@ -4466,5 +4454,4 @@ questionmark.circle info.circle exclamationmark.triangle hand.tap hand.raised ey
 square.on.square rectangle.portrait.on.rectangle.portrait app.badge apps.iphone square.grid.3x3.fill
 """.split(whereSeparator: \.isWhitespace).map(String.init)
 }
-
 

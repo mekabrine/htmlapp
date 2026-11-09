@@ -9,7 +9,7 @@ for archive in sys.argv[1:]:
             assert z.testzip() is None
             z.extractall(tmp)
         app=pathlib.Path(tmp)/'Payload/HTMLApp.app'
-        for bundle,expected in [(app,'com.mekabrine.htmlapp'),(app/'PlugIns/HTMLAppWidgets.appex','com.mekabrine.htmlapp.widgets'),(app/'PlugIns/HTMLAppWidgetIntents.appex','com.mekabrine.htmlapp.widgetintents')]:
+        for bundle,expected in [(app,'com.mekabrine.htmlapp'),(app/'PlugIns/HTMLAppWidgets.appex','com.mekabrine.htmlapp.widgets')]:
             info=plistlib.loads((bundle/'Info.plist').read_bytes())
             assert info['CFBundleIdentifier']==expected
             assert info['CFBundleShortVersionString']==expected_version, f"{bundle.name} version mismatch: {info.get('CFBundleShortVersionString')}"
@@ -18,9 +18,7 @@ for archive in sys.argv[1:]:
             assert set(info['UIDeviceFamily'])=={1,2}
             binary=bundle/info['CFBundleExecutable']
             assert binary.is_file()
-            if bundle.suffix=='.appex':
-                point = 'com.apple.intents-service' if bundle.name == 'HTMLAppWidgetIntents.appex' else 'com.apple.widgetkit-extension'
-                assert info['NSExtension']['NSExtensionPointIdentifier']==point
+            if bundle.suffix=='.appex': assert info['NSExtension']['NSExtensionPointIdentifier']=='com.apple.widgetkit-extension'
             if archive.endswith('HTMLApp.ipa') or 'TrollStore' in archive:
                 ent=plistlib.loads(subprocess.check_output(['ldid','-e',str(binary)]))
                 assert ent['com.apple.security.application-groups']==['group.com.mekabrine.htmlapp']
@@ -29,4 +27,3 @@ for archive in sys.argv[1:]:
                 ent=plistlib.loads((bundle/'WidgetSigningRequirements.plist').read_bytes())
                 assert ent['com.apple.security.application-groups']==['group.com.mekabrine.htmlapp']
                 print(archive,bundle.name,'unsigned signing metadata verified; profile authorization NOT verified')
-

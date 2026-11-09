@@ -138,35 +138,11 @@ final class WidgetTests: XCTestCase {
         XCTAssertEqual(timeline.entries.first?.definition.snapshot.subtitle, "Goal: 10 days")
         XCTAssertNotEqual(timeline.entries.first?.definition.appID, "placeholder")
     }
-    @available(iOS 17.0, *)
-    func testAllPublishedKindsReceiveReloads() {
-        XCTAssertEqual(Set(HTMLAppWidgetKinds.published), Set([HTMLAppPrimaryWidget().kind, HTMLAppSelectableWidget().kind, HTMLAppCompatibleWidget().kind]))
-    }
     func testSelectionAndFamilyErrors() throws {
         var d = definition("focus-streak"); d.families = ["systemSmall"]
         XCTAssertThrowsError(try HTMLAppWidgetResolver.resolve(values: [d], selectedID: "deleted", family: "systemSmall"))
-        XCTAssertEqual(try HTMLAppWidgetResolver.resolve(values: [d], selectedID: d.id, family: "systemExtraLarge").id, d.id)
+        XCTAssertThrowsError(try HTMLAppWidgetResolver.resolve(values: [d], selectedID: nil, family: "systemLarge"))
         XCTAssertEqual(try HTMLAppWidgetResolver.resolve(values: [d], selectedID: d.id, family: "systemSmall").id, d.id)
-    }
-    func testIndependentSelectionsAcrossAppsAndScreens() throws {
-        var a = definition("weather"); a.appID = "app-a"
-        var b = definition("calendar"); b.appID = "app-b"
-        var c = definition("newest"); c.appID = "app-c"
-        a.primary = false; b.primary = false; c.primary = true
-        for family in ["systemSmall", "systemMedium", "systemLarge", "systemExtraLarge", "accessoryInline", "accessoryCircular", "accessoryRectangular"] {
-            XCTAssertEqual(try HTMLAppWidgetResolver.resolve(values: [c, b, a], selectedID: a.id, family: family).appID, "app-a")
-            XCTAssertEqual(try HTMLAppWidgetResolver.resolve(values: [c, b, a], selectedID: b.id, family: family).appID, "app-b")
-        }
-        XCTAssertThrowsError(try HTMLAppWidgetResolver.resolve(values: [c, b], selectedID: a.id, family: "systemSmall"))
-    }
-    func testFamilyUpgradePreservesOriginalCustomContent() throws {
-        var d = definition("legacy"); d.families = ["systemSmall", "accessoryInline"]
-        d.snapshot.content = HTMLAppWidgetElement(type: "text", text: "Original")
-        let upgraded = HTMLAppWidgetRepository.normalized([d])[0]
-        XCTAssertTrue(Set(HTMLAppWidgetDefinition.homeFamilies).isSubset(of: Set(upgraded.families)))
-        XCTAssertEqual(upgraded.snapshot.customContent(for: "systemSmall")?.text, "Original")
-        XCTAssertNil(upgraded.snapshot.customContent(for: "systemExtraLarge"))
-        XCTAssertEqual(HTMLAppWidgetRepository.normalized([upgraded]), [upgraded])
     }
     func testPrimaryNormalizedDuringRestoreAndRead() throws {
         try repository.mutate { $0 = [self.definition("a"), self.definition("b")] }
@@ -217,7 +193,7 @@ final class WidgetTests: XCTestCase {
         let result = try await HTMLAppWidgetEntityQuery().entities(for: ["deleted-widget"])
         XCTAssertEqual(result.first?.id, "deleted-widget")
         let suggested = try await HTMLAppWidgetEntityQuery().suggestedEntities()
-        XCTAssertFalse(suggested.contains { $0.id == HTMLAppWidgetResolver.primaryID })
+        XCTAssertEqual(suggested.first?.id, HTMLAppWidgetResolver.primaryID)
     }
 }
 
@@ -316,39 +292,5 @@ final class LocalProfileResponseTests: XCTestCase {
             XCTAssertNotNil(png, "FILL/inherited-color IconScript should render into a visible PNG")
             if let png { XCTAssertNotNil(UIImage(data: png)) }
         }
-    }
-}
-
-
-@available(iOS 16.2, *)
-@MainActor
-final class LiveActivitySessionTests: XCTestCase {
-    func testSwitchAndReopenInvalidateOldSessions() {
-        HTMLAppLiveActivitySession.activate(appID: "a")
-        let first = HTMLAppLiveActivitySession.generation
-        XCTAssertTrue(HTMLAppLiveActivitySession.matches(appID: "a", generation: first))
-        HTMLAppLiveActivitySession.activate(appID: "b")
-        XCTAssertFalse(HTMLAppLiveActivitySession.matches(appID: "a", generation: first))
-        HTMLAppLiveActivitySession.activate(appID: "a")
-        XCTAssertFalse(HTMLAppLiveActivitySession.matches(appID: "a", generation: first))
-        HTMLAppLiveActivitySession.activate(appID: nil)
-    }
-    func testDelayedRequestsCannotStartOrUpdateAfterSwitch() async {
-        HTMLAppLiveActivitySession.activate(appID: "a")
-        let old = HTMLAppLiveActivitySession.generation
-        HTMLAppLiveActivitySession.activate(appID: "b")
-        do {
-            _ = try await HTMLAppLiveActivityService.start(appID: "a", session: old, args: ["id": "timer", "title": "Old"])
-            XCTFail("An outgoing session must not start an activity")
-        } catch {
-            guard case HTMLAppLiveActivityService.Failure.inactiveSession = error else { return XCTFail("Wrong start error: \(error)") }
-        }
-        do {
-            _ = try await HTMLAppLiveActivityService.update(appID: "a", session: old, args: ["id": "timer"])
-            XCTFail("An outgoing session must not update an activity")
-        } catch {
-            guard case HTMLAppLiveActivityService.Failure.inactiveSession = error else { return XCTFail("Wrong update error: \(error)") }
-        }
-        HTMLAppLiveActivitySession.activate(appID: nil)
     }
 }

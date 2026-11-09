@@ -126,15 +126,3 @@ On supported installed builds, `HTMLAppNative.audio.record({maxDuration:60})` st
 ## Native camera photo capture
 
 On supporting devices, `HTMLAppNative.camera.capturePhoto({camera:'front'|'back',quality:0.85,maxDimension:2400})` opens a real camera UI only from the user's explicit action and returns a scoped `{url,name,mimeType,size,width,height}` file descriptor. `await fetch(photo.url)` is intercepted by the host's existing photo import bridge. Check permission, cancellation, and camera availability; never assume the camera can work in a preview or simulator.
-
-
-## Widget family completeness and ownership
-Whenever adding any Home Screen widget, publish all four families together:
-`systemSmall`, `systemMedium`, `systemLarge`, `systemExtraLarge` (iPad).
-Use meaningful size-specific `snapshot.familyContent` layouts for custom designs.
-Lock Screen widgets use `accessoryInline`, `accessoryCircular`, and `accessoryRectangular`;
-supporting both screens requires all seven families. Publish updates under stable IDs.
-Each configured widget instance independently chooses its HTMLApp / Widget in the
-system editing panel on iOS 17+. Opening another HTMLApp does not change selections.
-A valid Live Activity start from the active saved app replaces other saved apps’
-activities; native timers continue while suspended. Do not rely on JS reload loops.

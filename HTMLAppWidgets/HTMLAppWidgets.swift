@@ -1,7 +1,6 @@
 import WidgetKit
 import SwiftUI
 import AppIntents
-import Intents
 import UIKit
 
 extension WidgetFamily {
@@ -72,38 +71,55 @@ struct HTMLAppPrimaryWidgetProvider: TimelineProvider {
     }
 }
 
-/// Callback provider works on iOS 16 and later and avoids App Intents entity dispatch.
-struct HTMLAppCompatibleProvider: IntentTimelineProvider {
-    func placeholder(in context: Context) -> HTMLAppWidgetEntry {
-        .init(date: Date(), definition: .placeholder())
-    }
-    func getSnapshot(for configuration: SelectHTMLAppIntent, in context: Context,
-                     completion: @escaping (HTMLAppWidgetEntry) -> Void) {
-        completion(.init(date: Date(), definition: HTMLAppWidgetResolver.load(
-            selectedID: configuration.widget?.identifier ?? "htmlapp-unconfigured",
-            family: context.family.storageName, phase: "compatible-snapshot")))
-    }
-    func getTimeline(for configuration: SelectHTMLAppIntent, in context: Context,
-                     completion: @escaping (Timeline<HTMLAppWidgetEntry>) -> Void) {
-        let definition = HTMLAppWidgetResolver.load(
-            selectedID: configuration.widget?.identifier ?? "htmlapp-unconfigured",
-            family: context.family.storageName, phase: "compatible-timeline")
-        Task { completion(await HTMLAppWidgetTimeline.make(definition: definition)) }
+@available(iOS 17.0, *)
+struct HTMLAppWidgetEntity: AppEntity {
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "HTMLApp Widget"
+    static var defaultQuery = HTMLAppWidgetEntityQuery()
+
+    var id: String
+    var name: String
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(name)")
     }
 }
 
-struct HTMLAppCompatibleWidget: Widget {
-    let kind = HTMLAppWidgetKinds.compatible
-    var body: some WidgetConfiguration {
-        IntentConfiguration(kind: kind, intent: SelectHTMLAppIntent.self,
-                            provider: HTMLAppCompatibleProvider()) { entry in
-            HTMLAppWidgetView(entry: entry)
+@available(iOS 17.0, *)
+struct HTMLAppWidgetEntityQuery: EntityQuery {
+    private var choices: [HTMLAppWidgetEntity] {
+        do {
+            let available = try HTMLAppWidgetStore.readAll().map {
+                HTMLAppWidgetEntity(id: $0.id, name: $0.name)
+            }
+            return [HTMLAppWidgetEntity(id: HTMLAppWidgetResolver.primaryID, name: "Selected Primary (choose in HTMLApp)")] + available
+        } catch {
+            return [HTMLAppWidgetEntity(id: HTMLAppWidgetResolver.primaryID, name: "Storage unavailable — open HTMLApp diagnostics")]
         }
-        .configurationDisplayName("HTMLApp Compatible")
-        .description("Choose a saved app’s widget. Supports independent selections on iOS 16 and later.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge,
-                            .accessoryInline, .accessoryCircular, .accessoryRectangular])
     }
+
+    func entities(for identifiers: [HTMLAppWidgetEntity.ID]) async throws -> [HTMLAppWidgetEntity] {
+        let available = choices
+        return identifiers.map { id in
+            available.first { $0.id == id } ?? HTMLAppWidgetEntity(id: id, name: "Unavailable widget — republish or choose Primary")
+        }
+    }
+
+    func suggestedEntities() async throws -> [HTMLAppWidgetEntity] {
+        choices
+    }
+
+    func defaultResult() async -> HTMLAppWidgetEntity? {
+        choices.first
+    }
+}
+
+@available(iOS 17.0, *)
+struct HTMLAppWidgetConfigurationIntent: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "Choose HTMLApp Widget"
+    static var description = IntentDescription("Choose a widget published by one of your saved HTMLApps.")
+
+    @Parameter(title: "Widget")
+    var widget: HTMLAppWidgetEntity?
 }
 
 @available(iOS 17.0, *)
@@ -113,11 +129,11 @@ struct HTMLAppConfiguredWidgetProvider: AppIntentTimelineProvider {
     }
 
     func snapshot(for configuration: HTMLAppWidgetConfigurationIntent, in context: Context) async -> HTMLAppWidgetEntry {
-        .init(date: Date(), definition: HTMLAppWidgetResolver.load(selectedID: configuration.widget?.id ?? "htmlapp-unconfigured", family: context.family.storageName, phase: "snapshot"))
+        .init(date: Date(), definition: HTMLAppWidgetResolver.load(selectedID: configuration.widget?.id, family: context.family.storageName, phase: "snapshot"))
     }
 
     func timeline(for configuration: HTMLAppWidgetConfigurationIntent, in context: Context) async -> Timeline<HTMLAppWidgetEntry> {
-        let definition = HTMLAppWidgetResolver.load(selectedID: configuration.widget?.id ?? "htmlapp-unconfigured", family: context.family.storageName, phase: "timeline")
+        let definition = HTMLAppWidgetResolver.load(selectedID: configuration.widget?.id, family: context.family.storageName, phase: "timeline")
         return await HTMLAppWidgetTimeline.make(definition: definition)
     }
 
@@ -179,10 +195,8 @@ struct HTMLAppWidgetView: View {
             compactCard
         case .systemMedium:
             mediumCard
-        case .systemLarge:
+        case .systemLarge, .systemExtraLarge:
             largeCard
-        case .systemExtraLarge:
-            extraLargeCard
         @unknown default:
             compactCard
         }
@@ -336,25 +350,6 @@ struct HTMLAppWidgetView: View {
         }
         .padding(14)
         .foregroundStyle(foreground)
-    }
-
-    private var extraLargeCard: some View {
-        HStack(alignment: .top, spacing: 24) {
-            VStack(alignment: .leading, spacing: 14) {
-                header
-                Spacer(minLength: 0)
-                heroValue
-                if snapshot.showsTimeProgress { timeProgress.progressViewStyle(.linear) }
-                else if let progress = snapshot.progress { ProgressView(value: min(max(progress, 0), 1)).tint(accent) }
-                footer
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            if !(snapshot.items ?? []).isEmpty {
-                VStack { itemList(limit: 8); Spacer(minLength: 0) }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            } else if let image = decodedImage {
-                image.resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }.padding(20).foregroundStyle(foreground)
     }
 
     private var largeCard: some View {
@@ -549,23 +544,8 @@ struct HTMLAppWidgetView: View {
     }
 }
 
-@available(iOS 17.0, *)
-struct HTMLAppSelectableWidget: Widget {
-    let kind = HTMLAppWidgetKinds.selectable
-    var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: kind, intent: HTMLAppWidgetConfigurationIntent.self,
-                               provider: HTMLAppConfiguredWidgetProvider()) { entry in
-            HTMLAppWidgetView(entry: entry)
-        }
-        .configurationDisplayName("HTMLApp")
-        .description("Edit each widget to choose its HTMLApp and published widget. Add multiple widgets for different apps.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge,
-                            .accessoryInline, .accessoryCircular, .accessoryRectangular])
-    }
-}
-
 struct HTMLAppPrimaryWidget: Widget {
-    let kind = HTMLAppWidgetKinds.primary
+    let kind = "HTMLAppPrimaryWidget"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: HTMLAppPrimaryWidgetProvider()) { entry in
@@ -586,11 +566,10 @@ struct HTMLAppPrimaryWidget: Widget {
 struct HTMLAppWidgetsBundle: WidgetBundle {
     @WidgetBundleBuilder
     var body: some Widget {
-        HTMLAppCompatibleWidget()
-        if #available(iOS 17.0, *) { HTMLAppSelectableWidget() }
         HTMLAppPrimaryWidget()
         HTMLAppVoiceCreateWidget()
-        // Keep the legacy kind so existing installed widgets survive the upgrade.
+        // Removed broken picker-based widget variants. The primary widget
+        // always displays the latest snapshot and needs no manual app selection.
         if #available(iOS 16.2, *) {
             HTMLAppLiveActivityWidget()
             HTMLAppForgeActivityWidget()
@@ -813,4 +792,3 @@ struct HTMLAppWidgetElementView: View {
         }
     }
 }
-

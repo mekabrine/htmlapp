@@ -33,7 +33,7 @@ Probe/receipt files contain a nonce, time, family, status and digest; no content
 
 1. Export a backup before installation. Upgrade in place using the same identifiers; do not uninstall or delete app data.
 2. Publish Focus Streak for Small with goal 10 and streak 7. In Widgets & Background select it as Primary.
-3. Start Extension Read Test. Add **HTMLApp Primary**, Small, on iOS 16. On iOS 17+ add **HTMLApp** and choose Focus Streak in Widget.
+3. Start Extension Read Test. Add **HTMLApp Primary**, Small, on iOS 16. On iOS 17+ add **HTMLApp Widget** and select Focus Streak, or Selected Primary.
 4. Return to Widgets & Background and Read Diagnostic Result. Record main container availability, probe nonce, extension status/family, timestamp, and snapshot match. A pending receipt is not automatically an entitlement failure.
 5. Confirm the actual Home Screen displays goal 10 / streak 7. Change to streak 8; the generated app must call configure again. Confirm the next provider receipt and visible value.
 6. Publish Daywell, select it as Primary, and verify exactly one Primary. Confirm an explicit Focus Streak selection remains Focus Streak on modern OS versions.
@@ -64,4 +64,3 @@ If your team cannot register `group.com.mekabrine.htmlapp`, you cannot grant it 
 ## Validation boundaries
 
 CI compiles the app/extension for iOS 16+, runs hostless storage/resolver/timeline tests on available iOS 16/26 simulators, and warns when a requested runtime is absent. Independent repository objects test fresh disk reads, but these are not separate app/extension processes. Real cross-process execution and Home Screen rendering must be established by the probe procedure above. CI checks both final IPA archives and independently reads both TrollStore executable entitlements. It cannot validate the later Feather signatures, device provisioning, TrollStore container registration, or real device WidgetKit scheduling.
-
