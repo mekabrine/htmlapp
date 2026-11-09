@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.6"
-    static let compiledBuild = "111"
+    static let compiledVersion = "1.9.7"
+    static let compiledBuild = "112"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,13 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.9.7" {
+            return [
+                Entry(id: "storage-measurement", title: "See your actual storage use",
+                      description: "Storage now measures files more reliably and shows how much space the Whisper Offline model takes.",
+                      symbol: "internaldrive", tint: .blue)
+            ]
+        }
         if version == "1.9.6" {
             return [
                 Entry(id: "storage-breakdown", title: "See what takes up space",

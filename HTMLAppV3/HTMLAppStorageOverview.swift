@@ -11,15 +11,31 @@ struct HTMLAppStorageOverview: View {
         List {
             if let report {
                 Section {
-                    LabeledContent("Total measured", value: size(report.dataBytes + report.bundleBytes))
-                    LabeledContent("App data and files", value: size(report.dataBytes))
-                    LabeledContent("Installed app and extensions", value: size(report.bundleBytes))
+                    if report.measuredFileCount == 0 {
+                        Text("HTMLApp could not measure any files. Try refreshing with the device unlocked.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        LabeledContent("Total measured", value: size(report.dataBytes + report.bundleBytes))
+                        LabeledContent("App data and files", value: size(report.dataBytes))
+                        LabeledContent("Installed app and extensions", value: size(report.bundleBytes))
+                    }
                     if report.unreadableCount > 0 {
                         Text("Some files or folders could not be read. The totals may be incomplete.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 } footer: {
-                    Text("File sizes reflect storage HTMLApp can inspect. iOS may report a different total.")
+                    Text("Uses allocated file sizes where available and file lengths otherwise. iOS may report a different total.")
+                }
+
+                Section("Whisper Offline") {
+                    if let whisper = report.whisper {
+                        breakdown([whisper])
+                    } else {
+                        Text(report.unreadableCount > 0 || report.measuredFileCount == 0
+                             ? "Model size unavailable"
+                             : "No Whisper model files found")
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section {
@@ -95,7 +111,7 @@ struct HTMLAppStorageOverview: View {
     }
 
     private func size(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        bytes == 0 ? "0 bytes" : ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
 
@@ -117,9 +133,13 @@ struct HTMLAppStorageReport: Sendable {
 
     let apps: [App]
     let shared: [Node]
+    let whisper: Node?
     let bundle: [Node]
     let unreadableCount: Int
-    var dataBytes: Int64 { apps.reduce(0) { $0 + $1.bytes } + shared.reduce(0) { $0 + $1.bytes } }
+    let measuredFileCount: Int
+    var dataBytes: Int64 {
+        apps.reduce(0) { $0 + $1.bytes } + shared.reduce(0) { $0 + $1.bytes } + (whisper?.bytes ?? 0)
+    }
     var bundleBytes: Int64 { bundle.reduce(0) { $0 + $1.bytes } }
 
     /// An accumulator local to the scan. Each measured file belongs to one branch.
@@ -157,40 +177,61 @@ struct HTMLAppStorageReport: Sendable {
         })
         var libraryBytes: Int64 = 0
         var unreadable = 0
-        var scannedRoots: [String] = []
+        var measuredFiles = 0
+        var scannedRoots: [[String]] = []
 
         func scan(_ directory: URL, record: (Int64, [String]) -> Void) {
-            let root = directory.resolvingSymlinksInPath().standardizedFileURL
-            let rootPath = root.path
-            guard !scannedRoots.contains(where: { rootPath == $0 || rootPath.hasPrefix($0 + "/") }) else { return }
-            scannedRoots.append(rootPath)
+            let identity = directory.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+            guard !scannedRoots.contains(where: { identity.starts(with: $0) }) else { return }
+            scannedRoots.append(identity)
+
+            let manager = FileManager.default
             let keys: Set<URLResourceKey> = [
-                .isRegularFileKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey,
-                .fileAllocatedSizeKey, .fileSizeKey
+                .isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey,
+                .totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .fileSizeKey
             ]
-            guard let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: Array(keys),
-                options: [], errorHandler: { _, _ in
-                    unreadable += 1
-                    return true
-                }) else {
-                unreadable += 1
-                return
-            }
-            for case let file as URL in files {
+            // Build relative paths during traversal. Foundation can spell the same
+            // sandbox path differently in a directory URL and its child URLs.
+            var pending: [(url: URL, path: [String])] = [(directory, [])]
+            while let folder = pending.popLast() {
                 if Task.isCancelled { return }
+                let files: [URL]
                 do {
-                    let values = try file.resourceValues(forKeys: keys)
-                    if values.isSymbolicLink == true {
-                        files.skipDescendants()
-                        continue
-                    }
-                    guard values.isRegularFile == true else { continue }
-                    let bytes = Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0)
-                    guard file.path.hasPrefix(rootPath + "/") else { continue }
-                    let relative = file.path.dropFirst(rootPath.count + 1).split(separator: "/").map(String.init)
-                    record(max(0, bytes), relative)
+                    files = try manager.contentsOfDirectory(at: folder.url,
+                        includingPropertiesForKeys: Array(keys), options: [])
                 } catch {
                     unreadable += 1
+                    continue
+                }
+                for file in files {
+                    if Task.isCancelled { return }
+                    do {
+                        let values = try file.resourceValues(forKeys: keys)
+                        guard values.isSymbolicLink != true else { continue }
+                        let path = folder.path + [file.lastPathComponent]
+                        if values.isDirectory == true {
+                            pending.append((file, path))
+                        } else if values.isRegularFile == true {
+                            let allocated = max(values.totalFileAllocatedSize ?? 0, values.fileAllocatedSize ?? 0)
+                            let bytes: Int64
+                            if allocated > 0 {
+                                bytes = Int64(allocated)
+                            } else if let length = values.fileSize, length > 0 {
+                                bytes = Int64(length)
+                            } else {
+                                let attributes = try manager.attributesOfItem(atPath: file.path)
+                                guard let length = attributes[.size] as? NSNumber else {
+                                    unreadable += 1
+                                    continue
+                                }
+                                bytes = length.int64Value
+                            }
+                            measuredFiles += 1
+                            record(max(0, bytes), path)
+                        }
+                    } catch {
+                        unreadable += 1
+                    }
                 }
             }
         }
@@ -271,18 +312,27 @@ struct HTMLAppStorageReport: Sendable {
             let order = lhs.name.localizedStandardCompare(rhs.name)
             return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
         }
-        return Self(apps: rows, shared: shared.nodes(), bundle: installed.nodes(), unreadableCount: unreadable)
+        let sharedNodes = shared.nodes()
+        let whisper = sharedNodes.first { $0.name == whisperCategory }
+        return Self(apps: rows, shared: sharedNodes.filter { $0.id != whisper?.id },
+                    whisper: whisper, bundle: installed.nodes(),
+                    unreadableCount: unreadable, measuredFileCount: measuredFiles)
     }
 
     private static func jsonStem(_ filename: String) -> String? {
         filename.hasSuffix(".json") ? String(filename.dropLast(5)) : nil
     }
 
+    private static let whisperCategory = "Whisper model files"
+
     private static func sharedCategory(_ path: [String]) -> String {
         let names = path.map { $0.lowercased() }
-        if names.contains(where: { $0 == "huggingface" || $0.contains("whisperkit") || $0.hasPrefix("openai_whisper") }) {
-            return "Downloaded models"
+        // WhisperKit's Hub repository is argmaxinc/whisperkit-coreml.
+        // Older local downloads can also be named by their Whisper variant.
+        if names.contains(where: { $0.contains("whisperkit") || $0.hasPrefix("openai_whisper") }) {
+            return whisperCategory
         }
+        if names.contains("huggingface") { return "Other downloaded models" }
         if names.contains(where: { $0 == "webkit" || $0.hasPrefix("com.apple.webkit") }) {
             return "Shared WebKit data and caches"
         }
