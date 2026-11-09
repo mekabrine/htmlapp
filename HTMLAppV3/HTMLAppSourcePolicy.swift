@@ -4,13 +4,19 @@ import WebKit
 enum HTMLAppSourcePolicy {
     static var networkOnly: Bool { UserDefaults.standard.string(forKey: "htmlapp.sourcePolicy") == "networkOnly" }
     static var freshOnline: Bool { UserDefaults.standard.string(forKey: "htmlapp.sourcePolicy") != "standard" }
-    /// Clears only HTTP resource caches. Cookies, localStorage and saved app data survive.
-    @MainActor static func prepare(_ webView: WKWebView, then load: @escaping () -> Void) {
-        guard freshOnline, !HTMLAppOfflineCache.shared.isOffline || networkOnly else { load(); return }
-        webView.configuration.websiteDataStore.removeData(
+    /// Refresh HTTP caches once per process when warming WebKit in the Library.
+    /// Launch never waits on the shared store's asynchronous cache maintenance.
+    @MainActor private static var scheduledCacheRefresh = false
+
+    @MainActor static func refreshCacheDuringWarmup() {
+        guard !scheduledCacheRefresh, freshOnline,
+              !HTMLAppOfflineCache.shared.isOffline || networkOnly else { return }
+        scheduledCacheRefresh = true
+        WKWebsiteDataStore.default().removeData(
             ofTypes: [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache],
-            modifiedSince: .distantPast) { load() }
+            modifiedSince: .distantPast) {}
     }
+
     static var script: String {
         guard freshOnline else { return "" }
         return #"""

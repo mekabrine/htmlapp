@@ -491,13 +491,10 @@ struct HTMLWebView: UIViewRepresentable {
         webView.scrollView.minimumZoomScale = 1
         webView.scrollView.maximumZoomScale = 1
         webView.allowsBackForwardNavigationGestures = false
-        HTMLAppSourcePolicy.prepare(webView) {
-        guard context.coordinator.lastHTML == html else { return }
         if HTMLAppDocumentMode.usesPackageRuntime(html) {
             resources.load(initialDocument, into: webView)
         } else {
             webView.loadHTMLString(initialDocument, baseURL: SourceCache.shared.baseURL(appID: appID))
-        }
         }
         return webView
     }
@@ -627,10 +624,16 @@ struct HTMLWebView: UIViewRepresentable {
                     forName: Notification.Name("HTMLAppCaptureRuntimeState"),
                     object: nil,
                     queue: .main
-                ) { [weak webView] notification in
-                    guard let requested = notification.object as? String,
-                          requested == self.appID else { return }
-                    webView?.evaluateJavaScript("window.__htmlappCaptureStateNow?.();")
+                ) { [weak self, weak webView] notification in
+                    guard let self, let webView,
+                          notification.object as? String == self.appID else { return }
+                    guard let completion = notification.userInfo?["completion"] as? ([String: Any]?) -> Void else {
+                        webView.evaluateJavaScript("window.__htmlappCaptureStateNow?.();")
+                        return
+                    }
+                    webView.evaluateJavaScript("window.__htmlappCaptureStateNow?.(false) ?? null") { result, _ in
+                        completion(result as? [String: Any])
+                    }
                 }
             }
         }
@@ -1609,5 +1612,3 @@ private final class HTMLAppFaceDownShakeExit {
         darkness = nil
     }
 }
-
-

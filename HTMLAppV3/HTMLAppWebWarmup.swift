@@ -12,6 +12,7 @@ enum HTMLAppWebWarmup {
     static func prime() {
         guard !primed, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
         primed = true
+        HTMLAppSourcePolicy.refreshCacheDuringWarmup()
         let configuration = WKWebViewConfiguration()
         configuration.processPool = pool
         configuration.websiteDataStore = .default()

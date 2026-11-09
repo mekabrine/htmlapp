@@ -564,7 +564,7 @@ struct SettingsView: View {
                             Text("Network only").tag("networkOnly")
                             Text("Standard browser cache").tag("standard")
                         }
-                        Text("Fresh loading bypasses browser resource caches on launch. Bundled libraries and imported local files remain local. Network only disables saved remote-resource fallback. Reopen apps after changing this setting.")
+                        Text("Fresh loading requests current data for fetch calls. HTMLApp refreshes HTTP caches during Library warmup. Network only disables saved remote-resource fallback. Reopen apps after changing this setting.")
                             .font(.caption).foregroundStyle(.secondary)
                         Toggle("Developer Mode", isOn: $developerMode)
 

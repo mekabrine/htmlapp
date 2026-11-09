@@ -41,30 +41,11 @@ struct HTMLAppMain: App {
         WindowGroup {
             HTMLAppDisplayRoot()
                 .environmentObject(store)
-                .fullScreenCover(item: $store.runningApp) { app in
-                    WebRunner(app: app)
-                        .id(app.id)
-                        .environmentObject(store)
-                        .interactiveDismissDisabled(true)
-                        .onChange(of: store.pendingSwitchApp?.id) { id in
-                            if id != nil { HTMLAppFirstUseTips.show("switch") }
-                        }
-                        .alert("Switch HTML app?", isPresented: Binding(
-                            get: { store.pendingSwitchApp != nil },
-                            set: { if !$0 { store.pendingSwitchApp = nil } }
-                        )) {
-                            Button("Switch App") { store.confirmPendingSwitch() }
-                            Button("Keep Current App", role: .cancel) { store.pendingSwitchApp = nil }
-                        } message: {
-                            Text("Switch to the other app? Your current app will close only after you choose Switch App.")
-                        }
-                        .overlay(alignment: .top) {
-                            if store.pendingWebsiteUpdate?.id == app.id {
-                                WebsiteUpdateBanner(app: app)
-                                    .environmentObject(store)
-                                    .padding(.top, 12)
-                            }
-                        }
+                .fullScreenCover(isPresented: Binding(
+                    get: { store.runningApp != nil },
+                    set: { if !$0 { store.runningApp = nil } }
+                )) {
+                    HTMLAppRunningCover(store: store)
                 }
                 .fullScreenCover(isPresented: Binding(
                     get: { !onboardingComplete },
@@ -196,7 +177,7 @@ struct HTMLAppMain: App {
                     // A cold Lock Screen launch can race the What's New cover.
                     // Route once that cover is fully dismissed on older iOS.
                     if presentingWhatsNew && url.scheme?.lowercased() == "htmlapp" &&
-                        ["voice-create", "import"].contains(url.host?.lowercased() ?? "") {
+                        ["voice-create", "import", "open"].contains(url.host?.lowercased() ?? "") {
                         deferredExternalURL = url
                         presentingWhatsNew = false
                     } else {
@@ -248,7 +229,8 @@ struct HTMLAppMain: App {
         let info = Bundle.main.infoDictionary ?? [:]
         let version = info["CFBundleShortVersionString"] as? String ?? HTMLAppReleaseNotes.installedVersion
         let build = info["CFBundleVersion"] as? String ?? "0"
-        return "\(version)-\(build)"
+        let notes = HTMLAppReleaseNotes.entries(for: version).map(\.id).joined(separator: ",")
+        return "\(version)-\(build)-\(notes)"
     }
 
     private func checkVersionOnLaunch() {
@@ -260,7 +242,7 @@ struct HTMLAppMain: App {
         // A new build can contain new changes without a marketing version bump.
         // Present release notes on first install and on each distinct build.
         guard lastSeenBuild != fingerprint || lastOpenedVersion != installed else { return }
-        detectedPreviousVersion = lastOpenedVersion.isEmpty ? nil : lastOpenedVersion
+        detectedPreviousVersion = lastOpenedVersion.isEmpty || lastOpenedVersion == installed ? nil : lastOpenedVersion
         presentingWhatsNew = true
     }
 
@@ -297,6 +279,39 @@ struct WebsiteUpdateBanner: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(radius: 8)
         .padding(.horizontal, 16)
+    }
+}
+
+/// Keep the presentation alive while swapping the app-specific WebView.
+private struct HTMLAppRunningCover: View {
+    @ObservedObject var store: AppStore
+
+    var body: some View {
+        if let app = store.runningApp {
+            WebRunner(app: app)
+                .id(app.id)
+                .environmentObject(store)
+                .interactiveDismissDisabled(true)
+                .onChange(of: store.pendingSwitchApp?.id) { id in
+                    if id != nil { HTMLAppFirstUseTips.show("switch") }
+                }
+                .alert("Switch HTML app?", isPresented: Binding(
+                    get: { store.pendingSwitchApp != nil },
+                    set: { if !$0 { store.pendingSwitchApp = nil } }
+                )) {
+                    Button("Switch App") { store.confirmPendingSwitch() }
+                    Button("Keep Current App", role: .cancel) { store.pendingSwitchApp = nil }
+                } message: {
+                    Text("Switch to the other app? Your current app will close only after you choose Switch App.")
+                }
+                .overlay(alignment: .top) {
+                    if store.pendingWebsiteUpdate?.id == app.id {
+                        WebsiteUpdateBanner(app: app)
+                            .environmentObject(store)
+                            .padding(.top, 12)
+                    }
+                }
+        }
     }
 }
 
@@ -340,6 +355,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var folders: [LibraryFolder] = []
     @Published var runningApp: SavedHTMLApp?
     @Published var pendingSwitchApp: SavedHTMLApp?
+    private var switchRequest: UUID?
     @Published var pendingWebClipGuideApp: SavedHTMLApp?
     @Published var pendingWebClipProfileURL: URL?
     @Published var pendingWebsiteUpdate: SavedHTMLApp?
@@ -695,6 +711,7 @@ final class AppStore: ObservableObject {
     }
 
     func launch(_ app: SavedHTMLApp) {
+        switchRequest = nil
         guard var index = apps.firstIndex(where: { $0.id == app.id }) else { return }
 
         if apps[index].websiteSourceURL != nil,
@@ -710,21 +727,23 @@ final class AppStore: ObservableObject {
 
         apps[index].lastOpenedAt = Date()
         let launchedApp = apps[index]
-        if let template = HTMLAppBackendProvisioning.template(in: launchedApp.html) {
-            HTMLAppBackendProvisioning.enqueue(launchedApp, template: template)
-        }
-        if HTMLAppOfflineCache.shared.shouldRefreshOnOpen(appID: launchedApp.id),
-           !HTMLAppOfflineCache.shared.isOffline {
-            Task(priority: .utility) {
-                await HTMLAppOfflineCache.shared.refreshFromHTML(
-                    appID: launchedApp.id, html: launchedApp.html)
+        HTMLAppRuntimeStateStore.opened(appID: app.id)
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { runningApp = launchedApp }
+
+        // Start the presentation before promotion and background source work.
+        Task(priority: .utility) { [weak self] in
+            guard let self, self.runningApp?.id == launchedApp.id else { return }
+            if HTMLAppWidgetStore.activate(appID: launchedApp.id) { HTMLAppWidgetReloadCoordinator.request() }
+            if let template = HTMLAppBackendProvisioning.template(in: launchedApp.html) {
+                HTMLAppBackendProvisioning.enqueue(launchedApp, template: template)
+            }
+            if HTMLAppOfflineCache.shared.shouldRefreshOnOpen(appID: launchedApp.id),
+               !HTMLAppOfflineCache.shared.isOffline {
+                await HTMLAppOfflineCache.shared.refreshFromHTML(appID: launchedApp.id, html: launchedApp.html)
             }
         }
-        // Loading an app must not synchronously re-encode, validate and
-        // backup the entire library before its WebView can appear.
-        HTMLAppRuntimeStateStore.opened(appID: app.id)
-        if HTMLAppWidgetStore.activate(appID: app.id) { HTMLAppWidgetReloadCoordinator.request() }
-        runningApp = apps[index]
         deferredLaunchSave?.cancel()
         deferredLaunchSave = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: 700_000_000) }
@@ -1398,19 +1417,22 @@ final class AppStore: ObservableObject {
     }
 
     private func replaceRunningApp(with app: SavedHTMLApp) {
-        // Ask the current WebView to checkpoint its live state before its
-        // full-screen runner is replaced, then give the script message a brief
-        // main-run-loop window to reach the native state store.
-        if let current = runningApp {
-            NotificationCenter.default.post(
-                name: Notification.Name("HTMLAppCaptureRuntimeState"),
-                object: current.id)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-                self?.launch(app)
-            }
-            return
+        guard let current = runningApp else { launch(app); return }
+        let request = UUID()
+        switchRequest = request
+        let finish: ([String: Any]?) -> Void = { [weak self] snapshot in
+            guard let self, self.switchRequest == request,
+                  self.runningApp?.id == current.id else { return }
+            if let snapshot { HTMLAppRuntimeStateStore.save(appID: current.id, body: snapshot) }
+            self.launch(app)
         }
-        launch(app)
+        // A responsive WebView returns the final checkpoint immediately.
+        // Only a stalled or missing view uses the deadline.
+        NotificationCenter.default.post(
+            name: Notification.Name("HTMLAppCaptureRuntimeState"),
+            object: current.id,
+            userInfo: ["completion": finish])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { finish(nil) }
     }
 
     private func foldersForPortableExport(apps selectedApps: [SavedHTMLApp], links: [LibraryAppLink]) -> [LibraryFolder] {
@@ -1711,5 +1733,3 @@ final class AppStore: ObservableObject {
         }
     }
 }
-
-

@@ -34,7 +34,10 @@ enum HTMLAppReleaseNotes {
             return [
                 Entry(id: "storage-measurement", title: "See your actual storage use",
                       description: "Storage now measures files more reliably and shows how much space the Whisper Offline model takes.",
-                      symbol: "internaldrive", tint: .blue)
+                      symbol: "internaldrive", tint: .blue),
+                Entry(id: "faster-app-launch", title: "Open apps faster",
+                      description: "Saved apps start without waiting for cache cleanup. Links and Home Screen icons switch apps in the same window.",
+                      symbol: "bolt.fill", tint: .orange)
             ]
         }
         if version == "1.9.6" {

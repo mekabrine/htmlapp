@@ -272,7 +272,7 @@ enum HTMLAppRuntimeStateScript {
         return out;
       };
 
-      const capture = (force = false) => {
+      const capture = (force = false, publish = true) => {
         if (!window.__htmlappStateCaptureEnabled || (!force && !dirty)) return;
         try {
           const fields = [];
@@ -331,7 +331,7 @@ enum HTMLAppRuntimeStateScript {
 
           const html = document.documentElement?.outerHTML || '';
           if (new TextEncoder().encode(html).length > 3500000) return;
-          window.webkit.messageHandlers.htmlappState.postMessage({
+          const state = {
             html,
             scrollX: Number(scrollX || 0),
             scrollY: Number(scrollY || 0),
@@ -342,7 +342,9 @@ enum HTMLAppRuntimeStateScript {
             canvases,
             media,
             focusedSelector: selectorFor(document.activeElement)
-          });
+          };
+          if (!publish) return state;
+          window.webkit.messageHandlers.htmlappState.postMessage(state);
           dirty = false;
         } catch (_) {}
       };
@@ -352,7 +354,7 @@ enum HTMLAppRuntimeStateScript {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') capture(true);
       });
-      window.__htmlappCaptureStateNow = () => capture(true);
+      window.__htmlappCaptureStateNow = (publish = true) => capture(true, publish);
     })();
     """#
 }
@@ -715,4 +717,3 @@ enum HTMLAppOfflineDiscoveryScript {
     })();
     """#
 }
-
