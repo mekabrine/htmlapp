@@ -514,6 +514,14 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Storage") {
+                    NavigationLink {
+                        HTMLAppStorageOverview(apps: store.apps)
+                    } label: {
+                        Label("Storage", systemImage: "internaldrive")
+                    }
+                }
+
                 Section("Manage") {
                     NavigationLink {
                         GeneratedIntegrationsView().environmentObject(store)
@@ -668,4 +676,3 @@ struct SettingsView: View {
         }
     }
 }
-

@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.1"
-    static let compiledBuild = "106"
+    static let compiledVersion = "1.9.6"
+    static let compiledBuild = "111"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -30,6 +30,14 @@ enum HTMLAppReleaseNotes {
     }
 
     static func entries(for version: String) -> [Entry] {
+        if version == "1.9.6" {
+            return [
+                Entry(id: "storage-breakdown", title: "See what takes up space",
+                      description: "Open Storage in Settings to see downloads, caches, and saved apps. Tap an app for its breakdown.",
+                      symbol: "internaldrive", tint: .blue)
+            ]
+        }
+
         if version == "1.9.1" {
             return [
                 Entry(id: "game-qa", title: "Check canvas rendering and frame rate", description: "Opt-in canvas checks flag blank game scenes during Forge QA, and running apps can measure visible-device frame cadence.", symbol: "gamecontroller", tint: .purple)
@@ -668,5 +676,3 @@ struct HTMLAppWhatsNewView: View {
         .accessibilityElement(children: .combine)
     }
 }
-
-

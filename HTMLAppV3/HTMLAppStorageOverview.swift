@@ -1,0 +1,300 @@
+import Foundation
+import SwiftUI
+
+struct HTMLAppStorageOverview: View {
+    let apps: [SavedHTMLApp]
+    @State private var report: HTMLAppStorageReport?
+    @State private var scanRevision = 0
+    @State private var scanning = true
+
+    var body: some View {
+        List {
+            if let report {
+                Section {
+                    LabeledContent("Total measured", value: size(report.dataBytes + report.bundleBytes))
+                    LabeledContent("App data and files", value: size(report.dataBytes))
+                    LabeledContent("Installed app and extensions", value: size(report.bundleBytes))
+                    if report.unreadableCount > 0 {
+                        Text("Some files or folders could not be read. The totals may be incomplete.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("File sizes reflect storage HTMLApp can inspect. iOS may report a different total.")
+                }
+
+                Section {
+                    ForEach(report.apps) { app in
+                        DisclosureGroup {
+                            if app.categories.isEmpty { Text("No separate files found").foregroundStyle(.secondary) }
+                            breakdown(app.categories)
+                        } label: {
+                            sizeRow(app.name, app.bytes)
+                        }
+                    }
+                    if report.apps.isEmpty { Text("No saved apps") }
+                } header: {
+                    Text("Saved Apps")
+                } footer: {
+                    Text("Largest first. Library entry sizes are estimated from each app’s share of the library file. Shared WebKit data appears below.")
+                }
+
+                Section("Shared Data and Other Files") {
+                    breakdown(report.shared)
+                    if report.shared.isEmpty { Text("No shared files found") }
+                }
+
+                Section("Installed App Files") {
+                    breakdown(report.bundle)
+                }
+            }
+            if scanning {
+                ProgressView("Measuring storage…")
+            }
+        }
+        .navigationTitle("Storage")
+        .toolbar {
+            Button {
+                scanRevision += 1
+            } label: {
+                Label("Refresh Storage", systemImage: "arrow.clockwise")
+            }
+            .disabled(scanning)
+        }
+        .task(id: scanRevision) {
+            scanning = true
+            let snapshot = apps
+            let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            let bundle = Bundle.main.bundleURL
+            let group = HTMLAppSharedContainer.directory
+            let scan = Task.detached(priority: .utility) {
+                HTMLAppStorageReport.measure(apps: snapshot, home: home, bundle: bundle, group: group)
+            }
+            let result = await withTaskCancellationHandler {
+                await scan.value
+            } onCancel: {
+                scan.cancel()
+            }
+            guard !Task.isCancelled else { return }
+            report = result
+            scanning = false
+        }
+    }
+
+    private func breakdown(_ nodes: [HTMLAppStorageReport.Node]) -> some View {
+        OutlineGroup(nodes, children: \.branch) { node in
+            sizeRow(node.name, node.bytes)
+        }
+    }
+
+    private func sizeRow(_ title: String, _ bytes: Int64) -> some View {
+        LabeledContent {
+            Text(size(bytes)).monospacedDigit()
+        } label: {
+            Text(title).lineLimit(2)
+        }
+    }
+
+    private func size(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
+struct HTMLAppStorageReport: Sendable {
+    struct Node: Identifiable, Sendable {
+        let id: String
+        let name: String
+        let bytes: Int64
+        let children: [Node]
+        var branch: [Node]? { children.isEmpty ? nil : children }
+    }
+
+    struct App: Identifiable, Sendable {
+        let id: String
+        let name: String
+        let categories: [Node]
+        var bytes: Int64 { categories.reduce(0) { $0 + $1.bytes } }
+    }
+
+    let apps: [App]
+    let shared: [Node]
+    let bundle: [Node]
+    let unreadableCount: Int
+    var dataBytes: Int64 { apps.reduce(0) { $0 + $1.bytes } + shared.reduce(0) { $0 + $1.bytes } }
+    var bundleBytes: Int64 { bundle.reduce(0) { $0 + $1.bytes } }
+
+    /// An accumulator local to the scan. Each measured file belongs to one branch.
+    private final class Folder {
+        var bytes: Int64 = 0
+        var children: [String: Folder] = [:]
+
+        func add(_ bytes: Int64, path: ArraySlice<String>) {
+            self.bytes += bytes
+            guard let name = path.first else { return }
+            let folder = children[name] ?? Folder()
+            children[name] = folder
+            folder.add(bytes, path: path.dropFirst())
+        }
+
+        func nodes(prefix: String = "") -> [Node] {
+            children.map { name, folder in
+                let id = prefix + "/" + name
+                return Node(id: id, name: name, bytes: folder.bytes, children: folder.nodes(prefix: id))
+            }.sorted { lhs, rhs in
+                lhs.bytes == rhs.bytes ? lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending : lhs.bytes > rhs.bytes
+            }
+        }
+    }
+
+    static func measure(apps: [SavedHTMLApp], home: URL, bundle: URL, group: URL?) -> Self {
+        let shared = Folder()
+        let installed = Folder()
+        let appFolders = apps.reduce(into: [String: Folder]()) { $0[$1.id] = Folder() }
+        let safeIDs = Dictionary(grouping: apps.map(\.id), by: { id in
+            id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        })
+        let asciiIDs = Dictionary(grouping: apps.map(\.id), by: { id in
+            id.filter { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
+        })
+        var libraryBytes: Int64 = 0
+        var unreadable = 0
+        var scannedRoots: [String] = []
+
+        func scan(_ directory: URL, record: (Int64, [String]) -> Void) {
+            let root = directory.resolvingSymlinksInPath().standardizedFileURL
+            let rootPath = root.path
+            guard !scannedRoots.contains(where: { rootPath == $0 || rootPath.hasPrefix($0 + "/") }) else { return }
+            scannedRoots.append(rootPath)
+            let keys: Set<URLResourceKey> = [
+                .isRegularFileKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey,
+                .fileAllocatedSizeKey, .fileSizeKey
+            ]
+            guard let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: Array(keys),
+                options: [], errorHandler: { _, _ in
+                    unreadable += 1
+                    return true
+                }) else {
+                unreadable += 1
+                return
+            }
+            for case let file as URL in files {
+                if Task.isCancelled { return }
+                do {
+                    let values = try file.resourceValues(forKeys: keys)
+                    if values.isSymbolicLink == true {
+                        files.skipDescendants()
+                        continue
+                    }
+                    guard values.isRegularFile == true else { continue }
+                    let bytes = Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0)
+                    guard file.path.hasPrefix(rootPath + "/") else { continue }
+                    let relative = file.path.dropFirst(rootPath.count + 1).split(separator: "/").map(String.init)
+                    record(max(0, bytes), relative)
+                } catch {
+                    unreadable += 1
+                }
+            }
+        }
+
+        func savedAppLocation(_ path: [String]) -> (String, String)? {
+            guard path.starts(with: ["Library", "Application Support"]), path.count >= 4 else { return nil }
+            if path[2] == "ForgeAppManifests", path.count == 4,
+               let id = jsonStem(path[3]), appFolders[id] != nil {
+                return (id, "Forge app metadata")
+            }
+            guard path[2] == "HTMLApp", path.count >= 5 else { return nil }
+            let folder = path[3]
+            let filename = path[4]
+            switch folder {
+            case "SourceCache", "WebsitePending":
+                guard appFolders[filename] != nil else { return nil }
+                if folder == "WebsitePending" { return (filename, "Pending website updates") }
+                if path.count > 5, path[5] == "native-imports" { return (filename, "Imported files and media") }
+                if path.count > 5, path[5] == "native-outputs" { return (filename, "Generated files and media") }
+                return (filename, "Source cache and offline website files")
+            case "WebsiteSourceManifests":
+                guard let id = jsonStem(filename), appFolders[id] != nil else { return nil }
+                return (id, "Website source metadata")
+            case "PortableAppData":
+                if let stem = jsonStem(filename), let ids = safeIDs[stem], ids.count == 1 {
+                    return (ids[0], "Saved key/value data")
+                }
+                for suffix in [".sqlite", ".sqlite-wal", ".sqlite-shm", ".sqlite-journal"] where filename.hasSuffix(suffix) {
+                    let stem = String(filename.dropLast(suffix.count))
+                    if let ids = safeIDs[stem], ids.count == 1 { return (ids[0], "SQLite and vector data") }
+                }
+                return nil
+            case "RuntimeState", "SelectedStyles":
+                guard let stem = jsonStem(filename),
+                      let ids = (folder == "RuntimeState" ? asciiIDs : safeIDs)[stem], ids.count == 1 else { return nil }
+                return (ids[0], folder == "RuntimeState" ? "Saved browser state" : "Forge style references")
+            default:
+                return nil
+            }
+        }
+
+        scan(home) { bytes, path in
+            if path == ["Library", "Application Support", "HTMLApp", "library.json"] {
+                libraryBytes = bytes
+            } else if let (id, category) = savedAppLocation(path), let folder = appFolders[id] {
+                folder.add(bytes, path: ([category] + path)[...])
+            } else {
+                shared.add(bytes, path: ([sharedCategory(path)] + path)[...])
+            }
+        }
+        if let group {
+            scan(group) { bytes, path in
+                shared.add(bytes, path: (["Shared App Group"] + path)[...])
+            }
+        }
+        scan(bundle) { bytes, path in installed.add(bytes, path: path[...]) }
+
+        // The library is one JSON file. Allocate its measured size by encoded entry
+        // weight so the per-app estimates and shared remainder add up exactly.
+        let encoder = JSONEncoder()
+        let weights = apps.map { (try? encoder.encode($0).count) ?? 0 }
+        let totalWeight = weights.reduce(0, +)
+        var remaining = libraryBytes
+        if totalWeight > 0 {
+            for (app, weight) in zip(apps, weights) where weight > 0 {
+                let share = min(remaining, Int64(Double(libraryBytes) * Double(weight) / Double(totalWeight)))
+                remaining -= share
+                appFolders[app.id]?.add(share, path: ["Library entry (estimate)"][...])
+            }
+        }
+        if remaining > 0 {
+            shared.add(remaining, path: ["Library and backups", "library.json (unassigned)"][...])
+        }
+        let rows = apps.map { app in
+            App(id: app.id, name: app.name, categories: appFolders[app.id]?.nodes() ?? [])
+        }.sorted { lhs, rhs in
+            if lhs.bytes != rhs.bytes { return lhs.bytes > rhs.bytes }
+            let order = lhs.name.localizedStandardCompare(rhs.name)
+            return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
+        }
+        return Self(apps: rows, shared: shared.nodes(), bundle: installed.nodes(), unreadableCount: unreadable)
+    }
+
+    private static func jsonStem(_ filename: String) -> String? {
+        filename.hasSuffix(".json") ? String(filename.dropLast(5)) : nil
+    }
+
+    private static func sharedCategory(_ path: [String]) -> String {
+        let names = path.map { $0.lowercased() }
+        if names.contains(where: { $0 == "huggingface" || $0.contains("whisperkit") || $0.hasPrefix("openai_whisper") }) {
+            return "Downloaded models"
+        }
+        if names.contains(where: { $0 == "webkit" || $0.hasPrefix("com.apple.webkit") }) {
+            return "Shared WebKit data and caches"
+        }
+        if path.starts(with: ["Library", "Application Support", "HTMLApp"]) {
+            if path.last?.hasPrefix("library.") == true { return "Library and backups" }
+            if path.count > 3 { return path[3] == "WebsiteDownloads" ? "Website download staging" : "Other HTMLApp data" }
+        }
+        if path.first == "Documents" { return "Documents and downloads" }
+        if path.first == "tmp" { return "Temporary files and exports" }
+        if path.starts(with: ["Library", "Preferences"]) { return "Preferences" }
+        if path.starts(with: ["Library", "Caches"]) { return "Other caches" }
+        if path.starts(with: ["Library", "Application Support"]) { return "Other application support files" }
+        return "Other container files"
+    }
+}
