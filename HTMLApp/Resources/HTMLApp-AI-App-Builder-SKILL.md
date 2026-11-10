@@ -126,3 +126,29 @@ On supported installed builds, `HTMLAppNative.audio.record({maxDuration:60})` st
 ## Native camera photo capture
 
 On supporting devices, `HTMLAppNative.camera.capturePhoto({camera:'front'|'back',quality:0.85,maxDimension:2400})` opens a real camera UI only from the user's explicit action and returns a scoped `{url,name,mimeType,size,width,height}` file descriptor. `await fetch(photo.url)` is intercepted by the host's existing photo import bridge. Check permission, cancellation, and camera availability; never assume the camera can work in a preview or simulator.
+
+
+## Interactive 3D and settings controls
+
+For newly generated projects that need an interactive 3D object or settings
+controls, opt into the package runtime with
+`<meta name="htmlapp-runtime" content="package">`. Use bundled modules so the
+project works offline. Avoid changing the runtime origin of an existing project
+solely to restyle controls.
+
+```html
+<script type="module" src="/libraries/htmlapp/viewer.js"></script>
+<script type="module" src="/libraries/htmlapp/controls.js"></script>
+<link rel="stylesheet" href="/libraries/htmlapp/controls.css">
+<htmlapp-viewer shape="box" color="#f59e33" label="Orange cube"></htmlapp-viewer>
+<div class="ha-setting">
+  <span class="ha-setting-label">Sound effects</span>
+  <htmlapp-switch label="Sound effects" id="sound" checked></htmlapp-switch>
+</div>
+```
+
+The viewer supports drag, pinch, and visible rotation, zoom and reset buttons.
+For an existing local model, use `src` with its actual app-owned path. Use a
+self-contained uncompressed glTF 2.0 binary (.glb) up to 16 MB.
+Read or set the switch's `checked` and `disabled` properties and listen for
+`change`. Persist settings explicitly when requested.

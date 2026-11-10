@@ -17,6 +17,7 @@ struct HTMLAppMain: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        _ = HTMLAppGPUCache.maintenance
         if let diagnosis = HTMLAppProviderStorage.repairPreviouslyApprovedGroup() {
             NSLog("HTMLApp widget signing status: %@", diagnosis)
         }

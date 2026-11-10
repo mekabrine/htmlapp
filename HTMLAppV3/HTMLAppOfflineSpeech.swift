@@ -14,12 +14,22 @@ final class HTMLAppOfflineSpeech {
     func preloadIfSelected() {
         guard UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" else { return }
         guard whisper == nil, loadingTask == nil else { return }
-        loadingTask = Task { try await WhisperKit() }
+        preload()
+    }
+
+    private func preload() {
+        loadingTask = Task {
+            await HTMLAppGPUCache.maintenance.value
+            try Task.checkCancellation()
+            return try await WhisperKit()
+        }
     }
 
     private func preparedModel() async throws -> WhisperKit {
         if let whisper { return whisper }
-        if loadingTask == nil { loadingTask = Task { try await WhisperKit() } }
+        if loadingTask == nil {
+            preload()
+        }
         guard let task = loadingTask else { throw NSError(domain: "HTMLAppWhisper", code: 2) }
         do {
             let model = try await task.value

@@ -8,6 +8,8 @@
     "files": {
       "build/three.module.js": "c8211c69345d2e9949dc7a8ac969380497aa0600a5a8ac6a459c8cd02dd9cb8a",
       "build/three.core.js": "eb077d2417f61d3e6d9264c317cabc4ea35769ed6b0ab533067292a550784c20",
+      "examples/jsm/loaders/GLTFLoader.js": "798c46e86802c78454a7a7521a8d02f78e55bc7d61b6a922f224338173108361",
+      "examples/jsm/utils/BufferGeometryUtils.js": "710252d92feb6140f6d9acd4b3085dfa088f80618f46d3ac005b449225a11279",
       "LICENSE": "bfe119ea4fd413f5f7ca3fcd63adb0c4a073ed39daa2fe7d3e6b769e21272601"
     }
   },

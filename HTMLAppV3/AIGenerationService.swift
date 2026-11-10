@@ -1351,6 +1351,8 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
                 issue.hasPrefix("Runtime: unmarked horizontal scroller") ||
                 issue.hasPrefix("Runtime: page zoom allowed") ||
                 issue.hasPrefix("Runtime tapability:") ||
+                issue.hasPrefix("Switch layout:") ||
+                issue.hasPrefix("3D viewer QA:") ||
                 issue.hasPrefix("uncaught error:") ||
                 issue.hasPrefix("Runtime: document became blank") || issue.hasPrefix("Native navigation:")
             }

@@ -12,7 +12,8 @@ actor HTMLAppCoreMLService {
               FileManager.default.fileExists(atPath: url.path) else { throw Failure.invalid }
         return url
     }
-    func load(path: String) throws -> [String: Any] {
+    func load(path: String) async throws -> [String: Any] {
+        await HTMLAppGPUCache.maintenance.value
         try Task.checkCancellation()
         guard models.count < 2 else { throw Failure.limit }
         let source = try local(path)

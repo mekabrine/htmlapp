@@ -54,6 +54,24 @@ struct HTMLAppStorageOverview: View {
                     Text("Largest first. Library entry sizes are estimated from each app’s share of the library file. Shared WebKit data appears below.")
                 }
 
+                Section {
+                    LabeledContent("Measured size", value: size(report.gpu?.bytes ?? 0))
+                    LabeledContent("Cache folders", value: report.gpuFolderCount.formatted())
+                    if let last = UserDefaults.standard.dictionary(forKey: HTMLAppGPUCache.resultKey),
+                       let date = last["date"] as? Date {
+                        LabeledContent("Last cleanup", value: date.formatted(date: .abbreviated, time: .shortened))
+                        LabeledContent("Space reclaimed", value: size((last["bytes"] as? NSNumber)?.int64Value ?? 0))
+                        if let failed = last["failed"] as? Int, failed > 0 {
+                            Text("\(failed) folders could not be removed.").foregroundStyle(.secondary)
+                        }
+                    }
+                    if let gpu = report.gpu { breakdown(gpu.children) }
+                } header: {
+                    Text("GPU Temporary Files")
+                } footer: {
+                    Text("At startup, HTMLApp removes the oldest 10 eligible folders when there are at least 20. Files still in use or with an unfamiliar layout are left alone.")
+                }
+
                 Section("Shared Data and Other Files") {
                     breakdown(report.shared)
                     if report.shared.isEmpty { Text("No shared files found") }
@@ -78,6 +96,8 @@ struct HTMLAppStorageOverview: View {
         }
         .task(id: scanRevision) {
             scanning = true
+            await HTMLAppGPUCache.maintenance.value
+            guard !Task.isCancelled else { return }
             let snapshot = apps
             let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
             let bundle = Bundle.main.bundleURL
@@ -134,11 +154,13 @@ struct HTMLAppStorageReport: Sendable {
     let apps: [App]
     let shared: [Node]
     let whisper: Node?
+    let gpu: Node?
+    let gpuFolderCount: Int
     let bundle: [Node]
     let unreadableCount: Int
     let measuredFileCount: Int
     var dataBytes: Int64 {
-        apps.reduce(0) { $0 + $1.bytes } + shared.reduce(0) { $0 + $1.bytes } + (whisper?.bytes ?? 0)
+        apps.reduce(0) { $0 + $1.bytes } + shared.reduce(0) { $0 + $1.bytes } + (whisper?.bytes ?? 0) + (gpu?.bytes ?? 0)
     }
     var bundleBytes: Int64 { bundle.reduce(0) { $0 + $1.bytes } }
 
@@ -168,6 +190,7 @@ struct HTMLAppStorageReport: Sendable {
     static func measure(apps: [SavedHTMLApp], home: URL, bundle: URL, group: URL?) -> Self {
         let shared = Folder()
         let installed = Folder()
+        let gpuFiles = Folder()
         let appFolders = apps.reduce(into: [String: Folder]()) { $0[$1.id] = Folder() }
         let safeIDs = Dictionary(grouping: apps.map(\.id), by: { id in
             id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
@@ -274,7 +297,9 @@ struct HTMLAppStorageReport: Sendable {
         }
 
         scan(home) { bytes, path in
-            if path == ["Library", "Application Support", "HTMLApp", "library.json"] {
+            if path.starts(with: ["tmp", HTMLAppGPUCache.directoryName]) {
+                gpuFiles.add(bytes, path: path.dropFirst(2))
+            } else if path == ["Library", "Application Support", "HTMLApp", "library.json"] {
                 libraryBytes = bytes
             } else if let (id, category) = savedAppLocation(path), let folder = appFolders[id] {
                 folder.add(bytes, path: ([category] + path)[...])
@@ -315,7 +340,11 @@ struct HTMLAppStorageReport: Sendable {
         let sharedNodes = shared.nodes()
         let whisper = sharedNodes.first { $0.name == whisperCategory }
         return Self(apps: rows, shared: sharedNodes.filter { $0.id != whisper?.id },
-                    whisper: whisper, bundle: installed.nodes(),
+                    whisper: whisper,
+                    gpu: Node(id: "/gpu", name: "GPU temporary files", bytes: gpuFiles.bytes,
+                              children: gpuFiles.nodes(prefix: "/gpu")),
+                    gpuFolderCount: gpuFiles.children.keys.filter { $0.hasPrefix("mpsgraph-") }.count,
+                    bundle: installed.nodes(),
                     unreadableCount: unreadable, measuredFileCount: measuredFiles)
     }
 

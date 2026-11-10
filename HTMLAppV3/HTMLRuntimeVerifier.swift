@@ -365,6 +365,11 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             }
         }
 
+        _ = await snapshot(webView, width: 390, height: 844)
+        if let interactive = (try? await evaluate(Self.interactiveProbe, in: webView)) as? [String] {
+            interactive.forEach(appendIssue)
+        }
+
         // Keep this bounded: only safe navigation, not broad destructive UI tests.
         // The dedicated debugging screen can perform more exhaustive checking.
         // Exercise non-destructive navigation in a disposable, nonpersistent runtime.
@@ -469,6 +474,109 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
     })()
     """#
 
+    private static let switchGeometryProbe = #"""
+    (() => {
+      const issues = [];
+      const visible = el => el && el.getClientRects().length && getComputedStyle(el).visibility === 'visible';
+      for (const host of [...document.querySelectorAll('htmlapp-switch, [data-htmlapp-switch]')].slice(0, 20)) {
+        if (!visible(host)) continue;
+        const name = host.id || host.getAttribute('label') || host.getAttribute('aria-label') || 'switch';
+        const report = text => issues.push('Switch layout: ' + name + ' ' + text);
+        const bundled = host.localName === 'htmlapp-switch';
+        const root = bundled ? host.shadowRoot : host;
+        const track = root?.querySelector(bundled ? '.track' : '[data-htmlapp-switch-track]');
+        const thumb = root?.querySelector(bundled ? '.thumb' : '[data-htmlapp-switch-thumb]');
+        const input = bundled ? root?.querySelector('input') : null;
+        if (!track || !thumb) { report('is missing its track or thumb.'); continue; }
+        function measure(on) {
+          const t = track.getBoundingClientRect(), k = thumb.getBoundingClientRect();
+          const top = k.top - t.top, bottom = t.bottom - k.bottom;
+          const left = k.left - t.left, right = t.right - k.right;
+          const suffix = on === null ? '.' : ' when ' + (on ? 'on.' : 'off.');
+          if (t.height < 12 || t.height > 36 || t.width < t.height + 8) {
+            report('has a ' + Math.round(t.height) + 'px track. Use a fixed, compact track' + suffix);
+          }
+          if (Math.abs(top - bottom) > 1.5 || Math.min(top, bottom, left, right) < -.5) {
+            report('thumb is clipped or vertically off-center (top ' + Math.round(top) + 'px, bottom ' + Math.round(bottom) + 'px)' + suffix);
+          }
+          if (on !== null) {
+            const inset = Math.min(left, right);
+            if ((on ? right > left : left > right) || Math.abs(inset - top) > 2) {
+              report('thumb is at the wrong endpoint or has uneven edge spacing' + suffix);
+            }
+          }
+        }
+        if (input) {
+          const saved = input.checked;
+          try {
+            input.checked = false; measure(false);
+            input.checked = true; measure(true);
+          } finally { input.checked = saved; }
+        } else {
+          const value = host.getAttribute('aria-checked');
+          measure(value === null ? null : (value === 'true') !== (getComputedStyle(track).direction === 'rtl'));
+        }
+      }
+      return issues;
+    })()
+    """#
+
+    private static let interactiveProbe = #"""
+    (() => {
+      const issues = [];
+      for (const host of [...document.querySelectorAll('htmlapp-switch')].slice(0, 8)) {
+        const copy = host.cloneNode(false);
+        copy.removeAttribute('id');
+        copy.hidden = true;
+        document.body.append(copy);
+        let changes = 0;
+        copy.addEventListener('click', event => event.stopPropagation());
+        copy.addEventListener('change', event => { event.stopPropagation(); changes++; });
+        try {
+          const input = copy.shadowRoot?.querySelector('input');
+          if (!input) continue;
+          copy.checked = false;
+          copy.disabled = false;
+          input.click();
+          copy.disabled = true;
+          input.click();
+          if (!copy.checked || changes !== 1) issues.push('Switch layout: bundled switch failed toggle or disabled-state QA.');
+        } finally { copy.remove(); }
+      }
+      for (const viewer of [...document.querySelectorAll('htmlapp-viewer')].slice(0, 4)) {
+        if (!viewer.getClientRects().length || getComputedStyle(viewer).visibility !== 'visible') continue;
+        // App-owned assets might not be present in the disposable PREVIEW root.
+        if (viewer.hasAttribute('src') && viewer.dataset.htmlappViewer !== 'ready') {
+          issues.push('3D asset QA: check the local model in the installed app.');
+          continue;
+        }
+        if (viewer.dataset.htmlappViewer !== 'ready' || !viewer.htmlappInspect) {
+          issues.push('3D viewer QA: viewer failed to initialize. Check its module import, shape and fallback.');
+          continue;
+        }
+        const root = viewer.shadowRoot, canvas = root.querySelector('canvas');
+        const bounds = canvas.getBoundingClientRect();
+        const initial = viewer.htmlappInspect();
+        if (!initial.rendered || initial.triangles < 1 || initial.contextLost || !initial.width || !initial.height ||
+            Math.abs(initial.aspect - bounds.width / Math.max(1, bounds.height)) > .05) {
+          issues.push('3D viewer QA: renderer did not draw or match the visible viewport.');
+        }
+        const send = (type, clientX) => canvas.dispatchEvent(new PointerEvent(type, {
+          pointerId: 200, pointerType: 'touch', button: 0, clientX, clientY: 50
+        }));
+        root.querySelector('nav button:last-child').click();
+        const resetPose = viewer.htmlappInspect().pose.join(',');
+        send('pointerdown', 30); send('pointermove', 90); send('pointerup', 90);
+        const changed = viewer.htmlappInspect().pose.join(',') !== resetPose;
+        root.querySelector('nav button:last-child').click();
+        if (!changed || viewer.htmlappInspect().pose.join(',') !== resetPose) {
+          issues.push('3D viewer QA: drag or Reset view did not change the camera or object as expected.');
+        }
+      }
+      return issues;
+    })()
+    """#
+
     private struct Snapshot {
         let domNonEmpty: Bool
         let horizontalOverflow: Bool
@@ -482,6 +590,9 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
         webView.setNeedsLayout()
         webView.layoutIfNeeded()
         try? await Task.sleep(nanoseconds: 25_000_000)
+        if let controls = (try? await evaluate(Self.switchGeometryProbe, in: webView)) as? [String] {
+            controls.forEach(appendIssue)
+        }
 
         let snapshotValue = try? await evaluate(
             """

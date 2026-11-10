@@ -1,0 +1,30 @@
+/* Opt-in classes so applications can keep their own layout and theme. */
+.ha-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .75rem;
+  min-height: 44px;
+  padding: .5rem .75rem;
+}
+.ha-setting-label { min-width: 0; overflow-wrap: anywhere; }
+.ha-button, .ha-input, .ha-slider {
+  box-sizing: border-box;
+  font: inherit;
+  min-height: 44px;
+  max-width: 100%;
+}
+.ha-button, .ha-input {
+  padding: .5rem .75rem;
+  border: 1px solid var(--ha-border, #85878b);
+  border-radius: .6rem;
+  background: var(--ha-surface, Canvas);
+  color: var(--ha-foreground, CanvasText);
+}
+.ha-button { cursor: pointer; }
+.ha-slider { accent-color: var(--ha-accent, #1968cd); }
+.ha-button:disabled, .ha-input:disabled, .ha-slider:disabled { opacity: .55; cursor: default; }
+.ha-button:focus-visible, .ha-input:focus-visible, .ha-slider:focus-visible {
+  outline: 2px solid var(--ha-accent, #1968cd);
+  outline-offset: 2px;
+}
