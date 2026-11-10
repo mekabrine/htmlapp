@@ -14,6 +14,12 @@ actor HTMLAppCoreMLService {
     }
     func load(path: String) async throws -> [String: Any] {
         await HTMLAppGPUCache.maintenance.value
+        return try loadAfterMaintenance(path: path)
+    }
+
+    // Keep compilation and model registration in one actor turn so parallel
+    // loads cannot both claim the last available model slot.
+    private func loadAfterMaintenance(path: String) throws -> [String: Any] {
         try Task.checkCancellation()
         guard models.count < 2 else { throw Failure.limit }
         let source = try local(path)
