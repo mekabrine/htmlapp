@@ -122,7 +122,7 @@ jobs:
             https://discord.com/api/webhooks/*|https://discordapp.com/api/webhooks/*) ;;
             *) echo 'Invalid Discord webhook URL'; exit 1 ;;
           esac
-          MESSAGE="HTMLApp build started: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          MESSAGE="🔵 HTMLApp build started: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           curl --silent --show-error --fail --connect-timeout 10 --max-time 25 --output /dev/null \
             -H 'Content-Type: application/json' \
             --data-binary "$(jq -nc --arg content "$MESSAGE" '{content:$content,username:"HTMLApp Build Bot",allowed_mentions:{parse:[]}}')" \
@@ -313,7 +313,7 @@ jobs:
             *) echo "::warning::Discord webhook URL is invalid."; exit 0 ;;
           esac
           LINK="https://github.com/$GH_REPO/actions/runs/$GH_RUN_ID/attempts/$GH_RUN_ATTEMPT"
-          MESSAGE="HTMLApp IPA build failed. Inspect the failed step and logs: $LINK"
+          MESSAGE="🔴 HTMLApp IPA build failed. Inspect the failed step and logs: $LINK"
           PAYLOAD="$(jq -nc --arg content "$MESSAGE" '{content:$content,username:"HTMLApp Build Bot",allowed_mentions:{parse:[]}}')"
           curl --fail --silent --show-error --retry 2 --connect-timeout 10 --max-time 25 \
             -H 'Content-Type: application/json' \
