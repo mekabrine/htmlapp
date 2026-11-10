@@ -182,6 +182,14 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
                 replyToMockRequest(id: id, ok: false,
                                    value: ["code": "qa_permission_denied", "message": "Native permissions are unavailable in offline QA."])
                 return
+            case "ui.controls":
+                guard HTMLAppNativeControl.parse(args["fields"]) != nil else {
+                    replyToMockRequest(id: id, ok: false,
+                                       value: ["code": "invalid_arguments", "message": "Native controls require valid field definitions."])
+                    return
+                }
+                ok = true
+                value = ["cancelled": true]
             case "ui.alert", "ui.menu", "ui.datePicker":
                 ok = true
                 value = ["cancelled": true]

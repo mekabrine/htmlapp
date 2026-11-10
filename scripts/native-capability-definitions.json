@@ -1688,6 +1688,21 @@
       "result": "unknown"
     },
     {
+      "method": "ui.controls",
+      "permission": null,
+      "minimumIOS": "16.0",
+      "userInitiated": true,
+      "nativeCancellation": true,
+      "arguments": {
+        "title": "string",
+        "fields": "array"
+      },
+      "required": [
+        "fields"
+      ],
+      "result": "unknown"
+    },
+    {
       "method": "ui.datePicker",
       "permission": null,
       "minimumIOS": "16.0",

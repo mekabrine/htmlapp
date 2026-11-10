@@ -166,6 +166,7 @@
     "tabs.update",
     "ui.alert",
     "ui.colorPicker",
+    "ui.controls",
     "ui.datePicker",
     "ui.glassHide",
     "ui.glassShow",
@@ -2026,6 +2027,20 @@
         "alpha": "boolean"
       },
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "ui.controls": {
+      "minimumIOS": "16.0",
+      "permission": null,
+      "userInitiationRecommended": true,
+      "nativeCancellation": true,
+      "arguments": {
+        "title": "string",
+        "fields": "array"
+      },
+      "requiredArguments": [
+        "fields"
+      ],
       "resultType": "unknown"
     },
     "ui.datePicker": {

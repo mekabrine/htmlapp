@@ -40,6 +40,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private var documentScanner: HTMLAppDocumentScanner?
     private var drawingPresenter: HTMLAppDrawingPresenter?
     private var nativeMusic: HTMLAppNativeMusic?
+    private var nativeControls: HTMLAppNativeControlsSession?
     private var coreMLService: HTMLAppCoreMLService?
     private var modelTasks: [String: Task<Void, Never>] = [:]
     private var cameraFrames: HTMLAppCameraFrames?
@@ -134,6 +135,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         if let observer = motionBackgroundObserver { NotificationCenter.default.removeObserver(observer) }
         motionBackgroundObserver = nil
         clearLiquidGlass()
+        nativeControls?.finish(animated: false)
         HTMLAppNativeListService.dismiss(appID: appID)
         clearNativeTabs()
         speechRecognition.stop()
@@ -1234,6 +1236,25 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         case "ui.glassHide":
             clearLiquidGlass()
             resolve(id, value: ["visible": false])
+        case "ui.controls":
+            guard let fields = HTMLAppNativeControl.parse(args["fields"]) else {
+                reject(id, code: "invalid_arguments", message: "Provide 1 to 16 valid native controls with distinct IDs.")
+                return
+            }
+            guard nativeControls == nil, let window = webView?.window,
+                  window.windowScene?.activationState == .foregroundActive,
+                  let presenter = HTMLAppNativeUIService.presenter(for: appID),
+                  presenter.viewIfLoaded?.window === window else {
+                reject(id, code: "ui_unavailable", message: "Open native controls from a tap in the active saved app.")
+                return
+            }
+            let session = HTMLAppNativeControlsSession(requestID: id) { [weak self] result in
+                self?.nativeControls = nil
+                self?.resolve(id, value: result)
+            }
+            nativeControls = session
+            let title = String((args["title"] as? String ?? "Settings").prefix(100))
+            session.present(from: presenter, title: title.isEmpty ? "Settings" : title, fields: fields)
         case "ui.alert", "ui.menu":
             let shown = HTMLAppNativeUIService.alert(args: args, appID: appID,
                                                      menu: method == "ui.menu") { [weak self] selection in
@@ -1283,6 +1304,11 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             guard let target = args["targetID"] as? String, !target.isEmpty,
                   target != id else {
                 reject(id, code: "invalid_arguments", message: "Provide a valid target request ID.")
+                return
+            }
+            if let nativeControls, nativeControls.requestID == target {
+                nativeControls.finish()
+                resolve(id, value: ["cancelled": true])
                 return
             }
             let task = aiTasks.removeValue(forKey: target) ?? networkTasks.removeValue(forKey: target)
@@ -3720,11 +3746,16 @@ enum HTMLNativeAPIScript {
         if (typeof options.onDispatch === 'function') options.onDispatch(id);
         // Pickers and system authorization sheets may stay open longer than
         // simple data calls. Every pending request still has a finite deadline.
-        const interactive = /^(files\.pick|photos\.(?:pick|read)|contacts\.pick|calendar\.|nfc\.readNDEF|health\.today|biometrics\.|share\.|speech\.listen|speech\.recognize|audio\.record|video\.capture|ui\.(?:alert|menu|datePicker|colorPicker|list))/.test(method);
+        const interactive = /^(files\.pick|photos\.(?:pick|read)|contacts\.pick|calendar\.|nfc\.readNDEF|health\.today|biometrics\.|share\.|speech\.listen|speech\.recognize|audio\.record|video\.capture|ui\.(?:alert|menu|datePicker|colorPicker|list|controls))/.test(method);
         const deadline = interactive ? 180000 : (method.startsWith('ai.') ? 120000 : 30000);
+        const cancelNative = () => {
+          try { handler.postMessage({ id: 'cancel-' + id, method: 'bridge.cancel', args: { targetID: id } }); } catch (_) {}
+        };
         const timer = setTimeout(() => {
           if (!pending.has(id)) return;
           pending.delete(id);
+          options.signal?.removeEventListener('abort', onAbort);
+          if (method === 'ui.controls') cancelNative();
           const error = new Error('Native request timed out: ' + method);
           error.code = 'native_timeout';
           reject(error);
@@ -3735,10 +3766,10 @@ enum HTMLNativeAPIScript {
           pending.delete(id);
           clearTimeout(timer);
           options.signal?.removeEventListener('abort', onAbort);
-          try { handler.postMessage({ id: 'cancel-' + id, method: 'bridge.cancel', args: { targetID: id } }); } catch (_) {}
+          cancelNative();
           reject(Object.assign(new Error('Native request cancelled.'), { code: 'cancelled' }));
         };
-        pending.set(id, { resolve, reject, method, timer, onAbort, signal: options.signal });
+        pending.set(id, { resolve, reject, method, timer, onAbort, cancelNative, signal: options.signal });
         options.signal?.addEventListener('abort', onAbort, { once: true });
         try {
           handler.postMessage({ id, method, args, protocolVersion: 2 });
@@ -4030,6 +4061,12 @@ enum HTMLNativeAPIScript {
           openSettings: () => call('permissions.openSettings')
         },
         ui: {
+          controls: (options = {}, request = {}) => {
+            if (globalThis.navigator?.userActivation?.isActive === false) {
+              return Promise.reject(Object.assign(new Error('Open native controls from a user tap.'), {code: 'gesture_required'}));
+            }
+            return call('ui.controls', options, request);
+          },
           alert: (options = {}) => call('ui.alert', options),
           menu: (options = {}) => call('ui.menu', options),
           datePicker: (options = {}) => call('ui.datePicker', options),
@@ -4416,6 +4453,7 @@ enum HTMLNativeAPIScript {
         for (const [id, item] of pending) {
           clearTimeout(item.timer);
           item.signal?.removeEventListener('abort', item.onAbort);
+          if (item.method === 'ui.controls') item.cancelNative();
           item.reject(Object.assign(new Error('WebView navigated away.'), { code: 'cancelled' }));
           pending.delete(id);
         }

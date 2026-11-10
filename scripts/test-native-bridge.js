@@ -17,11 +17,17 @@ const viewportScript = editor.split('enum HTMLAppResponsiveViewport {')[1]
 async function testNativeRPC() {
   const sent = [];
   const listeners = new Map();
+  const navigator = { userActivation: { isActive: true } };
   const window = {
     addEventListener(name, cb) { listeners.set(name, cb); },
     webkit: { messageHandlers: { htmlappNative: {
       postMessage(message) {
         sent.push(message);
+        if (message.method === 'ui.controls' && message.args.title === 'Pending') return;
+        if (message.method === 'ui.controls') {
+          queueMicrotask(() => window.__htmlappNativeResolve(message.id, true, {cancelled: false, values: {sound: true}}));
+          return;
+        }
         if (message.method === 'network.request') return; // deliberately pending
         queueMicrotask(() => {
           window.__htmlappNativeResolve(message.id, true,
@@ -51,7 +57,7 @@ async function testNativeRPC() {
     addEventListener: (name, handler) => listeners.set(name, handler)
   };
   vm.runInNewContext(nativeScript, {
-    window, document, setTimeout, clearTimeout, queueMicrotask, console,
+    window, document, navigator, setTimeout, clearTimeout, queueMicrotask, console,
     AbortController, DOMException, Response, Blob, atob
   }, { filename: 'HTMLNativeAPIScript.js' });
   const api = window.HTMLAppNative;
@@ -87,6 +93,22 @@ async function testNativeRPC() {
   assert.ok(sent.some(msg => msg.method === 'ui.list' && msg.args.items[0].id === 'a'));
   assert.ok(sent.some(msg => msg.method === 'ui.listUpdate'));
   assert.ok(sent.some(msg => msg.method === 'ui.listDismiss'));
+
+  const fields = [{type: 'toggle', id: 'sound', title: 'Sound effects', value: false}];
+  assert.equal((await api.ui.controls({fields})).values.sound, true);
+  assert.ok(sent.some(msg => msg.method === 'ui.controls' && msg.args.fields[0].value === false));
+  navigator.userActivation.isActive = false;
+  const sentBefore = sent.length;
+  await assert.rejects(api.ui.controls({fields}), err => err.code === 'gesture_required');
+  assert.equal(sent.length, sentBefore);
+  navigator.userActivation.isActive = true;
+  const formAbort = new AbortController();
+  const form = api.ui.controls({title: 'Pending', fields}, {signal: formAbort.signal});
+  const formRequest = sent.at(-1);
+  formAbort.abort();
+  await assert.rejects(form, err => err.code === 'cancelled');
+  assert.equal(sent.at(-1).method, 'bridge.cancel');
+  assert.equal(sent.at(-1).args.targetID, formRequest.id);
 
   const controller = new AbortController();
   const request = api.network.request({ url: 'https://example.org/data', signal: controller.signal });

@@ -152,3 +152,14 @@ For an existing local model, use `src` with its actual app-owned path. Use a
 self-contained uncompressed glTF 2.0 binary (.glb) up to 16 MB.
 Read or set the switch's `checked` and `disabled` properties and listen for
 `change`. Persist settings explicitly when requested.
+
+
+For grouped settings, a visible button can open real iOS controls using
+`HTMLAppNative.ui.controls({title, fields})`. Supported field types are
+`toggle` (boolean value), `slider` (numeric value, min/max, optional step),
+`choice` (option ID value and options with id/title), and `text` (string value).
+Give each field a unique id and title, and keep the form to at most 16 fields.
+Apply returns `{cancelled:false, values}` keyed by field ID. Persist those values
+in the project and leave them untouched when cancelled. Use the inline web
+controls when the native bridge is unavailable or the workflow needs inline
+editing. The system renders Liquid Glass styling on iOS 26 and later.

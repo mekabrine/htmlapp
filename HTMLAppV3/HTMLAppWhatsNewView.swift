@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.8"
-    static let compiledBuild = "113"
+    static let compiledVersion = "1.9.9"
+    static let compiledBuild = "114"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,15 +32,9 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "interactive-3d", title: "Explore 3D objects",
-                  description: "Forge can add offline 3D views to projects. Drag to rotate, pinch to zoom, or open a local 3D model.",
-                  symbol: "cube", tint: .purple),
-            Entry(id: "aligned-controls", title: "Switches that fit",
-                  description: "Forge can reuse centered switches and settings rows. Layout checks catch clipping and misalignment across screen sizes.",
-                  symbol: "switch.2", tint: .blue),
-            Entry(id: "gpu-cleanup", title: "Automatic GPU file cleanup",
-                  description: "At startup, HTMLApp removes the oldest 10 eligible GPU cache folders once 20 collect. See the results in Settings → Storage.",
-                  symbol: "internaldrive", tint: .green)
+            Entry(id: "native-settings-controls", title: "Real iOS controls in Forge apps",
+                  description: "Forge can open native settings sheets with switches, sliders, pickers, and text fields. On iOS 26 and later, they use Liquid Glass.",
+                  symbol: "slider.horizontal.3", tint: .blue)
         ]
     }
 }
