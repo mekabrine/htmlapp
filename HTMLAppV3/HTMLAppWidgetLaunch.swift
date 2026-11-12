@@ -7,6 +7,12 @@ enum HTMLAppWidgetLaunchStore {
     static let changed = Notification.Name("HTMLApp.WidgetLaunchContext")
     private static var pending: [String: [String: String]] = [:]
 
+    static func receive(control: HTMLAppSystemControlOpen) {
+        pending[control.appID] = ["source": "controlCenter", "actionId": control.controlID,
+                                  "type": "route", "route": control.route ?? ""]
+        NotificationCenter.default.post(name: changed, object: control.appID)
+    }
+
     static func receive(url: URL, appID: String) {
         guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let items = parts.queryItems,

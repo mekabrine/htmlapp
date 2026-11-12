@@ -23,6 +23,8 @@ struct HTMLAppLiveActivityAttributes: ActivityAttributes {
         var timeRange: HTMLAppWidgetTimeRange? = nil
         var display: String? = nil
         var timeFormat: String? = nil
+        var pausedRemaining: Double? = nil
+        var pausedElapsed: Double? = nil
     }
 
     var appID: String

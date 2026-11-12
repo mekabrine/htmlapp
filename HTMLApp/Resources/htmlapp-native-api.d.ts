@@ -52,6 +52,11 @@ export type HTMLAppNativeMethod =
   | 'contacts.create'
   | 'contacts.list'
   | 'contacts.pick'
+  | 'controls.acknowledge'
+  | 'controls.configure'
+  | 'controls.read'
+  | 'controls.remove'
+  | 'controls.set'
   | 'coreML.infer'
   | 'coreML.load'
   | 'coreML.unload'
@@ -89,6 +94,7 @@ export type HTMLAppNativeMethod =
   | 'language.tokenize'
   | 'liveActivities.end'
   | 'liveActivities.list'
+  | 'liveActivities.perform'
   | 'liveActivities.start'
   | 'liveActivities.update'
   | 'location.backgroundDisable'
@@ -189,6 +195,7 @@ export interface HTMLAppNativeCapabilitySnapshot {
   permissions: string[];
   torchAvailable?: boolean;
   liveActivitiesAvailable?: boolean;
+  controlCenterAvailable?: boolean;
   widgetCustomization?: { schemaVersion: number; elementTypes: string[]; timeFormats: HTMLAppWidgetTimeFormat[]; liveSelectedTimeUnits: boolean; maxElements: number; maxDepth: number; };
 }
 
@@ -223,7 +230,11 @@ export interface HTMLAppAIAgentSession {
 export interface HTMLAppWidgetTimeRange { startMs: number; endMs: number; upcomingLabel?: string; inProgressLabel?: string; completedLabel?: string; }
 export type HTMLAppWidgetTimeFormat = "automatic" | "hoursMinutesSeconds" | "minutesSeconds" | "hoursMinutes" | "seconds" | "minutes" | "hours";
 export type HTMLAppWidgetFamily = "systemSmall" | "systemMedium" | "systemLarge" | "systemExtraLarge" | "accessoryInline" | "accessoryCircular" | "accessoryRectangular";
-export interface HTMLAppWidgetElement { type: "row" | "column" | "overlay" | "text" | "symbol" | "image" | "timer" | "progress" | "ring" | "spacer" | "divider" | "circle" | "rectangle" | "capsule"; children?: HTMLAppWidgetElement[]; text?: string; field?: "title" | "subtitle" | "value" | "unit" | "footer" | "eyebrow"; systemSymbol?: string; symbolRenderingMode?: "monochrome" | "hierarchical" | "palette" | "multicolor"; imageBase64?: string; timeFormat?: HTMLAppWidgetTimeFormat; progress?: number; alignment?: "leading" | "center" | "trailing"; verticalAlignment?: "top" | "center" | "bottom" | "firstTextBaseline"; spacing?: number; padding?: number; fontSize?: number; fontWeight?: "regular" | "medium" | "semibold" | "bold" | "heavy"; fontDesign?: "default" | "rounded" | "serif" | "monospaced"; lineLimit?: number; minimumScale?: number; foregroundHex?: string; backgroundHex?: string; borderHex?: string; borderWidth?: number; cornerRadius?: number; opacity?: number; width?: number; height?: number; expand?: boolean; accessibilityLabel?: string; }
+export interface HTMLAppWidgetElement { type: "row" | "column" | "overlay" | "text" | "symbol" | "image" | "timer" | "progress" | "ring" | "spacer" | "divider" | "circle" | "rectangle" | "capsule" | "lineChart" | "barChart" | "waveform" | "gauge" | "segmentedMeter" | "route" | "path" | "gradient"; children?: HTMLAppWidgetElement[]; text?: string; field?: "title" | "subtitle" | "value" | "unit" | "footer" | "eyebrow"; systemSymbol?: string; symbolRenderingMode?: "monochrome" | "hierarchical" | "palette" | "multicolor"; imageBase64?: string; timeFormat?: HTMLAppWidgetTimeFormat; progress?: number; alignment?: "leading" | "center" | "trailing"; verticalAlignment?: "top" | "center" | "bottom" | "firstTextBaseline"; spacing?: number; padding?: number; fontSize?: number; fontWeight?: "regular" | "medium" | "semibold" | "bold" | "heavy"; fontDesign?: "default" | "rounded" | "serif" | "monospaced"; lineLimit?: number; minimumScale?: number; foregroundHex?: string; backgroundHex?: string; borderHex?: string; borderWidth?: number; cornerRadius?: number; opacity?: number; width?: number; height?: number; expand?: boolean; accessibilityLabel?: string; samples?: number[]; points?: { x: number; y: number }[]; colors?: string[]; minimum?: number; maximum?: number; lineWidth?: number; segments?: number; closed?: boolean; }
+export type HTMLAppSystemControlValue = boolean | number | string;
+export type HTMLAppSystemControlAction = {kind: "open"; route?: string} | {kind: "set"; key: string; value: HTMLAppSystemControlValue} | {kind: "increment"; key: string; step: number} | {kind: "event"; key?: string; value?: HTMLAppSystemControlValue} | {kind: "activity.start" | "activity.update" | "activity.pause" | "activity.resume" | "activity.end" | "activity.complete"; activityID: string} | {kind: "notification.schedule"; notification: {id: string; title: string; body: string; delaySeconds: number}} | {kind: "notification.cancel"; notification: {id: string}};
+export type HTMLAppSystemControlDefinition = {id: string; title: string; systemSymbol?: string} & ({type: "toggle"; stateKey: string} | {type: "button"; action: HTMLAppSystemControlAction; activity?: Record<string, unknown>});
+export interface HTMLAppSystemControlSnapshot { controls: {id: string; title: string; type: "button" | "toggle"; systemSymbol: string; stateKey?: string; action?: string}[]; values: Record<string, HTMLAppSystemControlValue>; events: {id: string; controlID: string; action: string; timestampMs: number; key?: string; value?: HTMLAppSystemControlValue}[]; }
 export interface HTMLAppDynamicWidgetSnapshot { timeRange?: HTMLAppWidgetTimeRange; display?: "countdown" | "elapsed" | "remainingProgress" | "elapsedProgress"; deadlineMs?: number; timeFormat?: HTMLAppWidgetTimeFormat; automaticStatus?: boolean; content?: HTMLAppWidgetElement; familyContent?: Partial<Record<HTMLAppWidgetFamily, HTMLAppWidgetElement>>; value?: string; [key: string]: unknown; }
 export type HTMLAppControlField = { id: string; title: string; disabled?: boolean } & (
   | { type: "toggle"; value: boolean }
@@ -253,7 +264,8 @@ export interface HTMLAppNativeAPI {
   coreML: { load(url: string): Promise<{id: string; inputs: string[]; outputs: string[]}>; infer(modelID: string, imageURL: string): Promise<unknown>; unload(modelID: string): Promise<unknown> };
   music: { loadBank(url: string, program?: number): Promise<unknown>; noteOn(note: number, velocity?: number): Promise<unknown>; noteOff(note: number): Promise<unknown>; stop(): Promise<unknown> };
   midi: { destinations(): Promise<{destinations: {index: number; name: string}[]}>; send(destination: number, bytes: number[]): Promise<unknown> };
-  liveActivities: { start(definition: Record<string, unknown>): Promise<unknown>; update(id: string, state: Record<string, unknown>): Promise<unknown>; end(id: string): Promise<unknown>; list(): Promise<unknown> };
+  liveActivities: { perform(id: string, action: "pause" | "resume" | "complete"): Promise<unknown>; start(definition: Record<string, unknown>): Promise<unknown>; update(id: string, state: Record<string, unknown>): Promise<unknown>; end(id: string): Promise<unknown>; list(): Promise<unknown> };
+  controls: { configure(options: {appName?: string; controls: HTMLAppSystemControlDefinition[]; initial?: Record<string, HTMLAppSystemControlValue>}): Promise<{published: boolean; count: number; instructions: string}>; read(): Promise<HTMLAppSystemControlSnapshot>; set(values: Record<string, HTMLAppSystemControlValue>): Promise<HTMLAppSystemControlSnapshot>; acknowledge(ids: string[]): Promise<{acknowledged: boolean}>; remove(): Promise<{removed: boolean}>; };
   widgets: {
     configure(definition: { id: string; name?: string; families: string[]; snapshot: HTMLAppDynamicWidgetSnapshot; [key: string]: unknown }): Promise<unknown>;
     list(): Promise<unknown>;

@@ -574,6 +574,11 @@ struct HTMLAppWidgetsBundle: WidgetBundle {
             HTMLAppLiveActivityWidget()
             HTMLAppForgeActivityWidget()
         }
+        if #available(iOS 18.0, *) {
+            HTMLAppOpenControl()
+            HTMLAppButtonControl()
+            HTMLAppToggleControl()
+        }
     }
 }
 
@@ -736,6 +741,8 @@ struct HTMLAppWidgetElementView: View {
         if let radius = node.cornerRadius { view = AnyView(view.clipShape(RoundedRectangle(cornerRadius: CGFloat(radius)))) }
         if let opacity = node.opacity { view = AnyView(view.opacity(opacity)) }
         if let label = node.accessibilityLabel { view = AnyView(view.accessibilityLabel(label)) }
+        view = AnyView(view.animation(.easeInOut(duration: 0.35), value: node))
+        view = AnyView(view.animation(.easeInOut(duration: 0.35), value: snapshot))
         return view
     }
     private var raw: AnyView {
@@ -762,6 +769,9 @@ struct HTMLAppWidgetElementView: View {
             return AnyView(Image(systemName: "photo"))
         case "progress", "ring":
             return AnyView(progress)
+        case "lineChart", "barChart", "waveform", "gauge", "segmentedMeter", "route", "path", "gradient":
+            return AnyView(HTMLAppRichWidgetElement(node: node, progress: snapshot.progress ?? 0,
+                                                   accent: snapshot.accentHex ?? "#65A9FF"))
         case "circle": return AnyView(Circle().fill(color))
         case "rectangle": return AnyView(Rectangle().fill(color))
         case "capsule": return AnyView(Capsule().fill(color))

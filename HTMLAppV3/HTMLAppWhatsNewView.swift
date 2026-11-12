@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.10"
-    static let compiledBuild = "115"
+    static let compiledVersion = "1.9.11"
+    static let compiledBuild = "116"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,9 +32,12 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "native-settings-controls", title: "Real iOS controls in Forge apps",
-                  description: "Forge can open native settings sheets with switches, sliders, pickers, and text fields. On iOS 26 and later, they use Liquid Glass.",
-                  symbol: "slider.horizontal.3", tint: .blue)
+            Entry(id: "richer-live-activities", title: "More expressive Live Activities",
+                  description: "Forge can add charts, waveforms, gauges, and routes to the Lock Screen and Dynamic Island. Timer activities can include Pause, Resume, and Complete actions.",
+                  symbol: "waveform.path", tint: .purple),
+            Entry(id: "project-control-center", title: "Your projects in Control Center",
+                  description: "On iOS 18 and later, add HTMLApp buttons and toggles, then choose a project and action for each. Find published controls in Widgets & Background.",
+                  symbol: "switch.2", tint: .blue)
         ]
     }
 }

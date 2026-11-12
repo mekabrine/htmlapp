@@ -50,6 +50,8 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private var aiTasks: [String: Task<Void, Never>] = [:]
     private var networkTasks: [String: Task<Void, Never>] = [:]
     private var networkStatusObserver: NSObjectProtocol?
+    private var controlStateObserver: NSObjectProtocol?
+    private var controlResumeObserver: NSObjectProtocol?
     private let motionStream = CMMotionManager()
     private var motionBackgroundObserver: NSObjectProtocol?
     private let pedometer = CMPedometer()
@@ -67,6 +69,18 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         self.appID = appID
         self.permissionCoordinator = permissionCoordinator
         super.init()
+        controlStateObserver = NotificationCenter.default.addObserver(forName: HTMLAppSystemControlStore.stateChanged,
+            object: nil, queue: .main) { [weak self] notification in
+            guard let target = notification.object as? String else { return }
+            Task { @MainActor in
+                guard let self, self.appID == target else { return }
+                self.emitSystemControlState()
+            }
+        }
+        controlResumeObserver = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification,
+            object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.emitSystemControlState() }
+        }
         motionBackgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.motionStream.stopDeviceMotionUpdates() }
         }
@@ -129,6 +143,10 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     }
 
     func shutdown() {
+        if let controlStateObserver { NotificationCenter.default.removeObserver(controlStateObserver) }
+        if let controlResumeObserver { NotificationCenter.default.removeObserver(controlResumeObserver) }
+        controlStateObserver = nil
+        controlResumeObserver = nil
         nativeMusic?.stop(); nativeMusic = nil
         modelTasks.values.forEach { $0.cancel() }; modelTasks.removeAll(); coreMLService = nil
         motionStream.stopDeviceMotionUpdates()
@@ -1119,6 +1137,10 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                     "maxDepth": 6
                 ] as [String: Any],
                 "torchAvailable": AVCaptureDevice.default(for: .video)?.hasTorch ?? false,
+                "controlCenterAvailable": {
+                    if #available(iOS 18.0, *) { return self.appID != "PREVIEW" && HTMLAppSharedContainer.appGroupAvailable }
+                    return false
+                }(),
                 "liveActivitiesAvailable": {
                     if #available(iOS 16.2, *) {
                         return ActivityAuthorizationInfo().areActivitiesEnabled
@@ -1141,6 +1163,9 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 hardwareAvailable = HTMLAppHealthReader.available
             } else if name == "device.torch" {
                 hardwareAvailable = AVCaptureDevice.default(for: .video)?.hasTorch ?? false
+            } else if name.hasPrefix("controls.") {
+                if #available(iOS 18.0, *) { hardwareAvailable = HTMLAppSharedContainer.appGroupAvailable }
+                else { hardwareAvailable = false }
             } else if name.hasPrefix("liveActivities.") {
                 if #available(iOS 16.2, *) {
                     hardwareAvailable = ActivityAuthorizationInfo().areActivitiesEnabled
@@ -1981,6 +2006,57 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             } catch {
                 reject(id, code: "storage_write_failed", message: "Could not clear saved app data. Try again after freeing device storage.")
             }
+        case "controls.configure":
+            configureSystemControls(id: id, args: args)
+        case "controls.read":
+            if #available(iOS 18.0, *), appID != "PREVIEW" {
+                do { resolve(id, value: try HTMLAppSystemControlService.snapshot(appID: appID)) }
+                catch { reject(id, code: "control_read_failed", message: error.localizedDescription) }
+            } else { reject(id, code: "unsupported_ios", message: "System controls require a saved app on iOS 18 or later.") }
+        case "controls.set":
+            if #available(iOS 18.0, *), appID != "PREVIEW" {
+                do {
+                    let values = try HTMLAppSystemControlService.values(args["values"] ?? [String: Any]())
+                    try HTMLAppSystemControlStore.set(appID: appID, values: values)
+                    resolve(id, value: try HTMLAppSystemControlService.snapshot(appID: appID))
+                } catch { reject(id, code: "control_write_failed", message: error.localizedDescription) }
+            } else { reject(id, code: "unsupported_ios", message: "System controls require a saved app on iOS 18 or later.") }
+        case "controls.acknowledge":
+            guard #available(iOS 18.0, *), appID != "PREVIEW", let ids = args["ids"] as? [String], ids.count <= 64 else {
+                reject(id, code: "invalid_arguments", message: "Provide up to 64 event IDs in a saved app on iOS 18 or later.")
+                return
+            }
+            do {
+                try HTMLAppSystemControlStore.repository().mutate { document in
+                    document.events.removeAll { $0.appID == appID && ids.contains($0.id) }
+                }
+                resolve(id, value: ["acknowledged": true])
+            } catch { reject(id, code: "control_write_failed", message: error.localizedDescription) }
+        case "controls.remove":
+            guard #available(iOS 18.0, *), appID != "PREVIEW" else {
+                reject(id, code: "unsupported_ios", message: "System controls require a saved app on iOS 18 or later.")
+                return
+            }
+            do {
+                try HTMLAppSystemControlStore.remove(appID: appID)
+                resolve(id, value: ["removed": true])
+            } catch { reject(id, code: "control_write_failed", message: error.localizedDescription) }
+        case "liveActivities.perform":
+            guard #available(iOS 16.2, *), let activityID = args["id"] as? String,
+                  let action = args["action"] as? String, ["pause", "resume", "complete"].contains(action) else {
+                reject(id, code: "invalid_arguments", message: "Provide an activity ID and pause, resume or complete action on iOS 16.2 or later.")
+                return
+            }
+            withPermission(.liveActivities, id: id) { [weak self] in
+                guard let self else { return }
+                Task {
+                    do {
+                        try await HTMLAppSystemControlExecutor.shared.activityAction(appID: self.appID,
+                            activityID: activityID, kind: "activity." + action)
+                        self.resolve(id, value: ["updated": true])
+                    } catch { self.reject(id, code: "live_activity_failed", message: error.localizedDescription) }
+                }
+            }
         case "liveActivities.start":
             if #available(iOS 16.2, *) {
                 withPermission(.liveActivities, id: id) { [weak self] in
@@ -2065,6 +2141,64 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             resolve(id, value: ["stopped": true])
         default:
             reject(id, code: "unsupported_method", message: "Unknown native method: \(method)")
+        }
+    }
+
+    private func configureSystemControls(id: String, args: [String: Any]) {
+        guard #available(iOS 18.0, *), appID != "PREVIEW", webView?.window != nil else {
+            reject(id, code: "unsupported_ios", message: "Publish controls from a saved app on iOS 18 or later.")
+            return
+        }
+        do {
+            let publication = try HTMLAppSystemControlService.parse(appID: appID, args: args)
+            if publication.permissions.contains(.liveActivities), !ActivityAuthorizationInfo().areActivitiesEnabled {
+                throw HTMLAppSystemControlError.unavailable
+            }
+            authorizeSystemControls(publication, index: 0, id: id)
+        } catch { reject(id, code: "invalid_arguments", message: error.localizedDescription) }
+    }
+
+    @available(iOS 18.0, *)
+    private func authorizeSystemControls(_ publication: HTMLAppSystemControlService.Publication, index: Int, id: String) {
+        if index < publication.permissions.count {
+            withPermission(publication.permissions[index], id: id) { [weak self] in
+                self?.authorizeSystemControls(publication, index: index + 1, id: id)
+            }
+            return
+        }
+        if publication.permissions.contains(.notifications) {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let allowed = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+                    guard allowed else { throw HTMLAppSystemControlError.permission }
+                    self.publishSystemControls(publication, id: id)
+                } catch { self.reject(id, code: "permission_denied", message: error.localizedDescription) }
+            }
+        } else { publishSystemControls(publication, id: id) }
+    }
+
+    @available(iOS 18.0, *)
+    private func publishSystemControls(_ publication: HTMLAppSystemControlService.Publication, id: String) {
+        do {
+            try HTMLAppSystemControlStore.publish(appID: appID, definitions: publication.definitions, initial: publication.initial)
+            resolve(id, value: ["published": true, "count": publication.definitions.count,
+                "instructions": "Open Control Center, add HTMLApp Open, HTMLApp Button or HTMLApp Toggle, then choose the project and action."])
+        } catch { reject(id, code: "control_write_failed", message: error.localizedDescription) }
+    }
+
+    private func emitSystemControlState() {
+        guard appID != "PREVIEW", let webView else { return }
+        if #available(iOS 18.0, *),
+           let snapshot = try? HTMLAppSystemControlService.snapshot(appID: appID),
+           let bytes = try? JSONSerialization.data(withJSONObject: snapshot),
+           let json = String(data: bytes, encoding: .utf8) {
+            webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('htmlapp:controls',{detail:\(json)}));", completionHandler: nil)
+        }
+        if #available(iOS 16.2, *),
+           let bytes = try? JSONSerialization.data(withJSONObject: ["activities": HTMLAppLiveActivityService.list(appID: appID)]),
+           let json = String(data: bytes, encoding: .utf8) {
+            webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('htmlapp:live-activities',{detail:\(json)}));", completionHandler: nil)
         }
     }
 
@@ -3746,7 +3880,7 @@ enum HTMLNativeAPIScript {
         if (typeof options.onDispatch === 'function') options.onDispatch(id);
         // Pickers and system authorization sheets may stay open longer than
         // simple data calls. Every pending request still has a finite deadline.
-        const interactive = /^(files\.pick|photos\.(?:pick|read)|contacts\.pick|calendar\.|nfc\.readNDEF|health\.today|biometrics\.|share\.|speech\.listen|speech\.recognize|audio\.record|video\.capture|ui\.(?:alert|menu|datePicker|colorPicker|list|controls))/.test(method);
+        const interactive = /^(controls\.configure|files\.pick|photos\.(?:pick|read)|contacts\.pick|calendar\.|nfc\.readNDEF|health\.today|biometrics\.|share\.|speech\.listen|speech\.recognize|audio\.record|video\.capture|ui\.(?:alert|menu|datePicker|colorPicker|list|controls))/.test(method);
         const deadline = interactive ? 180000 : (method.startsWith('ai.') ? 120000 : 30000);
         const cancelNative = () => {
           try { handler.postMessage({ id: 'cancel-' + id, method: 'bridge.cancel', args: { targetID: id } }); } catch (_) {}
@@ -4414,7 +4548,20 @@ enum HTMLNativeAPIScript {
           },
           clear: () => call('appStorage.clear')
         },
+        controls: {
+          configure: (options = {}) => {
+            if (globalThis.navigator?.userActivation?.isActive === false) {
+              return Promise.reject(Object.assign(new Error('Publish controls from a user tap.'), {code: 'gesture_required'}));
+            }
+            return call('controls.configure', options);
+          },
+          read: () => call('controls.read'),
+          set: values => call('controls.set', {values}),
+          acknowledge: ids => call('controls.acknowledge', {ids}),
+          remove: () => call('controls.remove')
+        },
         liveActivities: {
+          perform: (id, action) => call('liveActivities.perform', {id, action}),
           start: (definition) => call('liveActivities.start', definition || {}),
           update: (id, state = {}) => call('liveActivities.update', { ...state, id: String(id || '') }),
           end: (id) => call('liveActivities.end', { id: String(id || '') }),

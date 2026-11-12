@@ -56,6 +56,11 @@
     "contacts.create",
     "contacts.list",
     "contacts.pick",
+    "controls.acknowledge",
+    "controls.configure",
+    "controls.read",
+    "controls.remove",
+    "controls.set",
     "coreML.infer",
     "coreML.load",
     "coreML.unload",
@@ -93,6 +98,7 @@
     "language.tokenize",
     "liveActivities.end",
     "liveActivities.list",
+    "liveActivities.perform",
     "liveActivities.start",
     "liveActivities.update",
     "location.backgroundDisable",
@@ -773,6 +779,65 @@
       "requiredArguments": [],
       "resultType": "unknown"
     },
+    "controls.acknowledge": {
+      "minimumIOS": "18.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "ids": "array"
+      },
+      "requiredArguments": [
+        "ids"
+      ],
+      "resultType": "unknown"
+    },
+    "controls.configure": {
+      "minimumIOS": "18.0",
+      "permission": null,
+      "userInitiationRecommended": true,
+      "nativeCancellation": false,
+      "arguments": {
+        "appName": "string",
+        "controls": "array",
+        "initial": "object"
+      },
+      "requiredArguments": [
+        "controls"
+      ],
+      "resultType": "unknown"
+    },
+    "controls.read": {
+      "minimumIOS": "18.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "controls.remove": {
+      "minimumIOS": "18.0",
+      "permission": null,
+      "userInitiationRecommended": true,
+      "nativeCancellation": false,
+      "arguments": {},
+      "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "controls.set": {
+      "minimumIOS": "18.0",
+      "permission": null,
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "values": "object"
+      },
+      "requiredArguments": [
+        "values"
+      ],
+      "resultType": "unknown"
+    },
     "coreML.infer": {
       "minimumIOS": "16.0",
       "permission": "files",
@@ -1203,6 +1268,21 @@
       "nativeCancellation": false,
       "arguments": {},
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "liveActivities.perform": {
+      "minimumIOS": "16.2",
+      "permission": "liveActivities",
+      "userInitiationRecommended": true,
+      "nativeCancellation": false,
+      "arguments": {
+        "id": "string",
+        "action": "string"
+      },
+      "requiredArguments": [
+        "id",
+        "action"
+      ],
       "resultType": "unknown"
     },
     "liveActivities.start": {

@@ -163,3 +163,44 @@ Apply returns `{cancelled:false, values}` keyed by field ID. Persist those value
 in the project and leave them untouched when cancelled. Use the inline web
 controls when the native bridge is unavailable or the workflow needs inline
 editing. The system renders Liquid Glass styling on iOS 26 and later.
+
+## Control Center and richer Live Activities
+
+HTMLApp 1.9.11 can publish configurable system buttons and toggles on iOS 18+.
+Use a visible Publish Controls button and check
+`(await HTMLAppNative.capabilities.describe('controls.configure')).available`.
+
+```js
+await HTMLAppNative.controls.configure({
+  appName: 'Focus',
+  controls: [
+    {id:'quiet', title:'Quiet mode', systemSymbol:'moon', type:'toggle', stateKey:'quiet'},
+    {id:'open', title:'Open Focus', systemSymbol:'timer', type:'button', action:{kind:'open', route:'timer'}}
+  ],
+  initial: {quiet:false}
+});
+```
+
+Tell the user to add HTMLApp Open, HTMLApp Button or HTMLApp Toggle in Control Center and
+select a project and control for each instance. Each instance may use a different
+project. Read `controls.read()` at startup and resume, listen through
+`HTMLAppNative.events.on('controls', handler)`, and use `controls.set({quiet:true})`
+for in-app edits. These shared values are separate from localStorage. Republishing
+preserves existing values. `controls.remove()` unpublishes the project's controls.
+Consult the bundled typed API for the full bounded native action vocabulary.
+
+Live Activity presentations support `lineChart`, `barChart`, `waveform`,
+`gauge`, `segmentedMeter`, `route`, `path`, and `gradient` nodes. Charts accept
+2–64 numeric `samples`, paths accept 2–64 normalized `{x,y}` points, and color
+gradients accept 2–5 hex colors. Use `progress` from 0 to 1 for gauges, meters,
+and a route position. Keep combined attributes and state within 3800 bytes.
+These native SwiftUI shapes transition when a content update is delivered.
+Native `timer` and `progress` elements use date intervals for ticking displays.
+
+Activity actions can use `pause`, `resume`, and `complete`, in addition to
+`open` and `end`. Pause/Resume work on activities with a deadline or interval.
+The equivalent in-app call is `liveActivities.perform(id, 'pause')`.
+Activity buttons execute natively on iOS 17+ and open the owning project on
+iOS 16. Refresh status with `liveActivities.list()` and the `live-activities`
+event. Always check OS availability, handle cancellation and permissions, and
+retain usable in-app controls.

@@ -104,6 +104,12 @@ struct HTMLAppWidgetTimeRange: Codable, Hashable {
     }
 }
 
+struct HTMLAppWidgetPoint: Codable, Hashable {
+    var x: Double
+    var y: Double
+    var isValid: Bool { x.isFinite && y.isFinite && (0...1).contains(x) && (0...1).contains(y) }
+}
+
 /// A bounded native view description, never executable Swift/HTML inside a widget.
 struct HTMLAppWidgetElement: Codable, Hashable {
     var type: String
@@ -134,8 +140,16 @@ struct HTMLAppWidgetElement: Codable, Hashable {
     var borderHex: String? = nil
     var borderWidth: Double? = nil
     var symbolRenderingMode: String? = nil
+    var samples: [Double]? = nil
+    var points: [HTMLAppWidgetPoint]? = nil
+    var colors: [String]? = nil
+    var minimum: Double? = nil
+    var maximum: Double? = nil
+    var lineWidth: Double? = nil
+    var segments: Int? = nil
+    var closed: Bool? = nil
 
-    static let types: Set<String> = ["row", "column", "overlay", "text", "symbol", "image", "timer", "progress", "ring", "spacer", "divider", "circle", "rectangle", "capsule"]
+    static let types: Set<String> = ["row", "column", "overlay", "text", "symbol", "image", "timer", "progress", "ring", "spacer", "divider", "circle", "rectangle", "capsule", "lineChart", "barChart", "waveform", "gauge", "segmentedMeter", "route", "path", "gradient"]
     static let fields: Set<String> = ["title", "subtitle", "value", "unit", "footer", "eyebrow"]
     func isValid(depth: Int = 0, count: inout Int) -> Bool {
         count += 1
@@ -156,6 +170,19 @@ struct HTMLAppWidgetElement: Codable, Hashable {
             if let number, !number.isFinite || !bounds.contains(number) { return false }
         }
         if let lineLimit, !(1...6).contains(lineLimit) { return false }
+        if let lineWidth, !lineWidth.isFinite || !(1...16).contains(lineWidth) { return false }
+        if let segments, !(2...32).contains(segments) { return false }
+        if let samples, samples.count > 64 || samples.contains(where: { !$0.isFinite || abs($0) > 1_000_000 }) { return false }
+        if let points, points.count > 64 || points.contains(where: { !$0.isValid }) { return false }
+        if let colors, !(2...5).contains(colors.count) || colors.contains(where: {
+            $0.range(of: #"^#[0-9A-Fa-f]{6}$"#, options: .regularExpression) == nil
+        }) { return false }
+        for value in [minimum, maximum].compactMap({ $0 }) {
+            if !value.isFinite || abs(value) > 1_000_000 { return false }
+        }
+        if let minimum, let maximum, minimum >= maximum { return false }
+        if ["lineChart", "barChart", "waveform"].contains(type), (samples?.count ?? 0) < 2 { return false }
+        if ["route", "path"].contains(type), (points?.count ?? 0) < 2 { return false }
         let container = ["row", "column", "overlay"].contains(type)
         if !container && !(children ?? []).isEmpty { return false }
         return (children ?? []).allSatisfy { $0.isValid(depth: depth + 1, count: &count) }

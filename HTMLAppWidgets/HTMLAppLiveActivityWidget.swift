@@ -36,10 +36,22 @@ struct HTMLAppLiveActivityWidget: Widget {
             } else { fallback(name, context: context) }
             if name == "lockScreen" || name == "expandedBottom" {
                 HStack {
-                    ForEach(context.state.actions ?? []) { action in
+                    ForEach((context.state.actions ?? []).filter {
+                        ($0.kind != "pause" || context.state.pausedRemaining == nil) &&
+                        ($0.kind != "resume" || context.state.pausedRemaining != nil)
+                    }) { action in
                         if action.kind == "end" {
                             if #available(iOS 17.0, *) {
                                 Button(intent: HTMLAppEndLiveActivityIntent(appID: context.attributes.appID, activityID: context.attributes.activityID)) {
+                                    Text(action.title)
+                                }.buttonStyle(.bordered)
+                            } else if let url = activityURL(context.attributes) {
+                                Link("Open to " + action.title, destination: url)
+                            }
+                        } else if ["pause", "resume", "complete"].contains(action.kind) {
+                            if #available(iOS 17.0, *) {
+                                Button(intent: HTMLAppRunLiveActivityActionIntent(appID: context.attributes.appID,
+                                    activityID: context.attributes.activityID, actionID: action.id)) {
                                     Text(action.title)
                                 }.buttonStyle(.bordered)
                             } else if let url = activityURL(context.attributes) {
@@ -93,13 +105,15 @@ struct HTMLAppLiveActivityWidget: Widget {
         }
     }
     @ViewBuilder private func metric(_ state: HTMLAppLiveActivityAttributes.ContentState) -> some View {
-        if let deadline = state.primaryDeadline {
+        if state.pausedRemaining != nil {
+            Text("Paused")
+        } else if let deadline = state.primaryDeadline {
             Text(timerInterval: Date()...max(Date(), deadline), countsDown: true)
         } else { Text(state.compactLabel ?? state.value) }
     }
     private func snapshot(_ context: ActivityViewContext<HTMLAppLiveActivityAttributes>) -> HTMLAppWidgetSnapshot? {
         var data: [String: Any] = ["title": context.attributes.title, "subtitle": context.state.subtitle,
-            "value": context.state.value, "systemSymbol": context.attributes.systemSymbol,
+            "value": context.state.pausedRemaining == nil ? context.state.value : "Paused", "systemSymbol": context.attributes.systemSymbol,
             "accentHex": context.state.accentHex, "automaticStatus": false]
         data["footer"] = context.state.footer
         data["progress"] = context.state.progress

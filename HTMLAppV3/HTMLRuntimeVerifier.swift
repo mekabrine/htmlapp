@@ -23,6 +23,7 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
     private var completed = false
     private var issues: [String] = []
     private var mockAppStorage: [String: String] = [:]
+    private var mockSystemControls = HTMLAppSystemControlDocument()
     private var mockDocuments: [String: [String: [String: Any]]] = [:]
 
     init(html: String) {
@@ -182,6 +183,42 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
                 replyToMockRequest(id: id, ok: false,
                                    value: ["code": "qa_permission_denied", "message": "Native permissions are unavailable in offline QA."])
                 return
+            case "controls.configure", "controls.set", "controls.read", "controls.acknowledge", "controls.remove":
+                guard #available(iOS 16.2, *) else {
+                    replyToMockRequest(id: id, ok: false, value: ["code": "unsupported_ios", "message": "System controls need a newer runtime."])
+                    return
+                }
+                do {
+                    if method == "controls.configure" {
+                        let publication = try HTMLAppSystemControlService.parse(appID: "PREVIEW", args: args)
+                        mockSystemControls.controls = publication.definitions
+                        for (key, value) in publication.initial where mockSystemControls.values["PREVIEW"]?[key] == nil {
+                            mockSystemControls.values["PREVIEW", default: [:]][key] = value
+                        }
+                        for control in publication.definitions where control.type == "toggle" {
+                            if let key = control.stateKey, mockSystemControls.values["PREVIEW"]?[key] == nil {
+                                mockSystemControls.values["PREVIEW", default: [:]][key] = .boolean(false)
+                            }
+                        }
+                        try HTMLAppSystemControlStore.validateValues(appID: "PREVIEW", in: mockSystemControls)
+                    } else if method == "controls.set" {
+                        let values = try HTMLAppSystemControlService.values(args["values"] ?? [String: Any]())
+                        mockSystemControls.values["PREVIEW", default: [:]].merge(values) { _, new in new }
+                        try HTMLAppSystemControlStore.validateValues(appID: "PREVIEW", in: mockSystemControls)
+                    } else if method == "controls.acknowledge" {
+                        guard let ids = args["ids"] as? [String], ids.count <= 64 else { throw HTMLAppSystemControlError.invalid }
+                        mockSystemControls.events.removeAll { ids.contains($0.id) }
+                    } else if method == "controls.remove" { mockSystemControls = HTMLAppSystemControlDocument() }
+                    ok = true
+                    if method == "controls.configure" {
+                        value = ["published": false, "qaMock": true, "count": mockSystemControls.controls.count]
+                    } else if method == "controls.acknowledge" { value = ["acknowledged": true] }
+                    else if method == "controls.remove" { value = ["removed": true] }
+                    else { value = HTMLAppSystemControlService.snapshot(appID: "PREVIEW", document: mockSystemControls) }
+                } catch {
+                    replyToMockRequest(id: id, ok: false, value: ["code": "invalid_arguments", "message": error.localizedDescription])
+                    return
+                }
             case "ui.controls":
                 guard HTMLAppNativeControl.parse(args["fields"]) != nil else {
                     replyToMockRequest(id: id, ok: false,

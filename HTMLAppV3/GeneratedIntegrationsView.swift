@@ -13,6 +13,8 @@ struct GeneratedIntegrationsView: View {
     @State private var widgetError: String?
     @State private var pendingGroup: String?
     @State private var confirmGroup = false
+    @State private var systemControls: [HTMLAppSystemControl] = []
+    @State private var controlError: String?
 
     var body: some View {
         List {
@@ -28,6 +30,7 @@ struct GeneratedIntegrationsView: View {
                 }
             }
 
+            controlCenterSection
             if !HTMLAppSharedContainer.appGroupAvailable {
                 Section("Widget Signing Problem") {
                     Label("App Group storage is unavailable on this installation.", systemImage: "exclamationmark.triangle")
@@ -46,7 +49,7 @@ struct GeneratedIntegrationsView: View {
 
             Section {
                 Label("Generated apps can publish native Home Screen and Lock Screen widgets.", systemImage: "square.grid.2x2")
-                Text("On iOS 17 and later, add an HTMLApp widget and choose a widget published by one of your saved apps. On iOS 16, HTMLApp shows the current primary widget.")
+                Text("Add HTMLApp Primary to display the current primary widget published by a saved app.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -262,6 +265,7 @@ struct GeneratedIntegrationsView: View {
         .navigationTitle("Widgets & Background")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: reload)
+        .onReceive(NotificationCenter.default.publisher(for: HTMLAppSystemControlStore.stateChanged)) { _ in reload() }
         .alert("Use this shared signing group?", isPresented: $confirmGroup) {
             Button("Cancel", role: .cancel) {}
             Button("Use Group") {
@@ -308,6 +312,40 @@ struct GeneratedIntegrationsView: View {
         store.apps.first(where: { $0.id == id })?.name ?? "Unknown HTMLApp"
     }
 
+    private var controlCenterSection: some View {
+        Section("Control Center") {
+            if #available(iOS 18.0, *) {
+                Text("Publish controls from a saved app, then open Control Center → Add a Control → HTMLApp. Add Open, Button or Toggle and tap it while editing to choose its project and action. Each instance can target a different HTMLApp.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                ForEach(systemControls) { control in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(control.title, systemImage: control.systemSymbol)
+                        Text(control.appName + " · " + (control.type == "toggle" ? "Toggle" : "Button"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .swipeActions {
+                        Button("Remove", role: .destructive) {
+                            do {
+                                try HTMLAppSystemControlStore.repository().mutate { document in
+                                    document.controls.removeAll { $0.id == control.id }
+                                }
+                                HTMLAppSystemControlStore.reload()
+                                reload()
+                            } catch { controlError = error.localizedDescription }
+                        }
+                    }
+                }
+                if systemControls.isEmpty { Text("No controls published yet").foregroundStyle(.secondary) }
+                if let controlError { Text(controlError).font(.caption).foregroundStyle(.red) }
+                Button("Reload Controls") { HTMLAppSystemControlStore.reload(); reload() }
+            } else {
+                Text("Custom Control Center controls require iOS 18 or later.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+
+    }
+
     private func reload() {
         diagnostic = HTMLAppWidgetDiagnostics.summary()
         WidgetCenter.shared.getCurrentConfigurations { result in
@@ -320,6 +358,16 @@ struct GeneratedIntegrationsView: View {
             }
         }
         let valid = Set(store.apps.map(\.id))
+        if #available(iOS 18.0, *) {
+            do {
+                systemControls = try HTMLAppSystemControlStore.controls().filter { valid.contains($0.appID) }
+                    .sorted { $0.appName == $1.appName ? $0.title < $1.title : $0.appName < $1.appName }
+                controlError = nil
+            } catch {
+                systemControls = []
+                controlError = error.localizedDescription
+            }
+        }
         widgets = HTMLAppWidgetStore.all().filter { valid.contains($0.appID) }
         jobs = HTMLAppBackgroundJobStore.all()
             .filter { valid.contains($0.appID) }

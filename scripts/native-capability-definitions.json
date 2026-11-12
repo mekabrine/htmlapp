@@ -5,6 +5,86 @@
   "description": "Canonical HTMLApp native RPC method registry. Registered does not mean authorized or available on every device. Unlisted arguments remain permitted for forward compatibility.",
   "methods": [
     {
+      "permission": null,
+      "nativeCancellation": false,
+      "result": "unknown",
+      "method": "controls.configure",
+      "minimumIOS": "18.0",
+      "userInitiated": true,
+      "arguments": {
+        "appName": "string",
+        "controls": "array",
+        "initial": "object"
+      },
+      "required": [
+        "controls"
+      ]
+    },
+    {
+      "permission": null,
+      "nativeCancellation": false,
+      "result": "unknown",
+      "method": "controls.read",
+      "minimumIOS": "18.0",
+      "userInitiated": false,
+      "arguments": {},
+      "required": []
+    },
+    {
+      "permission": null,
+      "nativeCancellation": false,
+      "result": "unknown",
+      "method": "controls.set",
+      "minimumIOS": "18.0",
+      "userInitiated": false,
+      "arguments": {
+        "values": "object"
+      },
+      "required": [
+        "values"
+      ]
+    },
+    {
+      "permission": null,
+      "nativeCancellation": false,
+      "result": "unknown",
+      "method": "controls.acknowledge",
+      "minimumIOS": "18.0",
+      "userInitiated": false,
+      "arguments": {
+        "ids": "array"
+      },
+      "required": [
+        "ids"
+      ]
+    },
+    {
+      "permission": null,
+      "nativeCancellation": false,
+      "result": "unknown",
+      "method": "controls.remove",
+      "minimumIOS": "18.0",
+      "userInitiated": true,
+      "arguments": {},
+      "required": []
+    },
+    {
+      "permission": "liveActivities",
+      "nativeCancellation": false,
+      "result": "unknown",
+      "method": "liveActivities.perform",
+      "minimumIOS": "16.2",
+      "userInitiated": true,
+      "arguments": {
+        "id": "string",
+        "action": "string"
+      },
+      "required": [
+        "id",
+        "action"
+      ]
+    },
+    {
       "method": "backend.status",
       "permission": null,
       "minimumIOS": "16.0",

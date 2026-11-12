@@ -7,8 +7,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: targeted
-    MARKETING_VERSION: "1.9.10"
-    CURRENT_PROJECT_VERSION: "115"
+    MARKETING_VERSION: "1.9.11"
+    CURRENT_PROJECT_VERSION: "116"
     TARGETED_DEVICE_FAMILY: "1,2"
     SUPPORTS_MACCATALYST: NO
     CODE_SIGN_STYLE: Automatic
@@ -246,6 +246,7 @@ targets:
     sources:
       - path: HTMLAppShared
       - path: HTMLAppWidgets/HTMLAppWidgets.swift
+      - path: HTMLAppWidgets/HTMLAppRichWidgetElement.swift
       - path: HTMLAppV3/AIIconRenderer.swift
       - path: HTMLAppWidgetTests
     settings:

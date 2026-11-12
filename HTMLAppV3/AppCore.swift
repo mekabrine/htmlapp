@@ -57,6 +57,7 @@ struct HTMLAppMain: App {
                 }
                 .fullScreenCover(isPresented: $presentingWhatsNew, onDismiss: {
                     recordVersionSeen()
+                    deliverSystemControlOpen()
                     store.setExternalHTMLImportReady(onboardingComplete)
                     if let url = deferredExternalURL {
                         deferredExternalURL = nil
@@ -77,11 +78,15 @@ struct HTMLAppMain: App {
                     store.setExternalHTMLImportReady(
                         onboardingComplete && !presentingWhatsNew
                     )
+                    deliverSystemControlOpen()
                 }
                 .onChange(of: presentingWhatsNew) { showing in
                     // Opening the gate before fullScreenCover.onDismiss
                     // finishes may cause SwiftUI to discard the import sheet.
                     if showing { store.setExternalHTMLImportReady(false) }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: HTMLAppSystemControlStore.openRequested)) { _ in
+                    deliverSystemControlOpen()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HTMLApp.FaceDownShakeExit"))) { _ in
                     // The runner is a SwiftUI full-screen cover, not a UIKit
@@ -111,6 +116,7 @@ struct HTMLAppMain: App {
                 }
                 .onChange(of: scenePhase) { phase in
                     if phase == .active {
+                        deliverSystemControlOpen()
                         Task { await HTMLAppOfflineSpeech.shared.preloadIfSelected() }
                         Task {
                             store.prepareAutomaticBackends()
@@ -130,6 +136,7 @@ struct HTMLAppMain: App {
                     checkedVersionThisLaunch = false
                     checkVersionOnLaunch()
                     store.setExternalHTMLImportReady(!presentingWhatsNew)
+                    deliverSystemControlOpen()
                 }
                 // Root-owned external import sheet survives cold launches,
                 // nested folders, onboarding and Library-specific modals.
@@ -191,6 +198,19 @@ struct HTMLAppMain: App {
                     }
                 }
         }
+    }
+
+    private func deliverSystemControlOpen() {
+        guard onboardingComplete, !presentingWhatsNew,
+              let open = try? HTMLAppSystemControlStore.takeOpen() else { return }
+        guard store.apps.contains(where: { $0.id == open.appID }) else { return }
+        var parts = URLComponents()
+        parts.scheme = "htmlapp"
+        parts.host = "open"
+        parts.queryItems = [URLQueryItem(name: "id", value: open.appID)]
+        guard let url = parts.url else { return }
+        HTMLAppWidgetLaunchStore.receive(control: open)
+        store.openDeepLink(url)
     }
 
     #if DEBUG
@@ -1026,6 +1046,7 @@ final class AppStore: ObservableObject {
         HTMLSensorPermissionPolicy.reset(appID: app.id)
         HTMLAppPortableDataStore.clear(appID: app.id)
         HTMLAppWidgetStore.remove(appID: app.id)
+        try? HTMLAppSystemControlStore.remove(appID: app.id)
         HTMLAppBackgroundJobStore.remove(appID: app.id)
         HTMLAppBackgroundCoordinator.shared.schedule()
     }

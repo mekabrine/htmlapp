@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>Native Controls Demo</title>
+  <style>
+    :root { color-scheme: light dark; font: 17px system-ui; }
+    * { box-sizing: border-box; }
+    body { margin: 0 auto; max-width: 620px; padding: max(24px,env(safe-area-inset-top)) 20px 32px; }
+    h1 { font-size: 28px; }
+    p { line-height: 1.5; }
+    section { padding: 18px; margin: 16px 0; border: 1px solid #8886; border-radius: 18px; }
+    button { font: inherit; padding: 12px; min-height: 44px; border-radius: 12px; margin: 4px 0; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    label { display: flex; gap: 12px; align-items: center; min-height: 44px; }
+    #status { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <h1>Native Controls Demo</h1>
+  <p>Import this file into HTMLApp to try the native system controls and a one-minute Live Activity.</p>
+  <section>
+    <h2>Control Center</h2>
+    <button id="publish">Publish demo controls</button>
+    <p>After publishing, open Control Center → Add a Control → HTMLApp. Add Open, Button, or Toggle and choose one of this project's actions. You can add several instances.</p>
+    <label><input type="checkbox" id="quiet"> Quiet mode</label>
+    <p>Counter <output id="count">0</output></p>
+    <div class="actions"><button id="refresh">Refresh shared state</button><button id="remove">Remove demo controls</button></div>
+  </section>
+  <section id="timer">
+    <h2>Native timer activity</h2>
+    <p>The chart is a sample snapshot. The countdown uses the system timer.</p>
+    <div class="actions">
+      <button id="start">Start one-minute activity</button>
+      <button id="pause">Pause</button>
+      <button id="resume">Resume</button>
+      <button id="complete">Complete</button>
+      <button id="end">End</button>
+    </div>
+    <p id="activity">No activity started</p>
+  </section>
+  <p id="status" role="status">Open this demo inside HTMLApp.</p>
+  <script>
+    const native = window.HTMLAppNative;
+    const status = document.getElementById('status');
+    const quiet = document.getElementById('quiet');
+    const activity = document.getElementById('activity');
+    const show = message => { status.textContent = message; };
+    function run(operation) {
+      return async () => {
+        try { await operation(); }
+        catch (error) { show(error.message || String(error)); }
+      };
+    }
+    function timerDefinition() {
+      const now = Date.now();
+      return {
+        id: 'demo-timer', title: 'One-minute focus', subtitle: 'Native controls demo', value: 'Focus',
+        primaryDeadlineMs: now + 60000, timeRange: {startMs: now, endMs: now + 60000},
+        actions: [{id:'pause',title:'Pause',kind:'pause'}, {id:'resume',title:'Resume',kind:'resume'}, {id:'end',title:'End',kind:'end'}],
+        presentation: {
+          lockScreen: {type:'column',alignment:'leading',spacing:8,children:[
+            {type:'text',field:'title',fontSize:18,fontWeight:'semibold'},
+            {type:'timer',fontSize:25},
+            {type:'lineChart',samples:[0.1,0.2,0.6,0.4,0.8,0.7,1],colors:['#3576D3','#A56DEF'],height:38,accessibilityLabel:'Sample focus chart'}
+          ]},
+          expandedBottom: {type:'segmentedMeter',progress:0.6,segments:16,height:22,accessibilityLabel:'Sample progress'}
+        }
+      };
+    }
+    function render(snapshot) {
+      quiet.checked = snapshot.values.quiet === true;
+      document.getElementById('count').textContent = String(snapshot.values.count || 0);
+    }
+    async function refresh() {
+      if (!native?.controls) return;
+      render(await native.controls.read());
+      const result = await native.liveActivities.list();
+      const timer = result.activities.find(item => item.id === 'demo-timer');
+      activity.textContent = timer ? (timer.isPaused ? 'Paused' : timer.state) : 'No active timer';
+    }
+    document.getElementById('publish').onclick = run(async () => {
+      const descriptor = await native.capabilities.describe('controls.configure');
+      if (!descriptor.available) throw new Error('System controls require a saved app on iOS 18+ with shared App Group access.');
+      const timer = {...timerDefinition(),durationSeconds:60};
+      const result = await native.controls.configure({appName:'Native Controls Demo',controls:[
+        {id:'open',title:'Open timer',type:'button',systemSymbol:'timer',action:{kind:'open',route:'timer'}},
+        {id:'quiet',title:'Quiet mode',type:'toggle',systemSymbol:'moon',stateKey:'quiet'},
+        {id:'count',title:'Add one',type:'button',systemSymbol:'plus',action:{kind:'increment',key:'count',step:1}},
+        {id:'start',title:'Start timer',type:'button',systemSymbol:'play.fill',action:{kind:'activity.start',activityID:'demo-timer'},activity:timer},
+        {id:'pause',title:'Pause timer',type:'button',systemSymbol:'pause.fill',action:{kind:'activity.pause',activityID:'demo-timer'}},
+        {id:'resume',title:'Resume timer',type:'button',systemSymbol:'play.fill',action:{kind:'activity.resume',activityID:'demo-timer'}}
+      ],initial:{quiet:false,count:0}});
+      show(result.instructions);
+      await refresh();
+    });
+    quiet.onchange = run(async () => { await native.controls.set({quiet:quiet.checked}); });
+    document.getElementById('refresh').onclick = run(refresh);
+    document.getElementById('remove').onclick = run(async () => { await native.controls.remove(); await refresh(); show('Demo controls removed.'); });
+    document.getElementById('start').onclick = run(async () => { await native.liveActivities.start(timerDefinition()); await refresh(); });
+    for (const action of ['pause','resume','complete']) {
+      document.getElementById(action).onclick = run(async () => { await native.liveActivities.perform('demo-timer',action); await refresh(); });
+    }
+    document.getElementById('end').onclick = run(async () => { await native.liveActivities.end('demo-timer'); await refresh(); });
+    if (native?.events) {
+      native.events.on('controls',render);
+      native.events.on('live-activities',() => run(refresh)());
+      window.addEventListener('htmlapplaunch',event => {
+        if (event.detail?.route === 'timer') document.getElementById('timer').scrollIntoView();
+      });
+      run(refresh)();
+      show('Ready. Publish the controls or start a timer.');
+    }
+  </script>
+</body>
+</html>

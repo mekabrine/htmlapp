@@ -47,7 +47,7 @@ enum HTMLAppLiveActivityService {
                 guard JSONSerialization.isValidJSONObject(raw), let bytes = try? JSONSerialization.data(withJSONObject: raw),
                       let decoded = try? JSONDecoder().decode([HTMLAppLiveActivityAction].self, from: bytes),
                       decoded.count <= 3, Set(decoded.map(\.id)).count == decoded.count,
-                      decoded.allSatisfy({ !$0.id.isEmpty && $0.id.count <= 40 && !$0.title.isEmpty && $0.title.count <= 30 && ["open", "end"].contains($0.kind) }) else { throw Failure.badArguments }
+                      decoded.allSatisfy({ !$0.id.isEmpty && $0.id.count <= 40 && !$0.title.isEmpty && $0.title.count <= 30 && ["open", "end", "pause", "resume", "complete"].contains($0.kind) }) else { throw Failure.badArguments }
                 actions = decoded
             }
         }
@@ -104,8 +104,21 @@ enum HTMLAppLiveActivityService {
                 : clip(args["compactLabel"], max: 10),
             actions: actions, presentation: presentation,
             staleDate: args["staleDateMs"] is NSNull ? nil : staleMs.map { Date(timeIntervalSince1970: $0 / 1000) } ?? previous?.staleDate,
-            timeRange: range, display: display, timeFormat: format
+            timeRange: range, display: display, timeFormat: format,
+            pausedRemaining: args["timeRange"] != nil || args["primaryDeadlineMs"] != nil ? nil : previous?.pausedRemaining,
+            pausedElapsed: args["timeRange"] != nil || args["primaryDeadlineMs"] != nil ? nil : previous?.pausedElapsed
         )
+    }
+
+    static func controlTemplate(appID: String, args: [String: Any]) throws -> Data {
+        guard let id = validID(args["id"]), !clip(args["title"], max: 75).isEmpty else { throw Failure.badArguments }
+        let attributes = HTMLAppLiveActivityAttributes(appID: appID, activityID: id,
+            title: clip(args["title"], max: 75), systemSymbol: symbol(args["systemSymbol"]))
+        let state = try content(args)
+        try validatePayload(attributes: attributes, state: state)
+        let duration = (args["durationSeconds"] as? NSNumber)?.doubleValue
+        if let duration, !duration.isFinite || !(1...28_800).contains(duration) { throw Failure.badArguments }
+        return try JSONEncoder().encode(HTMLAppControlActivityTemplate(attributes: attributes, state: state, durationSeconds: duration))
     }
 
     private static func matching(appID: String, id: String) -> Activity<HTMLAppLiveActivityAttributes>? {
@@ -127,6 +140,8 @@ enum HTMLAppLiveActivityService {
                  "footer": $0.content.state.footer ?? "",
                  "backgroundHex": $0.content.state.backgroundHex ?? "",
                  "compactLabel": $0.content.state.compactLabel ?? "",
+                 "isPaused": $0.content.state.pausedRemaining != nil,
+                 "pausedRemainingSeconds": $0.content.state.pausedRemaining ?? 0,
                  "state": String(describing: $0.activityState)]
             }
     }
