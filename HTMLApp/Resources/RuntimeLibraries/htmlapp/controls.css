@@ -8,6 +8,18 @@
   padding: .5rem .75rem;
 }
 .ha-setting-label { min-width: 0; overflow-wrap: anywhere; }
+.ha-form { display:grid; gap:1rem; min-width:0; }
+.ha-field { display:grid; gap:.35rem; min-width:0; }
+.ha-field > :is(input,select,textarea) { width:100%; }
+.ha-field small { opacity:.75; }
+.ha-field [aria-invalid="true"] { border-color:var(--ha-error,#d42c38); }
+.ha-tabs { display:flex; gap:.5rem; overflow-x:auto; padding:.25rem; }
+.ha-tabs [aria-selected="true"] { background:var(--ha-accent,#1968cd); color:white; }
+.ha-dialog { box-sizing:border-box; max-width:min(32rem,calc(100vw - 2rem)); max-height:85dvh; overflow:auto;
+  border:1px solid var(--ha-border,#85878b); border-radius:1rem; padding:1.25rem;
+  background:var(--ha-surface,Canvas); color:var(--ha-foreground,CanvasText); font:inherit; }
+.ha-dialog::backdrop { background:rgb(0 0 0 / .45); }
+.ha-dialog-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.75rem; margin-top:1rem; }
 .ha-button, .ha-input, .ha-slider {
   box-sizing: border-box;
   font: inherit;
@@ -28,3 +40,4 @@
   outline: 2px solid var(--ha-accent, #1968cd);
   outline-offset: 2px;
 }
+

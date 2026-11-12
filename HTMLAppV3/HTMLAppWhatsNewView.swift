@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.11"
-    static let compiledBuild = "116"
+    static let compiledVersion = "1.9.12"
+    static let compiledBuild = "117"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,12 +32,15 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "richer-live-activities", title: "More expressive Live Activities",
-                  description: "Forge can add charts, waveforms, gauges, and routes to the Lock Screen and Dynamic Island. Timer activities can include Pause, Resume, and Complete actions.",
-                  symbol: "waveform.path", tint: .purple),
-            Entry(id: "project-control-center", title: "Your projects in Control Center",
-                  description: "On iOS 18 and later, add HTMLApp buttons and toggles, then choose a project and action for each. Find published controls in Widgets & Background.",
-                  symbol: "switch.2", tint: .blue)
+            Entry(id: "forge-fixers", title: "Smarter checks and repairs",
+                  description: "Forge fixes known API mistakes locally and checks generated apps for broken scripts, blocked buttons, and layout problems. Fast checks request a focused repair only when a problem is found.",
+                  symbol: "wrench.and.screwdriver", tint: .purple),
+            Entry(id: "consistent-controls", title: "More consistent controls",
+                  description: "Forge has shared building blocks for switches, forms, tabs, and confirmation dialogs, with better touch targets and keyboard support.",
+                  symbol: "slider.horizontal.3", tint: .blue),
+            Entry(id: "device-aware", title: "Better device compatibility",
+                  description: "Forge receives your system version and native API guidance. Browser face detection can use HTMLApp’s native Vision bridge, with bounded image sampling and permission handling.",
+                  symbol: "iphone.and.arrow.forward", tint: .green)
         ]
     }
 }
