@@ -278,12 +278,43 @@ jobs:
         run: python3 scripts/verify-ipa.py HTMLApp.ipa
 
       - name: Upload HTMLApp IPA
+        id: ipa_upload
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: HTMLApp-ipa
           path: HTMLApp.ipa
           if-no-files-found: error
           retention-days: 30
+          overwrite: true
+          compression-level: 0
+
+      # Retry only delivery; reuse the already built and verified IPA.
+      - name: Retry IPA upload after artifact service failure
+        id: ipa_upload_retry
+        if: ${{ !cancelled() && steps.ipa_upload.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: HTMLApp-ipa
+          path: HTMLApp.ipa
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+          compression-level: 0
+
+      - name: Final IPA upload attempt
+        id: ipa_upload_final
+        if: ${{ !cancelled() && steps.ipa_upload_retry.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: HTMLApp-ipa
+          path: HTMLApp.ipa
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+          compression-level: 0
 
       - name: Deliver IPA to Discord (optional)
         if: ${{ success() }}
@@ -291,6 +322,13 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         shell: bash
         run: bash scripts/deliver-widgets.sh
+
+      - name: Report artifact delivery failure
+        if: ${{ !cancelled() && steps.ipa_upload.outcome == 'failure' && steps.ipa_upload_retry.outcome == 'failure' && steps.ipa_upload_final.outcome == 'failure' }}
+        shell: bash
+        run: |
+          echo '::error::The app built and the IPA passed validation, but GitHub artifact delivery failed after three upload attempts. Check the optional Discord delivery result for a direct IPA attachment. This is an upload failure, not a compilation failure.'
+          exit 1
 
       - name: Notify Discord if build fails
         if: ${{ failure() }}
@@ -318,4 +356,5 @@ jobs:
           curl --fail --silent --show-error --retry 2 --connect-timeout 10 --max-time 25 \
             -H 'Content-Type: application/json' \
             --data-binary "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
+
 
