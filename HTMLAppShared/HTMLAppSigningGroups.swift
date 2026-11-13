@@ -93,18 +93,35 @@ enum HTMLAppProviderStorage {
         return candidates.contains(selectedGroup) ? selectedGroup : candidates.first
     }
 
-    // Only self-repair signing groups that the user already chose, or the
-    // original private app group. Never silently opt into another provider's
-    // shared group: its other signed apps may read published widget snapshots.
+    // Automatic recovery is authorized for widget snapshots. Only choose groups
+    // declared by both binaries and actually accessible to this process.
+    private static let recoveryLock = NSRecursiveLock()
+    private static var verifiedGroup: String?
     @discardableResult
     static func repairPreviouslyApprovedGroup() -> String? {
-        if HTMLAppSharedContainer.appGroupAvailable { return nil }
+        guard Bundle.main.bundleURL.pathExtension != "appex" else { return nil }
+        recoveryLock.lock()
+        defer { recoveryLock.unlock() }
+        let current = selectedGroup
+        if verifiedGroup == current { return nil }
+        if HTMLAppSigningGroups.common.contains(current), let root = directory(group: current) {
+            do {
+                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+                let probe = root.appendingPathComponent(".htmlapp-write-probe-" + UUID().uuidString)
+                defer { try? FileManager.default.removeItem(at: probe) }
+                let bytes = Data("HTMLApp".utf8)
+                try bytes.write(to: probe, options: .atomic)
+                guard try Data(contentsOf: probe) == bytes else { throw CocoaError(.fileWriteUnknown) }
+                verifiedGroup = current
+                return nil
+            } catch { /* Try another authorized common container below. */ }
+        }
         if originalAvailable {
             do {
                 try activate(HTMLAppSharedContainer.originalGroupID)
                 return "Restored the original authorized App Group."
             } catch {
-                return "App Group repair could not finish: \(error.localizedDescription)"
+                // Try other authorized groups if this container cannot be written.
             }
         }
         if let approved = UserDefaults.standard.string(forKey: "htmlapp.approvedWidgetGroup"),
@@ -113,10 +130,16 @@ enum HTMLAppProviderStorage {
                 try activate(approved)
                 return "Recovered your previously approved widget App Group."
             } catch {
-                return "Previously approved App Group couldn't be restored: \(error.localizedDescription)"
+                // A newly installed signing profile may need a different group.
             }
         }
-        return "App Group permission is missing from this signed app or widget. Re-sign both with the same authorized entitlement, or explicitly select a compatible group in Widget Settings."
+        for group in compatibleGroups {
+            do {
+                try activate(group)
+                return "Automatically recovered widget storage using an authorized compatible group."
+            } catch { continue }
+        }
+        return "No authorized shared App Group is accessible. Automatic recovery cannot change signing profiles; both binaries need a matching authorized group."
     }
 
     static func activate(_ group: String) throws {
@@ -135,3 +158,4 @@ enum HTMLAppProviderStorage {
         // No saved apps or old snapshots are copied into a provider's shared group.
     }
 }
+

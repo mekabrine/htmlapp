@@ -116,6 +116,9 @@ struct HTMLAppMain: App {
                 }
                 .onChange(of: scenePhase) { phase in
                     if phase == .active {
+                        if HTMLAppProviderStorage.repairPreviouslyApprovedGroup() != nil {
+                            HTMLAppWidgetReloadCoordinator.request()
+                        }
                         deliverSystemControlOpen()
                         Task { await HTMLAppOfflineSpeech.shared.preloadIfSelected() }
                         Task {
@@ -1755,3 +1758,4 @@ final class AppStore: ObservableObject {
         }
     }
 }
+

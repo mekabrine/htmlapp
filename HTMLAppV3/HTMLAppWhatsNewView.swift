@@ -37,7 +37,13 @@ enum HTMLAppReleaseNotes {
                   symbol: "arrow.uturn.backward", tint: .purple),
             Entry(id: "files-reading", title: "Read picked files inside apps",
                   description: "Apps can fetch files selected through HTMLApp’s Files picker, including MP3s. Imported bytes are read in small chunks instead of relying on WebKit to fetch local file URLs.",
-                  symbol: "doc", tint: .blue)
+                  symbol: "doc", tint: .blue),
+            Entry(id: "widget-recovery", title: "Widgets recover automatically",
+                  description: "HTMLApp automatically selects an accessible signing group shared with its widget extension when widget storage is unavailable. Missing signing permissions still require a correctly signed installation.",
+                  symbol: "arrow.triangle.2.circlepath", tint: .green),
+            Entry(id: "widget-warning", title: "Widget warnings stay visible",
+                  description: "On phones, widget publication errors appear at the top of the screen so they stay clear of the tab bar.",
+                  symbol: "exclamationmark.bubble", tint: .orange)
         ]
     }
 }
@@ -142,3 +148,4 @@ struct HTMLAppWhatsNewView: View {
         .accessibilityElement(children: .combine)
     }
 }
+

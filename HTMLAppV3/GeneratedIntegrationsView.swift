@@ -34,7 +34,7 @@ struct GeneratedIntegrationsView: View {
             if !HTMLAppSharedContainer.appGroupAvailable {
                 Section("Widget Signing Problem") {
                     Label("App Group storage is unavailable on this installation.", systemImage: "exclamationmark.triangle")
-                    Text("HTMLApp will try to restore a previously approved group. If it cannot, both binaries must be signed with an authorized matching App Group.")
+                    Text("HTMLApp automatically tries accessible groups declared by both signed binaries. If none works, both binaries must be signed with an authorized matching App Group.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     if let suggested = HTMLAppProviderStorage.recommendedCompatibleGroup {
@@ -385,4 +385,5 @@ struct GeneratedIntegrationsView: View {
         }
     }
 }
+
 

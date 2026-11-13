@@ -458,6 +458,7 @@ final class HTMLAppWidgetRepository {
 
 enum HTMLAppWidgetStore {
     static func repository() throws -> HTMLAppWidgetRepository {
+        _ = HTMLAppProviderStorage.repairPreviouslyApprovedGroup()
         guard let directory = HTMLAppSharedContainer.directory else { throw HTMLAppWidgetStoreError.unavailable }
         return HTMLAppWidgetRepository(directory: directory) {
             HTMLAppSharedContainer.appGroupID == HTMLAppSharedContainer.originalGroupID ? UserDefaults(suiteName: HTMLAppSharedContainer.originalGroupID)?.data(forKey: "htmlapp.shared.widgets.v1") : nil
@@ -854,5 +855,6 @@ enum HTMLAppWidgetNetwork {
         }
     }
 }
+
 
 

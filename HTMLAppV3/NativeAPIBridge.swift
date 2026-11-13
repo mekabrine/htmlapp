@@ -2406,6 +2406,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     }
 
     private func configureWidget(id: String, args: [String: Any]) {
+        if appID != "PREVIEW" { _ = HTMLAppProviderStorage.repairPreviouslyApprovedGroup() }
         guard let widgetID = validGeneratedIdentifier(args["id"] as? String),
               let snapshotArgs = args["snapshot"] as? [String: Any] else {
             reject(id, code: "invalid_arguments", message: "widgets.configure requires a safe id and snapshot object.")
@@ -2483,7 +2484,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             definition.dataBindings = Dictionary(uniqueKeysWithValues: valid.prefix(7).map { ($0.key, $0.value) })
         }
         if appID != "PREVIEW" && !HTMLAppSharedContainer.appGroupAvailable {
-            reject(id, code: "app_group_unavailable", message: "Widget shared storage is unavailable. Open Widgets & Background to select an authorized signing group. Both app and extension require matching App Group authorization.")
+            reject(id, code: "app_group_unavailable", message: "Automatic widget storage recovery found no accessible common App Group. Both signed binaries need matching authorized App Group profiles.")
             return
         }
         if appID != "PREVIEW" {
@@ -3938,7 +3939,9 @@ enum HTMLNativeAPIScript {
             panel = document.createElement('div');
             panel.id = '__htmlappWidgetError';
             panel.setAttribute('role', 'alert');
-            panel.style.cssText = 'position:fixed;bottom:12px;left:12px;right:12px;z-index:2147483647;padding:16px;background:#321b20;color:white;border:1px solid #f99;border-radius:12px;font:14px system-ui;max-height:40vh;overflow:auto';
+            const phone = /iPhone|iPod/i.test(navigator.userAgent || '') || !window.matchMedia?.('(min-width: 600px)').matches;
+            const edge = phone ? 'top:calc(env(safe-area-inset-top, 0px) + 12px);' : 'bottom:12px;';
+            panel.style.cssText = 'position:fixed;' + edge + 'left:12px;right:12px;z-index:2147483647;padding:16px;background:#321b20;color:white;border:1px solid #f99;border-radius:12px;font:14px system-ui;max-height:40vh;overflow:auto';
             (document.body || document.documentElement).appendChild(panel);
           }
           panel.replaceChildren();
@@ -4645,4 +4648,5 @@ questionmark.circle info.circle exclamationmark.triangle hand.tap hand.raised ey
 square.on.square rectangle.portrait.on.rectangle.portrait app.badge apps.iphone square.grid.3x3.fill
 """.split(whereSeparator: \.isWhitespace).map(String.init)
 }
+
 
