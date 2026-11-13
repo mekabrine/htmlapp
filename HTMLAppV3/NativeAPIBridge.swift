@@ -1887,6 +1887,8 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             }
         case "files.pick":
             withPermission(.files, id: id) { [weak self] in self?.pickFiles(id: id, args: args) }
+        case "files.read":
+            withPermission(.files, id: id) { [weak self] in self?.readPickedPhoto(id: id, args: args, namespace: "files") }
         case "contacts.pick":
             withPermission(.contacts, id: id) { [weak self] in self?.pickContact(id: id) }
         case "contacts.list":
@@ -3141,11 +3143,11 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         }
     }
 
-    private func readPickedPhoto(id: String, args: [String: Any]) {
+    private func readPickedPhoto(id: String, args: [String: Any], namespace: String = "photos") {
         guard let relative = args["url"] as? String,
-              relative.hasPrefix("native-imports/photos/"),
+              (namespace == "files" ? relative.hasPrefix("native-imports/files/") : relative.hasPrefix("native-imports/photos/")),
               let file = localResourceURL(relative) else {
-            reject(id, code: "invalid_photo_url", message: "This picked photo is no longer available.")
+            reject(id, code: "invalid_import_url", message: "This picked file is no longer available in this saved app.")
             return
         }
         let requestedOffset = args["offset"] as? Int ?? 0
@@ -3154,8 +3156,8 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             do {
                 let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
                 let size = (attributes[.size] as? NSNumber)?.intValue ?? 0
-                guard size > 0 && size <= 55_000_000 else {
-                    await self?.reject(id, code: "photo_too_large", message: "This image is larger than the per-photo 55 MB import limit.")
+                guard size >= 0 && size <= (namespace == "files" ? 150_000_000 : 55_000_000) else {
+                    await self?.reject(id, code: "import_too_large", message: "The imported file exceeds the read limit (Files: 150 MB; Photos: 55 MB).")
                     return
                 }
                 // Chunk the response to bound WebKit message size. A single
@@ -3961,14 +3963,14 @@ enum HTMLNativeAPIScript {
       // PHPicker returns file-backed originals. Fetch the bytes in bounded
       // chunks instead of sending one huge base64 response through WKWebView.
       const originalFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : () => Promise.reject(new Error('Fetch unavailable'));
-      const readPickedPhoto = async (url, options) => {
+      const readPickedPhoto = async (url, options, method = 'photos.read') => {
         const parts = [];
         let offset = 0;
         let total = null;
         let mime = 'application/octet-stream';
         while (true) {
           if (options?.signal?.aborted) throw new DOMException('Import cancelled', 'AbortError');
-          const piece = await call('photos.read', { url, offset, length: 192 * 1024 });
+          const piece = await call(method, { url, offset, length: 192 * 1024 });
           const raw = atob(piece.data || '');
           const bytes = new Uint8Array(raw.length);
           for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
@@ -3986,6 +3988,9 @@ enum HTMLNativeAPIScript {
       window.fetch = (resource, options) => {
         const value = typeof resource === 'string' ? resource : (resource?.url || '');
         const normalized = value.startsWith('./') ? value.slice(2) : value;
+        if (normalized.startsWith('native-imports/files/')) {
+          return readPickedPhoto(normalized, options, 'files.read');
+        }
         if (!normalized.startsWith('native-imports/photos/')) {
           return originalFetch(resource, options);
         }
@@ -4484,7 +4489,8 @@ enum HTMLNativeAPIScript {
           })
         },
         files: {
-          pick: (options = {}) => call('files.pick', options)
+          pick: (options = {}) => call('files.pick', options),
+          read: (url, options = {}) => call('files.read', { ...options, url })
         },
         contacts: {
           pick: () => call('contacts.pick'),

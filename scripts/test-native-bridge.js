@@ -23,6 +23,12 @@ async function testNativeRPC() {
     webkit: { messageHandlers: { htmlappNative: {
       postMessage(message) {
         sent.push(message);
+        if (message.method === 'files.read') {
+          const offset = message.args.offset || 0;
+          queueMicrotask(() => window.__htmlappNativeResolve(message.id, true,
+            {data: Buffer.from(offset === 0 ? 'MP' : '3!').toString('base64'), total:4, complete:offset === 2, mimeType:'audio/mpeg'}));
+          return;
+        }
         if (message.method === 'ui.controls' && message.args.title === 'Pending') return;
         if (message.method === 'ui.controls') {
           queueMicrotask(() => window.__htmlappNativeResolve(message.id, true, {cancelled: false, values: {sound: true}}));
@@ -61,6 +67,12 @@ async function testNativeRPC() {
     AbortController, DOMException, Response, Blob, atob
   }, { filename: 'HTMLNativeAPIScript.js' });
   const api = window.HTMLAppNative;
+  const imported = await window.fetch('native-imports/files/test/song.mp3');
+  assert.equal(imported.headers.get('Content-Type'), 'audio/mpeg');
+  assert.equal(await imported.text(), 'MP3!');
+  assert.deepEqual(sent.filter(m => m.method === 'files.read').map(m => m.args.offset), [0,2]);
+  const abort = new AbortController(); abort.abort();
+  await assert.rejects(window.fetch('native-imports/files/test/song.mp3', {signal:abort.signal}), /cancelled/);
   assert.equal(api.protocolVersion, 2);
   assert.equal(await api.capabilities.has('network.request'), true);
   assert.equal(await api.capabilities.has('nonexistent.method'), false);

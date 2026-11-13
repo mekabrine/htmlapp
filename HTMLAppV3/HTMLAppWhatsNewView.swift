@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.12"
-    static let compiledBuild = "117"
+    static let compiledVersion = "1.9.13"
+    static let compiledBuild = "118"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,15 +32,12 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "forge-fixers", title: "Smarter checks and repairs",
-                  description: "Forge fixes known API mistakes locally and checks generated apps for broken scripts, blocked buttons, and layout problems. Fast checks request a focused repair only when a problem is found.",
-                  symbol: "wrench.and.screwdriver", tint: .purple),
-            Entry(id: "consistent-controls", title: "More consistent controls",
-                  description: "Forge has shared building blocks for switches, forms, tabs, and confirmation dialogs, with better touch targets and keyboard support.",
-                  symbol: "slider.horizontal.3", tint: .blue),
-            Entry(id: "device-aware", title: "Better device compatibility",
-                  description: "Forge receives your system version and native API guidance. Browser face detection can use HTMLApp’s native Vision bridge, with bounded image sampling and permission handling.",
-                  symbol: "iphone.and.arrow.forward", tint: .green)
+            Entry(id: "forge-restored", title: "Forge, back to familiar behavior",
+                  description: "Restored Forge’s generation and testing behavior from version 1.9.11, removing the stricter API checks and automatic fixers from the previous update.",
+                  symbol: "arrow.uturn.backward", tint: .purple),
+            Entry(id: "files-reading", title: "Read picked files inside apps",
+                  description: "Apps can fetch files selected through HTMLApp’s Files picker, including MP3s. Imported bytes are read in small chunks instead of relying on WebKit to fetch local file URLs.",
+                  symbol: "doc", tint: .blue)
         ]
     }
 }

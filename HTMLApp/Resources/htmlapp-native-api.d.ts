@@ -79,6 +79,7 @@ export type HTMLAppNativeMethod =
   | 'externalApps.maps'
   | 'externalApps.shortcuts'
   | 'files.pick'
+  | 'files.read'
   | 'gamepad.list'
   | 'gamepad.start'
   | 'gamepad.stop'

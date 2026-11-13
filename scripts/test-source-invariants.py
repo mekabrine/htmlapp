@@ -612,7 +612,9 @@ assert 'DispatchQueue.global(qos: .userInitiated).async' in native
 assert 'let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)' in native
 assert 'case "photos.read":' in native
 assert 'relative.hasPrefix("native-imports/photos/")' in native
-assert "call('photos.read', { url, offset, length: 192 * 1024 })" in native
+assert "call(method, { url, offset, length: 192 * 1024 })" in native
+assert "readPickedPhoto(normalized, options, 'files.read')" in native
+assert 'relative.hasPrefix("native-imports/files/")' in native
 assert "return readPickedPhoto(normalized, options)" in native
 assert "length: 192 * 1024" in native
 assert "FileHandle(forReadingFrom: file)" in native

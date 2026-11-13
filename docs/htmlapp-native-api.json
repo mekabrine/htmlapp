@@ -83,6 +83,7 @@
     "externalApps.maps",
     "externalApps.shortcuts",
     "files.pick",
+    "files.read",
     "gamepad.list",
     "gamepad.start",
     "gamepad.stop",
@@ -1107,6 +1108,21 @@
       "nativeCancellation": false,
       "arguments": {},
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "files.read": {
+      "minimumIOS": "16.0",
+      "permission": "files",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "url": "string",
+        "offset": "number",
+        "length": "number"
+      },
+      "requiredArguments": [
+        "url"
+      ],
       "resultType": "unknown"
     },
     "gamepad.list": {

@@ -1315,10 +1315,10 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         verificationReport = ""
         qaRepairResponseBytes = 0
 
-        let normalized = ForgeLocalFixers.repair(HTMLQualityChecks.normalizeDocument(streamedHTML))
+        let normalized = HTMLQualityChecks.normalizeDocument(streamedHTML)
         if normalized != streamedHTML {
             streamedHTML = normalized
-            AIDebugTraceStore.shared.append("LOCAL AUTOFIX", "Applied document and known API compatibility fixes without using AI.")
+            AIDebugTraceStore.shared.append("LOCAL AUTOFIX", "Added missing doctype or viewport metadata without using AI.")
         }
         let structural = HTMLQualityChecks.issues(in: streamedHTML)
         let functional = Self.coreWorkflowWarnings(prompt: originalPrompt, html: streamedHTML)
@@ -1344,7 +1344,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         let blocking = HTMLQualityChecks.blockingIssues(structural) +
             (testMode == .balanced ? functional.filter { $0.hasPrefix("Core workflow:") } : []) +
             runtime.filter { issue in
-                ForgeLocalFixers.blocking(issue) || issue.hasPrefix("JavaScript syntax in inline script") ||
+                issue.hasPrefix("JavaScript syntax in inline script") ||
                 issue.hasPrefix("JavaScript did not compile") ||
                 issue.hasPrefix("Runtime: document body rendered empty") ||
                 issue.hasPrefix("Runtime: horizontal page overflow") ||
@@ -1360,8 +1360,10 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         AIDebugTraceStore.shared.append("QA CLASSIFICATION",
             "Blocking: \(blocking.count); Advisory: \(advisory.count)\n" +
             (blocking + advisory).joined(separator: "\n"))
-        if testMode == .fast && blocking.isEmpty {
-            verificationReport = "Fast local smoke checks passed (not every button was exercised). " + advisory.joined(separator: " ")
+        if testMode == .fast {
+            verificationReport = blocking.isEmpty
+                ? "Fast local smoke checks passed (not every button was exercised). " + advisory.joined(separator: " ")
+                : "Fast checks found problems; AI repair skipped to save time: " + blocking.joined(separator: " ")
             return
         }
         if blocking.isEmpty {
@@ -1405,7 +1407,6 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         try Task.checkCancellation()
         if streamedHTML != baseline {
             phase = "Retesting changed code"
-            streamedHTML = ForgeLocalFixers.repair(streamedHTML)
             let newStructural = HTMLQualityChecks.issues(in: streamedHTML)
             let newRuntime = await HTMLRuntimeVerifier.verify(html: streamedHTML)
             // Re-run the same core user-workflow checks after a repair.
@@ -1415,7 +1416,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             let remaining = HTMLQualityChecks.blockingIssues(newStructural) +
                 newFunctional.filter { $0.hasPrefix("Core workflow:") } +
                 newRuntime.filter {
-                    ForgeLocalFixers.blocking($0) || $0.hasPrefix("JavaScript syntax in inline script") ||
+                    $0.hasPrefix("JavaScript syntax in inline script") ||
                     $0.hasPrefix("JavaScript did not compile") ||
                     $0.hasPrefix("Runtime: document body rendered empty") ||
                     $0.hasPrefix("Runtime: horizontal page overflow") ||
@@ -2871,7 +2872,7 @@ Fix ONLY the specified failures, preserving all unrelated working controls and s
 Return a minimal unique SEARCH/REPLACE patch under <htmlapp_patch>...</htmlapp_patch>.
 If the source cannot be patched safely, return a complete <htmlapp_code>...</htmlapp_code>.
 Avoid rewriting for visual taste; do not claim other tests have run.
-""" + "\n" + ForgeLocalFixers.deviceGuidance + "\n" + ForgeNativeTypedCatalog.promptContract
+"""
         let user = """
 REVIEW PASS: \(pass)
 
@@ -3507,4 +3508,3 @@ struct ForgeEditIconContext {
         return result
     }
 }
-

@@ -133,8 +133,7 @@ enum HTMLAppOfflineForge {
         Use inline CSS and JavaScript only; no CDNs, external images, fetch, external fonts or cloud APIs.
         Implement actual buttons and persistence via localStorage when appropriate.
         Make a touch-friendly, responsive mobile app. Never include Markdown fences or explanations.
-        Use semantic labels, form validation, button/input min-height 44px and border-box sizing. Inline CSS for fixed switch tracks and centered thumbs; never stretch switches. Include useful denied/unsupported fallbacks and stop camera tracks on exit. Do not invent native APIs.
-        """ + "\n" + ForgeLocalFixers.deviceGuidance)
+        """)
         let input: String
         if original.isEmpty {
             input = "Make a useful compact app for: " + String(trimmed.prefix(1800)) + "\nPlan: " + planning
@@ -144,7 +143,6 @@ enum HTMLAppOfflineForge {
         }
         var result = Self.extractHTML((try await coder.respond(to: input)).content)
         for attempt in 0...effort.repairLimit {
-            result = ForgeLocalFixers.repair(result)
             try Task.checkCancellation()
             guard ProcessInfo.processInfo.thermalState != .critical else { throw Error.thermal }
             progress(attempt == 0 ? "Checking offline output" : "Repairing offline output")
@@ -234,4 +232,3 @@ struct HTMLAppOfflineForgeConsentView: View {
         }
     }
 }
-
