@@ -74,11 +74,10 @@ assert "exploringStyles = true" in source("HTMLAppV3/AIGenerationView.swift"), "
 assert "Never auto-open an already saved app" in source("HTMLAppV3/LibraryUI.swift"), "Saved app must not be forced open"
 assert "HTMLAppForgeCompletionFeedback.announce" in source("HTMLAppV3/AIGenerationView.swift"), "Completion feedback must be called"
 assert "No microphone audio was recorded" in source("HTMLAppV3/ForgeDictation.swift"), "Whisper must diagnose empty recordings"
-voice_handoff = source("HTMLAppV3/AIGenerationView.swift").split("private func acceptShortcutRequest(", 1)[1].split("private func startForgeActivity(", 1)[0]
-assert "startPromptRecording()" in voice_handoff, "Widget must start microphone in the regular AI generator"
-assert 'shortcutSource = "widgetMic"' in source("HTMLAppV3/LibraryUI.swift")
-assert "HTMLAppVoiceCreateView(" not in source("HTMLAppV3/LibraryUI.swift")
-assert not (root / "HTMLAppV3/HTMLAppVoiceCreateView.swift").exists(), "The duplicate widget capture screen must remain removed"
+lock_voice = source("HTMLAppV3/LockScreenVoiceCreateView.swift")
+assert "startFromLockScreen()" in lock_voice and 'shortcutSource: "libraryMic"' in lock_voice
+assert "250_000_000" in source("HTMLAppV3/ForgeDictation.swift"), "Whisper Lock Screen warm-up must capture for a quarter second"
+assert "store.lockScreenVoiceCreatePresented = true" in source("HTMLAppV3/LibraryUI.swift")
 assert "shortcutSource = \"siri\"" in source("HTMLAppV3/LibraryUI.swift"), "Normal creation must not inherit tap-to-stop mode"
 assert "Tap to stop recording." in source("HTMLAppV3/AIGenerationView.swift")
 assert "generateAfterVoiceTranscription" in source("HTMLAppV3/AIGenerationView.swift")
@@ -129,7 +128,7 @@ assert 'let config = attempt == 0 ? preferredConfig : recoveryConfig' in style_s
 assert 'AI RESPONSE METADATA' in ai and 'reasoning_tokens' in ai, "Debug trace must report completion truncation diagnostics"
 assert 'appearance: requestedAppearance' in source("HTMLAppV3/AIGenerationView.swift")
 assert 'widgetTapRecordingFinished = true' in source("HTMLAppV3/AIGenerationView.swift")
-assert 'voiceCreateRequest += 1' in core
+assert 'lockScreenVoiceCreatePresented = true' in core
 assert 'deferredExternalURL' in core
 assert 'RemoteHTMLImport.sourceURL(from: url)' in core
 assert 'RemoteHTMLImport.download(url)' in source("HTMLAppV3/LibraryUI.swift")
@@ -159,7 +158,8 @@ assert 'Button { store.installWebClip(for: app) }' in source("HTMLAppV3/LibraryU
 assert "transcribingOffline" in source("HTMLAppV3/ForgeDictation.swift")
 assert "pendingFloatingVoiceFeedback" in source("HTMLAppV3/AIGenerationView.swift")
 assert 'ForEach(0..<max(3, (styleOptions.map(\\.id).max() ?? -1) + 1), id: \\.self)' in source("HTMLAppV3/AIGenerationView.swift")
-assert "htmlapp.voiceCreatePending" in core and "htmlapp.voiceCreatePending" in source("HTMLAppV3/LibraryUI.swift")
+assert "htmlapp.voiceCreatePending" in source("HTMLAppV3/LibraryUI.swift"), "Legacy pending voice requests must migrate"
+assert "cachedLaunchApp(id:" in core and "ensureLibraryLoaded()" in core
 assert 'let refreshed = definition // Display committed' in source("HTMLAppWidgets/HTMLAppWidgets.swift")
 assert 'content.containerBackground(for: .widget) { Color(.secondarySystemBackground) }' in source("HTMLAppWidgets/HTMLAppVoiceCreateWidget.swift")
 assert 'case "tabs.configure"' in native and 'case "bluetooth.scan"' in native

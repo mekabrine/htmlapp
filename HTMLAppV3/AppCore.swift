@@ -17,37 +17,30 @@ struct HTMLAppMain: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        _ = HTMLAppGPUCache.maintenance
-        if let diagnosis = HTMLAppProviderStorage.repairPreviouslyApprovedGroup() {
-            NSLog("HTMLApp widget signing status: %@", diagnosis)
-        }
-        if #available(iOS 16.2, *) {
-            HTMLAppSiriShortcuts.updateAppShortcutParameters()
-        }
         HTMLNotificationCenterDelegate.shared.activate()
-        if #available(iOS 16.2, *) {
-            Task { await HTMLAppForgeActivityService.recoverStale() }
-        }
         HTMLAppBackgroundCoordinator.shared.register()
         #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             HTMLAppForgeContinuedProcessing.register()
         }
         #endif
-        HTMLAppBackgroundCoordinator.shared.schedule()
-        ForgeBackgroundUpload.shared.reconnectIfNeeded()
     }
 
     var body: some Scene {
         WindowGroup {
-            HTMLAppDisplayRoot()
-                .environmentObject(store)
-                .fullScreenCover(isPresented: Binding(
-                    get: { store.runningApp != nil },
-                    set: { if !$0 { store.runningApp = nil } }
-                )) {
+            Group {
+                if store.lockScreenVoiceCreatePresented {
+                    LockScreenVoiceCreateView {
+                        store.lockScreenVoiceCreatePresented = false
+                    }
+                    .environmentObject(store)
+                } else if store.runningApp != nil {
                     HTMLAppRunningCover(store: store)
+                } else {
+                    HTMLAppDisplayRoot()
                 }
+            }
+                .environmentObject(store)
                 .fullScreenCover(isPresented: Binding(
                     get: { !onboardingComplete },
                     set: { if !$0 { onboardingComplete = true } }
@@ -73,8 +66,11 @@ struct HTMLAppMain: App {
                     #if DEBUG
                     prepareUITestImportsIfRequested()
                     #endif
-                    store.claimShareExtensionFiles()
-                    checkVersionOnLaunch()
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 220_000_000)
+                        guard store.runningApp == nil, !store.lockScreenVoiceCreatePresented else { return }
+                        checkVersionOnLaunch()
+                    }
                     store.setExternalHTMLImportReady(
                         onboardingComplete && !presentingWhatsNew
                     )
@@ -99,14 +95,31 @@ struct HTMLAppMain: App {
                     store.runningApp = nil
                 }
                 .task {
+                    // Let a cold URL/Lock Screen route win the first launch
+                    // turn. Library/cloud/model maintenance is unnecessary
+                    // while a requested app or voice capture is opening.
+                    try? await Task.sleep(nanoseconds: 180_000_000)
+                    guard store.runningApp == nil, !store.lockScreenVoiceCreatePresented else { return }
+                    store.ensureLibraryLoaded()
+                    store.claimShareExtensionFiles()
+                    _ = HTMLAppGPUCache.maintenance
                     await HTMLAppOfflineSpeech.shared.preloadIfSelected()
                     await store.syncICloud()
                     store.prepareAutomaticBackends()
                     await HTMLAppBackendProvisioning.flush()
                     await HTMLAppBackendDeletionQueue.flush()
+                    if let diagnosis = HTMLAppProviderStorage.repairPreviouslyApprovedGroup() {
+                        NSLog("HTMLApp widget signing status: %@", diagnosis)
+                    }
+                    if #available(iOS 16.2, *) {
+                        HTMLAppSiriShortcuts.updateAppShortcutParameters()
+                        await HTMLAppForgeActivityService.recoverStale()
+                    }
+                    HTMLAppBackgroundCoordinator.shared.schedule()
+                    ForgeBackgroundUpload.shared.reconnectIfNeeded()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: HTMLAppPortableDataStore.localDataChanged)) { _ in
-                    if HTMLAppICloudPreferences.includeData { store.requestICloudSync() }
+                    if store.libraryLoaded, HTMLAppICloudPreferences.includeData { store.requestICloudSync() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: HTMLAppNetworkStatus.notification)) { _ in
                     Task {
@@ -116,19 +129,23 @@ struct HTMLAppMain: App {
                 }
                 .onChange(of: scenePhase) { phase in
                     if phase == .active {
-                        if HTMLAppProviderStorage.repairPreviouslyApprovedGroup() != nil {
+                        if store.libraryLoaded, HTMLAppProviderStorage.repairPreviouslyApprovedGroup() != nil {
                             HTMLAppWidgetReloadCoordinator.request()
                         }
                         deliverSystemControlOpen()
-                        Task { await HTMLAppOfflineSpeech.shared.preloadIfSelected() }
-                        Task {
-                            store.prepareAutomaticBackends()
-                            await HTMLAppBackendProvisioning.flush()
-                            await HTMLAppBackendDeletionQueue.flush()
+                        if store.runningApp == nil, !store.lockScreenVoiceCreatePresented {
+                            Task { await HTMLAppOfflineSpeech.shared.preloadIfSelected() }
                         }
-                        store.requestICloudSync()
-                        store.claimShareExtensionFiles()
-                        store.presentNextExternalHTMLImport()
+                        if store.libraryLoaded {
+                            Task {
+                                store.prepareAutomaticBackends()
+                                await HTMLAppBackendProvisioning.flush()
+                                await HTMLAppBackendDeletionQueue.flush()
+                            }
+                            store.requestICloudSync()
+                            store.claimShareExtensionFiles()
+                            store.presentNextExternalHTMLImport()
+                        }
                     }
                 }
                 .onChange(of: onboardingComplete) { finished in
@@ -188,7 +205,12 @@ struct HTMLAppMain: App {
                     // A cold Lock Screen launch can race the What's New cover.
                     // Route once that cover is fully dismissed on older iOS.
                     if presentingWhatsNew && url.scheme?.lowercased() == "htmlapp" &&
-                        ["voice-create", "import", "open"].contains(url.host?.lowercased() ?? "") {
+                        ["voice-create", "open"].contains(url.host?.lowercased() ?? "") {
+                        recordVersionSeen()
+                        presentingWhatsNew = false
+                        store.openDeepLink(url)
+                    } else if presentingWhatsNew && url.scheme?.lowercased() == "htmlapp" &&
+                        url.host?.lowercased() == "import" {
                         deferredExternalURL = url
                         presentingWhatsNew = false
                     } else {
@@ -200,13 +222,15 @@ struct HTMLAppMain: App {
                         store.openDeepLink(url)
                     }
                 }
+                .onChange(of: store.runningApp?.id) { id in
+                    if id == nil { store.ensureLibraryLoaded() }
+                }
         }
     }
 
     private func deliverSystemControlOpen() {
         guard onboardingComplete, !presentingWhatsNew,
               let open = try? HTMLAppSystemControlStore.takeOpen() else { return }
-        guard store.apps.contains(where: { $0.id == open.appID }) else { return }
         var parts = URLComponents()
         parts.scheme = "htmlapp"
         parts.host = "open"
@@ -378,6 +402,8 @@ final class AppStore: ObservableObject {
     @Published private(set) var apps: [SavedHTMLApp] = []
     @Published private(set) var folders: [LibraryFolder] = []
     @Published var runningApp: SavedHTMLApp?
+    @Published private(set) var libraryLoaded = false
+    @Published var lockScreenVoiceCreatePresented = false
     @Published var pendingSwitchApp: SavedHTMLApp?
     private var switchRequest: UUID?
     @Published var pendingWebClipGuideApp: SavedHTMLApp?
@@ -390,10 +416,12 @@ final class AppStore: ObservableObject {
     @Published private(set) var libraryCorruptCopyName: String?
 
     private let libraryURL: URL
+    private let launchCacheURL: URL
     private let folderRecordsDefaultsKey = "htmlapp.libraryFolderRecords.v2"
     private let legacyFolderDefaultsKey = "htmlapp.libraryFolders"
     private var pendingInsertionFolderID: String?
     private var deferredLaunchSave: Task<Void, Never>?
+    private var pendingDirectOpenID: String?
 
     var orderedApps: [SavedHTMLApp] {
         apps.filter { $0.isFavorite == true } + apps.filter { $0.isFavorite != true }
@@ -404,13 +432,26 @@ final class AppStore: ObservableObject {
             .appendingPathComponent("HTMLApp", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         libraryURL = base.appendingPathComponent("library.json")
+        launchCacheURL = base.appendingPathComponent("LaunchCache", isDirectory: true)
+    }
+
+    func ensureLibraryLoaded() {
+        guard !libraryLoaded else { return }
         load()
         loadFoldersAndMigrate()
+        libraryLoaded = true
+        if let pendingDirectOpenID,
+           let index = apps.firstIndex(where: { $0.id == pendingDirectOpenID }) {
+            apps[index].lastOpenedAt = Date()
+            self.pendingDirectOpenID = nil
+            save()
+        }
         if !libraryLoadBlocked {
             FolderAppLinkStore.shared.prune(
                 validAppIDs: Set(apps.map(\.id)),
                 validFolderIDs: Set(folders.map(\.id))
             )
+            refreshLaunchCache()
         }
     }
 
@@ -735,6 +776,7 @@ final class AppStore: ObservableObject {
     }
 
     func launch(_ app: SavedHTMLApp) {
+        ensureLibraryLoaded()
         switchRequest = nil
         guard var index = apps.firstIndex(where: { $0.id == app.id }) else { return }
 
@@ -1321,9 +1363,7 @@ final class AppStore: ObservableObject {
         }
         if url.scheme?.lowercased() == "htmlapp",
            url.host?.lowercased() == "voice-create" {
-            UserDefaults.standard.set(true, forKey: "htmlapp.voiceCreatePending")
-            voiceCreateRequest += 1
-            NotificationCenter.default.post(name: Notification.Name("HTMLAppVoiceCreateRequested"), object: nil)
+            lockScreenVoiceCreatePresented = true
             return
         }
         if url.scheme?.lowercased() == "htmlapp",
@@ -1338,8 +1378,17 @@ final class AppStore: ObservableObject {
         guard url.scheme?.lowercased() == "htmlapp",
               url.host?.lowercased() == "open",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let id = components.queryItems?.first(where: { $0.name == "id" })?.value,
-              let app = apps.first(where: { $0.id.caseInsensitiveCompare(id) == .orderedSame }) else {
+              let id = components.queryItems?.first(where: { $0.name == "id" })?.value else {
+            errorMessage = "No saved HTML app matched that URL."
+            return
+        }
+        if !libraryLoaded, let cached = cachedLaunchApp(id: id) {
+            HTMLAppWidgetLaunchStore.receive(url: url, appID: cached.id)
+            presentDirect(cached)
+            return
+        }
+        ensureLibraryLoaded()
+        guard let app = apps.first(where: { $0.id.caseInsensitiveCompare(id) == .orderedSame }) else {
             errorMessage = "No saved HTML app matched that URL."
             return
         }
@@ -1645,9 +1694,51 @@ final class AppStore: ObservableObject {
                 try previous.write(to: libraryBackupURL, options: .atomic)
             }
             try result.write(to: libraryURL, options: .atomic)
+            refreshLaunchCache()
             requestICloudSync()
         } catch {
             errorMessage = "The library couldn't be saved. Existing data and its backup were kept."
+        }
+    }
+
+    private func cachedLaunchApp(id: String) -> SavedHTMLApp? {
+        let safe = id.filter { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
+        guard !safe.isEmpty, safe.caseInsensitiveCompare(id) == .orderedSame else { return nil }
+        let url = launchCacheURL.appendingPathComponent(safe).appendingPathExtension("json")
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+              let app = try? JSONDecoder().decode(SavedHTMLApp.self, from: data),
+              app.id.caseInsensitiveCompare(id) == .orderedSame else { return nil }
+        return app
+    }
+
+    private func refreshLaunchCache() {
+        let snapshot = apps
+        let directory = launchCacheURL
+        Task.detached(priority: .utility) {
+            let manager = FileManager.default
+            try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let valid = Set(snapshot.map { $0.id })
+            for app in snapshot {
+                guard let data = try? encoder.encode(app) else { continue }
+                try? data.write(to: directory.appendingPathComponent(app.id).appendingPathExtension("json"), options: .atomic)
+            }
+            for url in (try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+                where url.pathExtension == "json" && !valid.contains(url.deletingPathExtension().lastPathComponent) {
+                try? manager.removeItem(at: url)
+            }
+        }
+    }
+
+    private func presentDirect(_ app: SavedHTMLApp) {
+        pendingDirectOpenID = app.id
+        HTMLAppRuntimeStateStore.opened(appID: app.id)
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { runningApp = app }
+        Task(priority: .utility) {
+            if HTMLAppWidgetStore.activate(appID: app.id) { HTMLAppWidgetReloadCoordinator.request() }
         }
     }
 
@@ -1758,4 +1849,5 @@ final class AppStore: ObservableObject {
         }
     }
 }
+
 

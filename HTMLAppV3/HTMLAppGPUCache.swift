@@ -74,6 +74,25 @@ enum HTMLAppGPUCache {
         return result
     }
 
+    static func clearCompleted(in temporary: URL = FileManager.default.temporaryDirectory) -> Result {
+        let manager = FileManager.default
+        let root = temporary.appendingPathComponent(directoryName, isDirectory: true)
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .contentModificationDateKey]
+        guard let children = try? manager.contentsOfDirectory(at: root, includingPropertiesForKeys: Array(keys)) else { return Result() }
+        var result = Result()
+        for url in children {
+            guard url.lastPathComponent.range(of: #"^mpsgraph-[0-9]+-[0-9]+$"#, options: .regularExpression) != nil,
+                  completedEntryDate(url, keys: keys) != nil else { continue }
+            let bytes = allocatedBytes(in: url)
+            do {
+                try manager.removeItem(at: url)
+                result.removed += 1
+                result.bytes += bytes
+            } catch { result.failed += 1 }
+        }
+        return result
+    }
+
     private static func completedEntryDate(_ url: URL, keys: Set<URLResourceKey>) -> Date? {
         // Avoid following aliases or removing unfamiliar cache layouts. Include
         // archive timestamps because rewriting a file may leave its parent unchanged.
@@ -108,3 +127,4 @@ enum HTMLAppGPUCache {
         return total
     }
 }
+

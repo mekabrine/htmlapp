@@ -101,6 +101,9 @@ struct LibraryView: View {
         // dialogs/sheets active while a nested folder destination is on screen.
         .htmlAppFirstUseToasts()
         .task {
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard store.runningApp == nil, !store.lockScreenVoiceCreatePresented else { return }
+            store.ensureLibraryLoaded()
             HTMLAppWebWarmup.prime()
             await HTMLAppOfflineSpeech.shared.preloadIfSelected()
         }
@@ -398,13 +401,10 @@ struct LibraryView: View {
         // microphone starts there, without a separate voice-capture modal.
         if UserDefaults.standard.bool(forKey: "htmlapp.voiceCreatePending") {
             UserDefaults.standard.removeObject(forKey: "htmlapp.voiceCreatePending")
-            UserDefaults.standard.removeObject(forKey: "htmlapp.shortcut.activeIdea")
-            shortcutPrompt = ""
-            shortcutSource = "widgetMic"
-            shortcutGenerationNonce += 1
-            showGenerator = true
+            store.lockScreenVoiceCreatePresented = true
             return
         }
+        store.ensureLibraryLoaded()
         if let name = UserDefaults.standard.string(forKey: "htmlapp.shortcut.openName") {
             UserDefaults.standard.removeObject(forKey: "htmlapp.shortcut.openName")
             let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1289,3 +1289,4 @@ private struct LibraryCreateMicrophone: View {
         }
     }
 }
+

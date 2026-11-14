@@ -176,6 +176,53 @@ final class ForgeDictation: ObservableObject {
             await startOffline(tapToStop: tapToStop)
         }
     }
+
+    /// Lock Screen entry primes Whisper with a tiny real capture before the
+    /// user's prompt. This initializes the audio path and decoder after a cold
+    /// launch, while keeping the warm-up audio out of the prompt transcript.
+    func startFromLockScreen() async {
+        if UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
+            status = "Warming up Whisper…"
+            await warmWhisperFromColdStart()
+        }
+        guard !Task.isCancelled else { return }
+        await start(tapToStop: true)
+    }
+
+    private func warmWhisperFromColdStart() async {
+        let allowed = await withCheckedContinuation { continuation in
+            AVAudioSession.sharedInstance().requestRecordPermission { continuation.resume(returning: $0) }
+        }
+        guard allowed, !Task.isCancelled else { return }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("htmlapp-whisper-warmup-" + UUID().uuidString + ".wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+        do {
+            let audio = AVAudioSession.sharedInstance()
+            try audio.setCategory(.record, mode: .default)
+            try audio.setActive(true)
+            let recorder = try AVAudioRecorder(url: url, settings: [
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: 16000,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false
+            ])
+            recorder.prepareToRecord()
+            guard recorder.record() else {
+                try? audio.setActive(false, options: .notifyOthersOnDeactivation)
+                return
+            }
+            try await Task.sleep(nanoseconds: 250_000_000)
+            recorder.stop()
+            try? audio.setActive(false, options: .notifyOthersOnDeactivation)
+            // Empty warm-up speech is expected. The useful effect is loading
+            // the selected model and exercising its first decoder pass.
+            _ = try? await HTMLAppOfflineSpeech.shared.transcribe(fileURL: url)
+        } catch {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+    }
     private func startOffline(tapToStop: Bool = false) async {
         HTMLAppOfflineSpeech.shared.preloadIfSelected()
         appleSpeechActive = false
@@ -356,4 +403,5 @@ final class ForgeDictation: ObservableObject {
         }
     }
 }
+
 

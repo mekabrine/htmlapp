@@ -447,6 +447,22 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    HStack(spacing: 16) {
+                        Image(systemName: "app.badge.checkmark")
+                            .font(.system(size: 30, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 58, height: 58)
+                            .background(LinearGradient(colors: [.indigo, .purple], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Make HTMLApp yours").font(.headline)
+                            Text("AI, Library, storage, widgets, and device behavior in one place.")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 5)
+                }
                 Section("AI & Voice") {
                     NavigationLink {
                         HTMLAppBackendPairingView()
@@ -625,6 +641,8 @@ struct SettingsView: View {
                     Text("About")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Settings")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -676,3 +694,4 @@ struct SettingsView: View {
         }
     }
 }
+

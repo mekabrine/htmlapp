@@ -6,6 +6,9 @@ struct HTMLAppStorageOverview: View {
     @State private var report: HTMLAppStorageReport?
     @State private var scanRevision = 0
     @State private var scanning = true
+    @State private var confirmCleanup = false
+    @State private var cleaning = false
+    @State private var cleanupMessage: String?
 
     var body: some View {
         List {
@@ -80,12 +83,39 @@ struct HTMLAppStorageOverview: View {
                 Section("Installed App Files") {
                     breakdown(report.bundle)
                 }
+
+                Section {
+                    Button(role: .destructive) { confirmCleanup = true } label: {
+                        Label(cleaning ? "Clearing…" : "Clear Unnecessary Files", systemImage: "trash")
+                    }
+                    .disabled(cleaning || scanning)
+                } footer: {
+                    Text("Clears caches, old temporary exports, website download staging, and completed GPU archives. Saved apps, imported media, app data, backups, and Whisper models are kept.")
+                }
             }
             if scanning {
                 ProgressView("Measuring storage…")
             }
         }
         .navigationTitle("Storage")
+        .confirmationDialog("Clear unnecessary files?", isPresented: $confirmCleanup, titleVisibility: .visible) {
+            Button("Clear Files", role: .destructive) {
+                Task {
+                    cleaning = true
+                    let result = await HTMLAppStorageCleanup.clearUnnecessaryFiles()
+                    cleaning = false
+                    cleanupMessage = "Reclaimed \(size(result.bytes)) from \(result.removed) item\(result.removed == 1 ? "" : "s")." +
+                        (result.failed > 0 ? " \(result.failed) in-use item\(result.failed == 1 ? " was" : "s were") kept." : "")
+                    scanRevision += 1
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("HTMLApp may need to recreate cleared caches the next time an app opens.")
+        }
+        .alert("Storage Cleanup", isPresented: Binding(get: { cleanupMessage != nil }, set: { if !$0 { cleanupMessage = nil } })) {
+            Button("OK", role: .cancel) { cleanupMessage = nil }
+        } message: { Text(cleanupMessage ?? "") }
         .toolbar {
             Button {
                 scanRevision += 1
@@ -377,3 +407,4 @@ struct HTMLAppStorageReport: Sendable {
         return "Other container files"
     }
 }
+

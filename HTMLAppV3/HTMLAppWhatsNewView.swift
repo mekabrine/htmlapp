@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.13"
-    static let compiledBuild = "118"
+    static let compiledVersion = "1.9.14"
+    static let compiledBuild = "119"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,18 +32,15 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "forge-restored", title: "Forge, back to familiar behavior",
-                  description: "Restored Forge’s generation and testing behavior from version 1.9.11, removing the stricter API checks and automatic fixers from the previous update.",
-                  symbol: "arrow.uturn.backward", tint: .purple),
-            Entry(id: "files-reading", title: "Read picked files inside apps",
-                  description: "Apps can fetch files selected through HTMLApp’s Files picker, including MP3s. Imported bytes are read in small chunks instead of relying on WebKit to fetch local file URLs.",
-                  symbol: "doc", tint: .blue),
-            Entry(id: "widget-recovery", title: "Widgets recover automatically",
-                  description: "HTMLApp automatically selects an accessible signing group shared with its widget extension when widget storage is unavailable. Missing signing permissions still require a correctly signed installation.",
-                  symbol: "arrow.triangle.2.circlepath", tint: .green),
-            Entry(id: "widget-warning", title: "Widget warnings stay visible",
-                  description: "On phones, widget publication errors appear at the top of the screen so they stay clear of the tab bar.",
-                  symbol: "exclamationmark.bubble", tint: .orange)
+            Entry(id: "faster-launch", title: "Apps open faster",
+                  description: "Cold-start work is deferred, and URL links can open a cached saved app directly without loading or warming the Library first.",
+                  symbol: "bolt.fill", tint: .orange),
+            Entry(id: "lock-voice", title: "Speak an app from the Lock Screen",
+                  description: "The Lock Screen microphone opens a focused recorder with an editable transcript and one-tap generation. Whisper performs a short cold-start warm-up before recording your prompt.",
+                  symbol: "mic.badge.plus", tint: .purple),
+            Entry(id: "settings-storage", title: "Cleaner Settings and storage",
+                  description: "Settings has a clearer design, and Storage can remove recreatable caches, completed GPU archives, and old temporary exports.",
+                  symbol: "internaldrive", tint: .blue)
         ]
     }
 }
@@ -148,4 +145,5 @@ struct HTMLAppWhatsNewView: View {
         .accessibilityElement(children: .combine)
     }
 }
+
 
