@@ -418,7 +418,7 @@ final class HTMLAppWidgetRepository {
 
     @discardableResult
     func mutate(_ change: (inout [HTMLAppWidgetDefinition]) throws -> Void) throws -> [HTMLAppWidgetDefinition] {
-        try coordinated(write: true) { url in
+        let committed = try coordinated(write: true) { url in
             var values = try read(url)
             try change(&values)
             values = Self.normalized(values)
@@ -431,6 +431,10 @@ final class HTMLAppWidgetRepository {
             catch { throw Self.failure("store_write_failed", error) }
             return values
         }
+        // Publish only after the coordinated write and read-back have finished.
+        // Observers can now reload/read the committed file without deadlocking.
+        NotificationCenter.default.post(name: HTMLAppWidgetStore.committed, object: nil)
+        return committed
     }
 
     func save(_ definition: HTMLAppWidgetDefinition) throws -> HTMLAppWidgetDefinition {
@@ -457,6 +461,7 @@ final class HTMLAppWidgetRepository {
 }
 
 enum HTMLAppWidgetStore {
+    static let committed = Notification.Name("HTMLAppWidgetSnapshotCommitted")
     static func repository() throws -> HTMLAppWidgetRepository {
         _ = HTMLAppProviderStorage.repairPreviouslyApprovedGroup()
         guard let directory = HTMLAppSharedContainer.directory else { throw HTMLAppWidgetStoreError.unavailable }
@@ -855,6 +860,7 @@ enum HTMLAppWidgetNetwork {
         }
     }
 }
+
 
 
 

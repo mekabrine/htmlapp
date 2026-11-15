@@ -404,8 +404,8 @@ struct LibraryView: View {
             store.lockScreenVoiceCreatePresented = true
             return
         }
-        store.ensureLibraryLoaded()
         if let name = UserDefaults.standard.string(forKey: "htmlapp.shortcut.openName") {
+            store.ensureLibraryLoaded()
             UserDefaults.standard.removeObject(forKey: "htmlapp.shortcut.openName")
             let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
             if let app = store.apps.first(where: { $0.name.localizedCaseInsensitiveCompare(wanted) == .orderedSame })
@@ -1289,4 +1289,5 @@ private struct LibraryCreateMicrophone: View {
         }
     }
 }
+
 

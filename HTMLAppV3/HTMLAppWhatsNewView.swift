@@ -40,7 +40,13 @@ enum HTMLAppReleaseNotes {
                   symbol: "mic.badge.plus", tint: .purple),
             Entry(id: "settings-storage", title: "Cleaner Settings and storage",
                   description: "Settings has a clearer design, and Storage can remove recreatable caches, completed GPU archives, and old temporary exports.",
-                  symbol: "internaldrive", tint: .blue)
+                  symbol: "internaldrive", tint: .blue),
+            Entry(id: "direct-launch-fix", title: "Direct launches skip Library loading",
+                  description: "Removed an early shortcut check that could still load the Library before a URL launch was handled.",
+                  symbol: "arrow.up.forward.app", tint: .green),
+            Entry(id: "widget-refresh", title: "Widget updates refresh automatically",
+                  description: "Published snapshots request a widget refresh immediately. While a saved app with widgets is open, HTMLApp requests another refresh every five seconds and once more when you leave the app. iOS controls the final display timing.",
+                  symbol: "arrow.triangle.2.circlepath", tint: .purple)
         ]
     }
 }
@@ -145,5 +151,6 @@ struct HTMLAppWhatsNewView: View {
         .accessibilityElement(children: .combine)
     }
 }
+
 
 
