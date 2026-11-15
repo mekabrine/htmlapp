@@ -66,10 +66,7 @@ struct HTMLAppPrimaryWidgetProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<HTMLAppWidgetEntry>) -> Void) {
         Task {
             let definition = HTMLAppWidgetResolver.load(selectedID: nil, family: context.family.storageName, phase: "timeline")
-            let timeline = await HTMLAppWidgetTimeline.make(definition: definition)
-            HTMLAppWidgetDiagnostics.acknowledge(phase: "completed", family: context.family.storageName, definition: definition, status: "entries=\(timeline.entries.count)")
-            completion(timeline)
-            HTMLAppWidgetDiagnostics.acknowledge(phase: "submitted", family: context.family.storageName, definition: definition, status: "completion returned")
+            completion(await HTMLAppWidgetTimeline.make(definition: definition))
         }
     }
 }
@@ -137,9 +134,7 @@ struct HTMLAppConfiguredWidgetProvider: AppIntentTimelineProvider {
 
     func timeline(for configuration: HTMLAppWidgetConfigurationIntent, in context: Context) async -> Timeline<HTMLAppWidgetEntry> {
         let definition = HTMLAppWidgetResolver.load(selectedID: configuration.widget?.id, family: context.family.storageName, phase: "timeline")
-        let timeline = await HTMLAppWidgetTimeline.make(definition: definition)
-        HTMLAppWidgetDiagnostics.acknowledge(phase: "completed", family: context.family.storageName, definition: definition, status: "entries=\(timeline.entries.count)")
-        return timeline
+        return await HTMLAppWidgetTimeline.make(definition: definition)
     }
 
 
@@ -168,8 +163,6 @@ struct HTMLAppWidgetView: View {
     }
 
     var body: some View {
-        let _ = HTMLAppWidgetDiagnostics.acknowledge(phase: "view", family: family.storageName,
-            definition: nil, status: HTMLAppWidgetDiagnostics.plainTextTestEnabled ? "plain-text body" : "normal body")
         Group {
             if #available(iOS 17.0, *) {
                 widgetContent
@@ -184,11 +177,7 @@ struct HTMLAppWidgetView: View {
 
     @ViewBuilder
     private var widgetContent: some View {
-        if HTMLAppWidgetDiagnostics.plainTextTestEnabled {
-            Text("HTMLApp OK")
-                .font(.caption)
-                .foregroundStyle(.primary)
-        } else if let content = snapshot.customContent(for: family.storageName) {
+        if let content = snapshot.customContent(for: family.storageName) {
             HTMLAppWidgetElementView(node: content, snapshot: snapshot, date: entry.date)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
@@ -752,6 +741,8 @@ struct HTMLAppWidgetElementView: View {
         if let radius = node.cornerRadius { view = AnyView(view.clipShape(RoundedRectangle(cornerRadius: CGFloat(radius)))) }
         if let opacity = node.opacity { view = AnyView(view.opacity(opacity)) }
         if let label = node.accessibilityLabel { view = AnyView(view.accessibilityLabel(label)) }
+        view = AnyView(view.animation(.easeInOut(duration: 0.35), value: node))
+        view = AnyView(view.animation(.easeInOut(duration: 0.35), value: snapshot))
         return view
     }
     private var raw: AnyView {
@@ -811,4 +802,3 @@ struct HTMLAppWidgetElementView: View {
         }
     }
 }
-

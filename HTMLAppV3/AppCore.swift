@@ -84,26 +84,6 @@ struct HTMLAppMain: App {
                 .onReceive(NotificationCenter.default.publisher(for: HTMLAppSystemControlStore.openRequested)) { _ in
                     deliverSystemControlOpen()
                 }
-                .onReceive(NotificationCenter.default.publisher(for: HTMLAppWidgetStore.committed)) { _ in
-                    HTMLAppWidgetReloadCoordinator.request()
-                }
-                .task(id: "\(store.runningApp?.id ?? ""):\(scenePhase == .active)") {
-                    guard scenePhase == .active, let appID = store.runningApp?.id else { return }
-                    var hadWidgets = false
-                    defer {
-                        // The final request runs when switching apps, leaving
-                        // HTMLApp, or locking the device, before suspension.
-                        if hadWidgets { HTMLAppWidgetReloadCoordinator.flush() }
-                    }
-                    while !Task.isCancelled {
-                        if !HTMLAppWidgetStore.definitions(appID: appID).isEmpty {
-                            hadWidgets = true
-                            HTMLAppWidgetReloadCoordinator.request()
-                        }
-                        do { try await Task.sleep(nanoseconds: 5_000_000_000) }
-                        catch { break }
-                    }
-                }
                 .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HTMLApp.FaceDownShakeExit"))) { _ in
                     // The runner is a SwiftUI full-screen cover, not a UIKit
                     // controller that can reliably be dismissed via responders.
@@ -148,11 +128,6 @@ struct HTMLAppMain: App {
                     }
                 }
                 .onChange(of: scenePhase) { phase in
-                    if phase != .active {
-                        // Do not leave a coalesced publication queued when iOS
-                        // suspends the process. This is when widgets reappear.
-                        HTMLAppWidgetReloadCoordinator.flush()
-                    }
                     if phase == .active {
                         if store.libraryLoaded, HTMLAppProviderStorage.repairPreviouslyApprovedGroup() != nil {
                             HTMLAppWidgetReloadCoordinator.request()
@@ -1874,6 +1849,5 @@ final class AppStore: ObservableObject {
         }
     }
 }
-
 
 

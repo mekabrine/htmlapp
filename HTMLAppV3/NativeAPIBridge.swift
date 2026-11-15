@@ -2464,10 +2464,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             appID: appID,
             widgetID: widgetID,
             name: name,
-            // A publication is the new visible snapshot unless its author
-            // explicitly opts out. Otherwise a new widget ID stays hidden
-            // behind an older primary until launch() promotes it on reopen.
-            primary: args["primary"] as? Bool ?? true,
+            primary: args["primary"] as? Bool ?? existing.first(where: { $0.widgetID == widgetID })?.primary ?? HTMLAppWidgetStore.all().isEmpty,
             families: families,
             snapshot: snapshot,
             refresh: refreshSpec,
@@ -4651,6 +4648,5 @@ questionmark.circle info.circle exclamationmark.triangle hand.tap hand.raised ey
 square.on.square rectangle.portrait.on.rectangle.portrait app.badge apps.iphone square.grid.3x3.fill
 """.split(whereSeparator: \.isWhitespace).map(String.init)
 }
-
 
 

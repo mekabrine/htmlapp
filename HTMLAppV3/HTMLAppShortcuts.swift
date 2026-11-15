@@ -1,5 +1,36 @@
 import AppIntents
 import Foundation
+import WidgetKit
+
+@available(iOS 16.2, *)
+struct RefreshHTMLAppWidgetDataIntent: AppIntent {
+    static var title: LocalizedStringResource = "Refresh Widget Data"
+    static var description = IntentDescription("Refresh saved widget bindings and approved native background data, then ask iOS to reload HTMLApp widgets. This does not run JavaScript in closed HTML apps.")
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        try Task.checkCancellation()
+        // Only copy explicitly declared portable-data bindings. Do not change
+        // the primary selection or execute generated app code in a shortcut.
+        let definitions = try HTMLAppWidgetStore.readAll()
+        for appID in Set(definitions.map(\.appID)) {
+            let keys = Set(definitions.filter { $0.appID == appID }
+                .flatMap { Array(($0.dataBindings ?? [:]).values) })
+            for key in keys {
+                HTMLAppWidgetStore.updateFromPortableData(appID: appID, key: key,
+                    value: HTMLAppPortableDataStore.get(appID: appID, key: key))
+            }
+        }
+        // This is the existing manual-refresh path; it retains saved network
+        // consent checks and refreshes native jobs and widget refresh specs.
+        _ = await HTMLAppBackgroundCoordinator.shared.runNow()
+        try Task.checkCancellation()
+        // Direct request so completion does not depend on a delayed coalescer.
+        WidgetCenter.shared.reloadAllTimelines()
+        return .result()
+    }
+}
 
 /// These intents deliberately hand work to the visible app. Siri/Shortcuts
 /// cannot silently execute untrusted generated HTML or run a paid AI request.
@@ -68,6 +99,12 @@ struct OpenSavedHTMLAppActionIntent: AppIntent {
 struct HTMLAppSiriShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
+            intent: RefreshHTMLAppWidgetDataIntent(),
+            phrases: ["Refresh widgets in \(.applicationName)"],
+            shortTitle: "Refresh Widgets",
+            systemImageName: "arrow.clockwise"
+        )
+        AppShortcut(
             intent: OpenSavedHTMLAppIntent(),
             phrases: [
                 "Open a saved app in \(.applicationName)",
@@ -95,3 +132,4 @@ struct HTMLAppSiriShortcuts: AppShortcutsProvider {
         )
     }
 }
+

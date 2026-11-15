@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.14"
-    static let compiledBuild = "119"
+    static let compiledVersion = "1.9.15"
+    static let compiledBuild = "120"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,24 +32,12 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "faster-launch", title: "Apps open faster",
-                  description: "Cold-start work is deferred, and URL links can open a cached saved app directly without loading or warming the Library first.",
-                  symbol: "bolt.fill", tint: .orange),
-            Entry(id: "lock-voice", title: "Speak an app from the Lock Screen",
-                  description: "The Lock Screen microphone opens a focused recorder with an editable transcript and one-tap generation. Whisper performs a short cold-start warm-up before recording your prompt.",
-                  symbol: "mic.badge.plus", tint: .purple),
-            Entry(id: "settings-storage", title: "Cleaner Settings and storage",
-                  description: "Settings has a clearer design, and Storage can remove recreatable caches, completed GPU archives, and old temporary exports.",
-                  symbol: "internaldrive", tint: .blue),
-            Entry(id: "direct-launch-fix", title: "Direct launches skip Library loading",
-                  description: "Removed an early shortcut check that could still load the Library before a URL launch was handled.",
-                  symbol: "arrow.up.forward.app", tint: .green),
-            Entry(id: "widget-refresh", title: "Widget updates refresh automatically",
-                  description: "Published snapshots request a widget refresh immediately. While a saved app with widgets is open, HTMLApp requests another refresh every five seconds and once more when you leave the app. iOS controls the final display timing.",
-                  symbol: "arrow.triangle.2.circlepath", tint: .purple),
-            Entry(id: "widget-render-diagnostics", title: "Better blank-widget diagnostics",
-                  description: "Widget diagnostics now show progress separately for each size, list installed widget kinds, and include a reversible plain-text rendering test to help identify blank widgets.",
-                  symbol: "stethoscope", tint: .orange)
+            Entry(id: "widget-rollback", title: "Previous widget behavior restored",
+                  description: "Removed the recent foreground refresh loop, automatic publication selection, and experimental rendering diagnostics and plain-text test.",
+                  symbol: "arrow.uturn.backward", tint: .purple),
+            Entry(id: "refresh-shortcut", title: "Refresh widgets with Shortcuts",
+                  description: "Add HTMLApp’s Refresh Widget Data action to a shortcut. It refreshes saved data bindings and approved native background data, then requests a widget reload. iOS controls display timing.",
+                  symbol: "arrow.clockwise", tint: .blue)
         ]
     }
 }
@@ -154,7 +142,6 @@ struct HTMLAppWhatsNewView: View {
         .accessibilityElement(children: .combine)
     }
 }
-
 
 
 

@@ -418,7 +418,7 @@ final class HTMLAppWidgetRepository {
 
     @discardableResult
     func mutate(_ change: (inout [HTMLAppWidgetDefinition]) throws -> Void) throws -> [HTMLAppWidgetDefinition] {
-        let committed = try coordinated(write: true) { url in
+        try coordinated(write: true) { url in
             var values = try read(url)
             try change(&values)
             values = Self.normalized(values)
@@ -431,10 +431,6 @@ final class HTMLAppWidgetRepository {
             catch { throw Self.failure("store_write_failed", error) }
             return values
         }
-        // Publish only after the coordinated write and read-back have finished.
-        // Observers can now reload/read the committed file without deadlocking.
-        NotificationCenter.default.post(name: HTMLAppWidgetStore.committed, object: nil)
-        return committed
     }
 
     func save(_ definition: HTMLAppWidgetDefinition) throws -> HTMLAppWidgetDefinition {
@@ -461,7 +457,6 @@ final class HTMLAppWidgetRepository {
 }
 
 enum HTMLAppWidgetStore {
-    static let committed = Notification.Name("HTMLAppWidgetSnapshotCommitted")
     static func repository() throws -> HTMLAppWidgetRepository {
         _ = HTMLAppProviderStorage.repairPreviouslyApprovedGroup()
         guard let directory = HTMLAppSharedContainer.directory else { throw HTMLAppWidgetStoreError.unavailable }
@@ -564,15 +559,6 @@ struct HTMLAppWidgetReceipt: Codable {
 }
 
 enum HTMLAppWidgetDiagnostics {
-    static var plainTextTestEnabled: Bool {
-        guard let file = try? url("widget-plain-text-test.json"),
-              let data = try? Data(contentsOf: file) else { return false }
-        return (try? JSONDecoder().decode(Bool.self, from: data)) == true
-    }
-    static func setPlainTextTest(_ enabled: Bool) throws {
-        try JSONEncoder().encode(enabled).write(to: url("widget-plain-text-test.json"),
-            options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-    }
     private static func url(_ name: String) throws -> URL {
         guard let root = HTMLAppSharedContainer.directory else { throw HTMLAppWidgetStoreError.unavailable }
         return root.appendingPathComponent(name)
@@ -596,43 +582,23 @@ enum HTMLAppWidgetDiagnostics {
               let probe = try? JSONDecoder().decode(HTMLAppWidgetProbe.self, from: data) else { return }
         let receipt = HTMLAppWidgetReceipt(nonce: probe.nonce, process: "widget-extension", phase: phase, family: family,
             definitionDigest: definition.map(digest), status: status, date: Date())
-        // One file per phase+family: a single shared file let the last widget to run hide every other result.
-        try? JSONEncoder().encode(receipt).write(to: url("widget-receipt-\(phase)-\(family).json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        try? JSONEncoder().encode(receipt).write(to: url("widget-receipt-\(phase).json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
     static func summary() -> String {
         var lines = ["Main process container: \(HTMLAppSharedContainer.appGroupAvailable ? "available" : "unavailable")",
             "Selected group: \(HTMLAppSharedContainer.appGroupID)",
             "Declared groups in this binary: \(HTMLAppSigningGroups.declared.count). Declaration alone is not proof of sandbox access."]
-        var currentDigests = Set<String>()
-        do {
-            let definitions = try HTMLAppWidgetStore.readAll()
-            lines.append("Decoded definitions: \(definitions.count)")
-            currentDigests = Set(definitions.map(digest))
-        }
+        do { lines.append("Decoded definitions: \(try HTMLAppWidgetStore.readAll().count)") }
         catch { lines.append(error.localizedDescription) }
-        if let file = try? url("htmlapp-widgets-v2.json"),
-           let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-            lines.append("Widget store bytes: \(size)")
-        }
-        lines.append("Plain-text render test: \(plainTextTestEnabled ? "ON" : "off")")
         guard let data = try? Data(contentsOf: url("widget-probe.json")),
               let probe = try? JSONDecoder().decode(HTMLAppWidgetProbe.self, from: data) else { return lines.joined(separator: "\n") }
         lines.append("Probe: \(probe.nonce)")
-        // "completed" is timeline construction, before calling completion.
-        // "submitted" means the completion call returned; neither proves pixels.
-        var acknowledged = false
-        for phase in ["snapshot", "timeline", "completed", "submitted", "view"] {
-            for family in ["systemSmall", "systemMedium", "systemLarge", "systemExtraLarge", "accessoryInline", "accessoryCircular", "accessoryRectangular"] {
-                guard let data = try? Data(contentsOf: url("widget-receipt-\(phase)-\(family).json")),
-                      let receipt = try? JSONDecoder().decode(HTMLAppWidgetReceipt.self, from: data), receipt.nonce == probe.nonce else { continue }
-                acknowledged = true
-                let matches = receipt.definitionDigest.map { currentDigests.contains($0) } ?? false
-                let digestStatus = phase == "view" ? "view construction only" : "digest \(matches ? "current" : "stale")"
-                lines.append("\(phase) \(family): \(receipt.status), \(digestStatus), \(receipt.date.formatted(date: .omitted, time: .standard))")
-            }
-        }
-        if !acknowledged { lines.append("Extension acknowledgement pending. This does not prove a signing failure; add a widget and request reload.") }
-        lines.append("completed = timeline built; submitted = completion call returned; view = body evaluated. None confirms visible pixels. Results are per family, not per instance.")
+        if let data = try? Data(contentsOf: url("widget-receipt-timeline.json")),
+           let receipt = try? JSONDecoder().decode(HTMLAppWidgetReceipt.self, from: data), receipt.nonce == probe.nonce {
+            lines.append("Extension acknowledged: \(receipt.status), \(receipt.family), \(receipt.date.formatted())")
+            let matches = HTMLAppWidgetStore.all().contains { digest($0) == receipt.definitionDigest }
+            lines.append("Timeline decoded current published snapshot: \(matches ? "yes" : "no")")
+        } else { lines.append("Extension acknowledgement pending. This does not prove a signing failure; add a widget and request reload.") }
         return lines.joined(separator: "\n")
     }
 }
@@ -889,8 +855,6 @@ enum HTMLAppWidgetNetwork {
         }
     }
 }
-
-
 
 
 

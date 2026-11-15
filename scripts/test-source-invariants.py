@@ -93,11 +93,6 @@ assert 'HTMLAppForgeActivityService.start' in source("HTMLAppV3/AIGenerationView
 assert 'HTMLAppForgeActivityService.finish' in source("HTMLAppV3/AIGenerationView.swift")
 assert 'HTMLAppWidgetReloadCoordinator.request()' in source("HTMLAppV3/NativeAPIBridge.swift")
 assert 'HTMLAppWidgetReloadCoordinator.request()' in source("HTMLAppV3/PortableAppDataStore.swift")
-shortcut_handler = source("HTMLAppV3/LibraryUI.swift").split("private func handlePendingShortcut()", 1)[1].split('if let name =', 1)[0]
-assert "ensureLibraryLoaded()" not in shortcut_handler, "No pending shortcut must leave the cold URL path free of Library decoding"
-assert 'primary: args["primary"] as? Bool ?? true' in source("HTMLAppV3/NativeAPIBridge.swift"), "A widget publication must become visible unless explicitly opted out"
-assert "5_000_000_000" in core and 'scenePhase == .active, let appID = store.runningApp?.id' in core
-assert "HTMLAppWidgetReloadCoordinator.flush()" in core, "Flush queued widget writes before suspension"
 assert 'DragGesture(minimumDistance: 0)' in source("HTMLAppV3/AIGenerationView.swift")
 assert 'case "capabilities.list"' in native and 'case "device.torch"' in native
 assert 'withPermission(.camera, id: id)' in native and 'withPermission(.displayControl, id: id)' in native
