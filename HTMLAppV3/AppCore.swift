@@ -708,6 +708,9 @@ final class AppStore: ObservableObject {
             return
         }
         await update(current, html: chosen.html, summary: chosen.summary)
+        let position = history.firstIndex(where: { $0.id == checkpointID }) ?? history.count
+        let count = history.dropFirst(position).filter { $0.note != "Before restore" }.count
+        ForgeConversationLog.append(app.id, kind: "revert", text: "User reverted \(max(1, count)) saved edit(s) by restoring checkpoint \(chosen.created.formatted()).")
         notice = "Restored earlier HTML version."
     }
 
@@ -1103,7 +1106,9 @@ final class AppStore: ObservableObject {
             .appendingPathComponent(fileName)
         do {
             try Data(HTMLAppRuntimeBackend.sharedHTML(app.html, localID: app.id).utf8).write(to: url, options: .atomic)
-            SharePresenter.present(items: [url])
+            SharePresenter.present(items: [url]) { destination, completed in
+                if completed { ForgeConversationLog.append(app.id, kind: "share", text: "User completed HTML export to \(destination?.rawValue ?? "an unspecified destination"). This is an observed share, not proof of approval.") }
+            }
         } catch {
             errorMessage = "The HTML file could not be exported."
         }
@@ -1142,7 +1147,11 @@ final class AppStore: ObservableObject {
                 folders: folders,
                 links: links
             )
-            SharePresenter.present(items: [url])
+            SharePresenter.present(items: [url]) { destination, completed in
+                if completed {
+                    for app in selected { ForgeConversationLog.append(app.id, kind: "share", text: "User shared an app package to \(destination?.rawValue ?? "an unspecified destination").") }
+                }
+            }
             notice = selected.count == apps.count
                 ? "HTMLApp backup ready to share."
                 : "Portable package ready for \(selected.count) app\(selected.count == 1 ? "" : "s")."
@@ -1182,7 +1191,7 @@ final class AppStore: ObservableObject {
             restorePortableAppData(bundle: imported, appIDMap: identityMap)
             restorePortableWebsiteState(bundle: imported, appIDMap: identityMap)
             restoreGeneratedIntegrations(bundle: imported, appIDMap: identityMap)
-            restoreForgeMetadata(bundle: imported, appIDMap: identityMap)
+            restoreForgeMetadata(bundle: imported, appIDMap: identityMap, includeConversation: includePersonalData)
 
             save()
             persistFolders()
@@ -1262,7 +1271,7 @@ final class AppStore: ObservableObject {
             restoreGeneratedIntegrations(bundle: imported, appIDMap: appIDMap)
         }
 
-        restoreForgeMetadata(bundle: imported, appIDMap: appIDMap)
+        restoreForgeMetadata(bundle: imported, appIDMap: appIDMap, includeConversation: includePersonalData)
         save()
         persistFolders()
         FolderAppLinkStore.shared.prune(
@@ -1525,7 +1534,12 @@ final class AppStore: ObservableObject {
     }
 
     private func restoreForgeMetadata(bundle: HTMLAppPortableBundle,
-                                      appIDMap: [String: String]) {
+                                      appIDMap: [String: String], includeConversation: Bool = false) {
+        if includeConversation {
+            for (oldID, entries) in bundle.conversations ?? [:] {
+                if let newID = appIDMap[oldID] { ForgeConversationLog.merge(newID, incoming: entries) }
+            }
+        }
         // Never trust unverified imported AI instructions in a package
         // manifest. Rebuild structural metadata from each imported HTML.
         for app in bundle.apps {
@@ -1849,5 +1863,3 @@ final class AppStore: ObservableObject {
         }
     }
 }
-
-

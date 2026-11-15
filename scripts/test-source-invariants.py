@@ -202,7 +202,13 @@ assert 'HTMLAppOfflineSpeech.shared.preloadIfSelected()' in source("HTMLAppV3/Li
 assert 'cachedLocation' in source("HTMLAppV3/LocationPermissionBridge.swift")
 assert 'isRecoverable(_ draft:' in source("HTMLAppV3/AIGenerationView.swift")
 assert 'askForgeQuestion(for idea:' in source("HTMLAppV3/AIGenerationView.swift")
-assert '20_000_000_000' in source("HTMLAppV3/AIGenerationView.swift")
+assert 'timeIntervalSince(lastQuestionInteraction) >= 5' in source("HTMLAppV3/AIGenerationView.swift")
+assert 'NO_QUESTION' in source("HTMLAppV3/AIGenerationView.swift")
+assert 'ForgeSimpleProgress(' in source("HTMLAppV3/AIGenerationView.swift")
+assert 'ForgeAttachmentTarget.hit' in source("HTMLAppV3/EditorWeb.swift")
+assert 'ForgeAttachmentTarget.hit' in source("HTMLAppV3/LibraryUI.swift")
+assert 'ForgeAttachmentTarget.hit' in source("HTMLAppV3/AIGenerationView.swift")
+assert 'completionWithItemsHandler' in source("HTMLAppV3/UIHelpers.swift")
 assert 'MOCKUP FIDELITY' in source("HTMLAppV3/AIGenerationView.swift")
 
 
@@ -1006,4 +1012,5 @@ assert 'HTMLAppNetworkDomainConsent.request(host: host, appID: self.appID)' in n
 assert 'didReceiveRemoteNotification userInfo:' in pushDelegate and '"htmlapp_refresh"' in pushDelegate
 assert '- remote-notification' in source("project.yml")
 assert '"permission": "network"' in source("scripts/native-capability-definitions.json")
+
 

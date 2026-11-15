@@ -108,6 +108,7 @@ struct WebRunner: View {
     @State private var transcriptReview: String?
     @State private var spokenEdit = ""
     @State private var recordingTask: Task<Void, Never>?
+    @StateObject private var attachmentSelection = ForgeAttachmentSelection()
 
     private var liveHTML: String { store.apps.first(where: { $0.id == app.id })?.html ?? app.html }
 
@@ -152,7 +153,10 @@ struct WebRunner: View {
         }
             .overlay(alignment: .topLeading) {
                 if alwaysShowEditMicrophone && !carDisplay && !carWindow {
-                    GeometryReader { proxy in runnerEditMic(in: proxy.size) }
+                    GeometryReader { proxy in
+                        runnerEditMic(in: proxy.size)
+                    }
+                    .overlay { ForgeAttachmentTargets(active: micArmed) }
                 }
             }
             .overlay(alignment: .top) {
@@ -194,8 +198,16 @@ struct WebRunner: View {
             }
             .sheet(isPresented: $showingVoiceEditor) {
                 AIGenerationView(existingApp: store.apps.first(where: { $0.id == app.id }) ?? app,
-                                 initialEdit: spokenEdit)
+                                 initialEdit: spokenEdit, initialAttachments: attachmentSelection.items)
                     .environmentObject(store)
+            }
+            .forgeAttachments(attachmentSelection) {
+                Task {
+                    if let words = await attachmentSelection.finishVoice(editDictation) {
+                        editDictation.transcript = words
+                        submitSpokenEdit()
+                    }
+                }
             }
             .background(HTMLAppCarWindowProbe(isCarWindow: $carWindow))
             .statusBarHidden(carDisplay || carWindow || Self.shouldHideStatusBar(in: liveHTML))
@@ -239,6 +251,14 @@ struct WebRunner: View {
                 }
                 .onEnded { value in
                     guard !awaitingEdit, transcriptReview == nil, editorPresentationTask == nil else { return }
+                    let center = CGPoint(x: -24 + value.translation.width + 31.5, y: 68 + value.translation.height + 31.5)
+                    if micArmed, let target = ForgeAttachmentTarget.hit(center, width: size.width) {
+                        recordingTask?.cancel()
+                        editDictation.stop(transcribe: false)
+                        returnEditMic(from: value.translation)
+                        Task { await attachmentSelection.open(target) }
+                        return
+                    }
                     let shouldSubmit = micArmed && isMicInside(value.translation, in: size)
                     returnEditMic(from: value.translation)
                     recordingTask?.cancel()

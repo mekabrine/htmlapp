@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.15"
-    static let compiledBuild = "120"
+    static let compiledVersion = "1.9.16"
+    static let compiledBuild = "121"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,12 +32,18 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "widget-rollback", title: "Previous widget behavior restored",
-                  description: "Removed the recent foreground refresh loop, automatic publication selection, and experimental rendering diagnostics and plain-text test.",
-                  symbol: "arrow.uturn.backward", tint: .purple),
-            Entry(id: "refresh-shortcut", title: "Refresh widgets with Shortcuts",
-                  description: "Add HTMLApp’s Refresh Widget Data action to a shortcut. It refreshes saved data bindings and approved native background data, then requests a widget reload. iOS controls display timing.",
-                  symbol: "arrow.clockwise", tint: .blue)
+            Entry(id: "voice-attachments", title: "Show Forge what you mean",
+                  description: "Drag the edit microphone onto Camera, Photos, or Files. Select references, then Forge transcribes your request and uses the attachments for an edit or a new app.",
+                  symbol: "paperclip", tint: .purple),
+            Entry(id: "questions", title: "Keep moving through questions",
+                  description: "Forge asks only when a choice matters. After five seconds without interaction, or when you lock the screen, it continues with a practical default using the existing background generation support.",
+                  symbol: "bubble.left.and.bubble.right", tint: .blue),
+            Entry(id: "conversation-history", title: "Your app’s continuing story",
+                  description: "App Conversation keeps requests, technical edit summaries, reversions, and completed share events. Recent history informs later edits, and personal backups include the full log.",
+                  symbol: "text.bubble", tint: .green),
+            Entry(id: "quiet-forge", title: "A simpler generation screen",
+                  description: "Watch the live activity graph and Forge’s current status, with fewer distractions while it works.",
+                  symbol: "chart.pie", tint: .orange)
         ]
     }
 }
@@ -142,6 +148,3 @@ struct HTMLAppWhatsNewView: View {
         .accessibilityElement(children: .combine)
     }
 }
-
-
-

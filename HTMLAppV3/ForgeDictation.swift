@@ -317,6 +317,7 @@ final class ForgeDictation: ObservableObject {
         guard retainedAudioURL != nil, !transcribingOffline else { return }
         transcribeRetainedAudio()
     }
+    var hasDeferredTranscription: Bool { retainedAudioURL != nil }
 
     private func discardRetainedAudio() {
         if let retainedAudioURL {
@@ -363,7 +364,7 @@ final class ForgeDictation: ObservableObject {
         }
     }
 
-    func stop() {
+    func stop(transcribe: Bool = true) {
         appleSpeechActive = false
         if offlineMode {
             offlineRecorder?.stop()
@@ -386,7 +387,7 @@ final class ForgeDictation: ObservableObject {
             // user to repeat speech merely because decoding/model loading
             // failed or Whisper returned empty text.
             retainedAudioURL = url
-            transcribeRetainedAudio()
+            if transcribe { transcribeRetainedAudio() }
             return
         }
         generation = UUID()
@@ -403,5 +404,3 @@ final class ForgeDictation: ObservableObject {
         }
     }
 }
-
-

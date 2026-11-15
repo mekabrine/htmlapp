@@ -27,7 +27,7 @@ struct AppIconView: View {
 
 enum SharePresenter {
     @MainActor
-    static func present(items: [Any]) {
+    static func present(items: [Any], completion: ((UIActivity.ActivityType?, Bool) -> Void)? = nil) {
         guard let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive }),
@@ -36,6 +36,9 @@ enum SharePresenter {
         }
 
         let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        controller.completionWithItemsHandler = { type, completed, _, error in
+            completion?(type, completed && error == nil)
+        }
         if let popover = controller.popoverPresentationController {
             popover.sourceView = root.view
             popover.sourceRect = CGRect(

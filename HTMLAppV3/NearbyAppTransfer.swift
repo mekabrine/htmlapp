@@ -323,6 +323,9 @@ struct NearbyAppTransferView: View {
         }
         .onChange(of: transfer.recipientConfirmed) { confirmed in
             guard confirmed, !isReceiveOnly else { return }
+            for appID in selectedAppIDs {
+                ForgeConversationLog.append(appID, kind: "share", text: "Nearby recipient confirmed importing this app.")
+            }
             Task {
                 try? await Task.sleep(nanoseconds: 750_000_000)
                 dismiss()
@@ -361,4 +364,3 @@ struct NearbyAppTransferView: View {
     }
 
 }
-

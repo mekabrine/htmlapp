@@ -92,8 +92,8 @@ struct LibraryView: View {
         }
         .overlay(alignment: .topLeading) {
             if folderPath.isEmpty {
-                LibraryCreateMicrophone { words in
-                    libraryVoiceRequest = LibraryVoiceRequest(prompt: words)
+                LibraryCreateMicrophone { words, attachments in
+                    libraryVoiceRequest = LibraryVoiceRequest(prompt: words, attachments: attachments)
                 }
             }
         }
@@ -122,7 +122,7 @@ struct LibraryView: View {
         }
         .fullScreenCover(item: $libraryVoiceRequest) { request in
             AIGenerationView(initialPrompt: request.prompt, shortcutGenerationNonce: 1,
-                             shortcutSource: "libraryMic")
+                             shortcutSource: "libraryMic", initialAttachments: request.attachments)
                 .environmentObject(store)
                 .interactiveDismissDisabled(true)
         }
@@ -140,6 +140,7 @@ struct LibraryView: View {
         .sheet(item: $editHistoryApp) { app in
             NavigationStack {
                 List {
+                    NavigationLink("App Conversation") { ForgeConversationLogView(appID: app.id) }
                     let history = store.editHistory(for: app)
                     if history.isEmpty {
                         Text("No AI edit checkpoints yet. Earlier versions appear after you save an AI edit.")
@@ -1160,10 +1161,11 @@ struct ContentUnavailableViewCompat: View {
 private struct LibraryVoiceRequest: Identifiable {
     let id = UUID()
     let prompt: String
+    let attachments: [ForgeAttachment]
 }
 
 private struct LibraryCreateMicrophone: View {
-    let onPrompt: (String) -> Void
+    let onPrompt: (String, [ForgeAttachment]) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var dictation = ForgeDictation()
     @State private var translation = CGSize.zero
@@ -1175,6 +1177,7 @@ private struct LibraryCreateMicrophone: View {
     @State private var touched = false
     @State private var recordingTask: Task<Void, Never>?
     @State private var returnTask: Task<Void, Never>?
+    @StateObject private var attachmentSelection = ForgeAttachmentSelection()
 
     var body: some View {
         GeometryReader { proxy in
@@ -1203,6 +1206,14 @@ private struct LibraryCreateMicrophone: View {
                     }
                     .onEnded { value in
                         guard !awaitingTranscript, returnTask == nil else { return }
+                        let center = CGPoint(x: -24 + value.translation.width + 31.5, y: 68 + value.translation.height + 31.5)
+                        if armed, let target = ForgeAttachmentTarget.hit(center, width: proxy.size.width) {
+                            recordingTask?.cancel()
+                            dictation.stop(transcribe: false)
+                            resetPosition()
+                            Task { await attachmentSelection.open(target) }
+                            return
+                        }
                         touched = false
                         awaitingTranscript = armed && isInside(value.translation, size: proxy.size)
                         recordingTask?.cancel()
@@ -1229,6 +1240,12 @@ private struct LibraryCreateMicrophone: View {
                         }
                     })
         }
+        .overlay { ForgeAttachmentTargets(active: armed) }
+        .forgeAttachments(attachmentSelection) {
+            Task {
+                if let words = await attachmentSelection.finishVoice(dictation) { onPrompt(words, attachmentSelection.items) }
+            }
+        }
         .overlay(alignment: .top) {
             if (awaitingTranscript && (dictation.transcribingOffline || dictation.canRetryTranscription))
                 || (armed && !dictation.recording) {
@@ -1252,7 +1269,7 @@ private struct LibraryCreateMicrophone: View {
             Button("OK", role: .cancel) { dictation.dismissAudioWarning() }
         }
         .forgeTranscriptReview($transcriptReview) { words, _ in
-            onPrompt(words)
+            onPrompt(words, attachmentSelection.items)
         }
         .onChange(of: dictation.transcribingOffline) { processing in
             if !processing { finishIfReady() }
@@ -1285,9 +1302,7 @@ private struct LibraryCreateMicrophone: View {
         if words.isEmpty && dictation.canRetryTranscription { return }
         awaitingTranscript = false
         if !words.isEmpty {
-            if usedWhisper { transcriptReview = words } else { onPrompt(words) }
+            if usedWhisper { transcriptReview = words } else { onPrompt(words, attachmentSelection.items) }
         }
     }
 }
-
-

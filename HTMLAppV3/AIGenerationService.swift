@@ -283,7 +283,18 @@ final class AIGenerationSession: ObservableObject {
         }
     }
 
-    func generate(prompt: String, originalUserPrompt: String? = nil, researchReport: String = "", preplanned: AIPlanningResult? = nil, fromVoice: Bool = false, preserveIcon: Bool = false) async {
+    private var attachmentInputs: [ForgeAttachment] = []
+    func generate(prompt: String, originalUserPrompt: String? = nil, researchReport: String = "", preplanned: AIPlanningResult? = nil, fromVoice: Bool = false, preserveIcon: Bool = false, attachments: [ForgeAttachment]? = nil) async {
+        if let attachments { attachmentInputs = attachments }
+        await ForgeAttachmentContext.$images.withValue(attachmentInputs) {
+            await generateWithAttachments(prompt: prompt + ForgeAttachment.textContext(attachmentInputs),
+                originalUserPrompt: originalUserPrompt, researchReport: researchReport,
+                preplanned: preplanned, fromVoice: fromVoice, preserveIcon: preserveIcon)
+        }
+        streamedHTML = ForgeAttachment.materialize(streamedHTML, items: attachmentInputs)
+    }
+
+    private func generateWithAttachments(prompt: String, originalUserPrompt: String? = nil, researchReport: String = "", preplanned: AIPlanningResult? = nil, fromVoice: Bool = false, preserveIcon: Bool = false) async {
         let config = AISettingsStore.configuration
         guard config.isConfigured else { errorMessage = AIGenerationError.notConfigured.localizedDescription; return }
         let savedIconScript = iconScript
@@ -544,7 +555,16 @@ final class AIGenerationSession: ObservableObject {
         isWorking = false
     }
 
-    func revise(change: String, researchReport: String = "", styleInstruction: String? = nil) async {
+    func revise(change: String, researchReport: String = "", styleInstruction: String? = nil, attachments: [ForgeAttachment]? = nil) async {
+        if let attachments { attachmentInputs = attachments }
+        await ForgeAttachmentContext.$images.withValue(attachmentInputs) {
+            await reviseWithAttachments(change: change + ForgeAttachment.textContext(attachmentInputs),
+                researchReport: researchReport, styleInstruction: styleInstruction)
+        }
+        streamedHTML = ForgeAttachment.materialize(streamedHTML, items: attachmentInputs)
+    }
+
+    private func reviseWithAttachments(change: String, researchReport: String = "", styleInstruction: String? = nil) async {
         guard !streamedHTML.trimmed.isEmpty else { return }
         let config = AISettingsStore.configuration
         guard config.isConfigured else { errorMessage = AIGenerationError.notConfigured.localizedDescription; return }
@@ -1310,6 +1330,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
 
     private func verifyAndRepair(config: AIProviderConfiguration, omitIcon: Bool = false) async throws {
         try Task.checkCancellation()
+        streamedHTML = ForgeAttachment.materialize(streamedHTML, items: attachmentInputs)
         try await ensureRuntimeBackend(config: config)
         phase = "Testing the app"
         verificationReport = ""
@@ -1843,8 +1864,18 @@ enum AIProviderClient {
     ) -> [String: Any] {
         switch config.compatibility {
         case .openAI:
-            var list: [[String: String]] = [["role": "system", "content": system]]
-            list.append(contentsOf: messages.map { ["role": $0.0, "content": $0.1] })
+            var list: [[String: Any]] = [["role": "system", "content": system]]
+            list.append(contentsOf: messages.map { ["role": $0.0, "content": $0.1] as [String: Any] })
+            if let index = list.lastIndex(where: { $0["role"] as? String == "user" }), !ForgeAttachmentContext.images.isEmpty {
+                var parts: [[String: Any]] = [["type": "text", "text": messages.last(where: { $0.0 == "user" })?.1 ?? ""]]
+                for item in ForgeAttachmentContext.images {
+                    if let jpeg = item.jpeg {
+                        parts.append(["type": "text", "text": "Reference image: " + item.name])
+                        parts.append(["type": "image_url", "image_url": ["url": "data:image/jpeg;base64," + jpeg.base64EncodedString()]])
+                    }
+                }
+                list[index]["content"] = parts
+            }
             var body: [String: Any] = ["model": config.model, "messages": list, "stream": stream]
             if let maxTokens {
                 body[tokenParameterOverride ?? "max_tokens"] = max(64, maxTokens)
@@ -1873,7 +1904,18 @@ enum AIProviderClient {
             }
             return body
         case .anthropic:
-            let list: [[String: String]] = messages.map { ["role": $0.0 == "assistant" ? "assistant" : "user", "content": $0.1] }
+            var list: [[String: Any]] = messages.map { ["role": $0.0 == "assistant" ? "assistant" : "user", "content": $0.1] }
+            if let index = list.lastIndex(where: { $0["role"] as? String == "user" }), !ForgeAttachmentContext.images.isEmpty {
+                var parts: [[String: Any]] = []
+                for item in ForgeAttachmentContext.images {
+                    if let jpeg = item.jpeg {
+                        parts.append(["type": "text", "text": "Reference image: " + item.name])
+                        parts.append(["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": jpeg.base64EncodedString()]])
+                    }
+                }
+                parts.append(["type": "text", "text": messages.last(where: { $0.0 == "user" })?.1 ?? ""])
+                list[index]["content"] = parts
+            }
             var systemValue: Any = system
             // Only the official Anthropic API is guaranteed to understand
             // cache_control. Keep the stable contract before dynamic research.

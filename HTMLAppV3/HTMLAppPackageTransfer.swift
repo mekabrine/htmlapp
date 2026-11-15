@@ -18,6 +18,7 @@ struct HTMLAppPortableBundle: Codable {
     // Optional in older backups; never includes source data, permission grants
     // or user records. Imported metadata must be revalidated against HTML.
     var appManifests: [String: ForgeAppManifest]?
+    var conversations: [String: [ForgeConversationLog.Entry]]? = nil
 }
 
 enum HTMLAppPackageError: LocalizedError {
@@ -82,7 +83,8 @@ enum HTMLAppPackageTransfer {
                 // Nearby sharing must not leak previous personal edit notes.
                 if !includePersonalData { transport.editHistory = [] }
                 return (app.id, transport)
-            })
+            }),
+            conversations: includePersonalData ? Dictionary(uniqueKeysWithValues: apps.map { ($0.id, ForgeConversationLog.entries($0.id)) }) : nil
         )
 
         let encoder = JSONEncoder()
