@@ -46,7 +46,10 @@ enum HTMLAppReleaseNotes {
                   symbol: "arrow.up.forward.app", tint: .green),
             Entry(id: "widget-refresh", title: "Widget updates refresh automatically",
                   description: "Published snapshots request a widget refresh immediately. While a saved app with widgets is open, HTMLApp requests another refresh every five seconds and once more when you leave the app. iOS controls the final display timing.",
-                  symbol: "arrow.triangle.2.circlepath", tint: .purple)
+                  symbol: "arrow.triangle.2.circlepath", tint: .purple),
+            Entry(id: "widget-render-diagnostics", title: "Better blank-widget diagnostics",
+                  description: "Widget diagnostics now show progress separately for each size, list installed widget kinds, and include a reversible plain-text rendering test to help identify blank widgets.",
+                  symbol: "stethoscope", tint: .orange)
         ]
     }
 }
@@ -151,6 +154,7 @@ struct HTMLAppWhatsNewView: View {
         .accessibilityElement(children: .combine)
     }
 }
+
 
 
 

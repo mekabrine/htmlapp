@@ -15,6 +15,7 @@ struct GeneratedIntegrationsView: View {
     @State private var confirmGroup = false
     @State private var systemControls: [HTMLAppSystemControl] = []
     @State private var controlError: String?
+    @State private var plainTextTest = HTMLAppWidgetDiagnostics.plainTextTestEnabled
 
     var body: some View {
         List {
@@ -112,6 +113,17 @@ struct GeneratedIntegrationsView: View {
                     reload()
                 }
                 Button("Read Diagnostic Result") { widgetError = nil; reload() }
+                Button(plainTextTest ? "Restore Normal Widget Content" : "Enable Plain-Text Widget Test") {
+                    do {
+                        try HTMLAppWidgetDiagnostics.setPlainTextTest(!plainTextTest)
+                        plainTextTest = HTMLAppWidgetDiagnostics.plainTextTestEnabled
+                        _ = try HTMLAppWidgetDiagnostics.begin()
+                        WidgetCenter.shared.reloadAllTimelines()
+                        reload()
+                    } catch { widgetError = error.localizedDescription }
+                }
+                Text("The plain-text test temporarily replaces Primary widget content with ‘HTMLApp OK’ without changing saved widget definitions. Restore normal content after testing.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if let widgetError { Text(widgetError).foregroundStyle(.red).font(.caption) }
             }
 
@@ -352,7 +364,7 @@ struct GeneratedIntegrationsView: View {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let configurations):
-                    installedStatus = "WidgetKit configured instances: \(configurations.count) (placement and visible rendering are not reported)"
+                    installedStatus = "WidgetKit configured instances: \(configurations.count) [\(configurations.map { "\($0.kind):\($0.family)" }.sorted().joined(separator: ", "))] (placement and visible rendering are not reported)"
                 case .failure: installedStatus = "WidgetKit configured instances: unavailable"
                 }
             }
@@ -385,5 +397,6 @@ struct GeneratedIntegrationsView: View {
         }
     }
 }
+
 
 
