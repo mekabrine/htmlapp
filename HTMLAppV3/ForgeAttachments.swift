@@ -109,12 +109,13 @@ enum ForgeAttachmentContext {
 
 struct ForgeAttachmentPicker: UIViewControllerRepresentable {
     let target: ForgeAttachmentTarget
+    var maximumCount = 9
     let finished: ([ForgeAttachment]?, String?) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIViewController(context: Context) -> UIViewController {
         switch target {
         case .photos:
-            var config = PHPickerConfiguration(); config.filter = .images; config.selectionLimit = 4
+            var config = PHPickerConfiguration(); config.filter = .images; config.selectionLimit = max(1, maximumCount)
             let picker = PHPickerViewController(configuration: config); picker.delegate = context.coordinator; return picker
         case .files:
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
@@ -136,7 +137,7 @@ struct ForgeAttachmentPicker: UIViewControllerRepresentable {
         }
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { parent.finished(nil, nil) }
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            guard urls.count <= 4 else { parent.finished(nil, "Choose at most four files per request."); return }
+            guard urls.count <= parent.maximumCount else { parent.finished(nil, "Choose at most \(parent.maximumCount) more files for this request."); return }
             do {
                 let items = try urls.map { url -> ForgeAttachment in
                     let access = url.startAccessingSecurityScopedResource()
@@ -169,26 +170,243 @@ struct ForgeAttachmentPicker: UIViewControllerRepresentable {
 }
 
 extension View {
-    func forgeAttachments(_ selection: ForgeAttachmentSelection, onSelected: @escaping () -> Void) -> some View {
-        modifier(ForgeAttachmentPresentation(selection: selection, onSelected: onSelected))
+    func forgeAttachments(_ selection: ForgeAttachmentSelection, dictation: ForgeDictation, onSelected: @escaping () -> Void) -> some View {
+        modifier(ForgeAttachmentPresentation(selection: selection, dictation: dictation, onSelected: onSelected))
     }
 }
 private struct ForgeAttachmentPresentation: ViewModifier {
     @ObservedObject var selection: ForgeAttachmentSelection
+    @ObservedObject var dictation: ForgeDictation
     let onSelected: () -> Void
     @State private var pendingSelection = false
+    @State private var reviewing = false
+    @State private var submitAfterDismiss = false
     func body(content: Content) -> some View {
-        content.sheet(item: $selection.target, onDismiss: {
-            if pendingSelection { pendingSelection = false; onSelected() }
+        content.sheet(item: Binding(get: { reviewing ? nil : selection.target }, set: { selection.target = $0 }), onDismiss: {
+            if pendingSelection { pendingSelection = false; reviewing = true }
         }) { target in
-            ForgeAttachmentPicker(target: target) { items, error in
+            ForgeAttachmentPicker(target: target, maximumCount: max(1, 9 - selection.items.count)) { items, error in
                 selection.target = nil
                 if let error { selection.error = error }
-                if let items { selection.items = items; pendingSelection = true }
+                if let items, !items.isEmpty {
+                    let remaining = max(0, 9 - selection.items.count)
+                    selection.items.append(contentsOf: items.prefix(remaining))
+                    if items.count > remaining { selection.error = "A request can include up to nine attachments. Remove an existing item to make room." }
+                    pendingSelection = true
+                }
+            }.ignoresSafeArea()
+        }
+        .sheet(isPresented: $reviewing, onDismiss: {
+            if submitAfterDismiss { submitAfterDismiss = false; onSelected() }
+        }) {
+            ForgeAttachmentReview(selection: selection, dictation: dictation) { prompt in
+                // Discard retry audio before handing off the edited transcript.
+                // The existing submission path must not overwrite it by retranscribing.
+                dictation.cancel()
+                dictation.transcript = prompt
+                submitAfterDismiss = true
+                reviewing = false
+            } cancel: {
+                dictation.cancel()
+                reviewing = false
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+            .interactiveDismissDisabled()
+        }
+        .alert("Attachment", isPresented: Binding(get: { !reviewing && selection.error != nil }, set: { if !$0 { selection.error = nil } })) {
+            Button("OK", role: .cancel) { selection.error = nil }
+        } message: { Text(selection.error ?? "") }
+    }
+}
+
+/// Selection is a draft until Generate is pressed. Picking more references never
+/// starts an AI request, and removing one only removes it from this request.
+private struct ForgeAttachmentReview: View {
+    @ObservedObject var selection: ForgeAttachmentSelection
+    @ObservedObject var dictation: ForgeDictation
+    let generate: (String) -> Void
+    let cancel: () -> Void
+    @State private var prompt = ""
+    @State private var preparing = true
+    @State private var removal: ForgeAttachment?
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Your request").font(.headline)
+                    if preparing {
+                        ProgressView("Transcribing your request…")
+                    }
+                    TextEditor(text: $prompt)
+                        .frame(minHeight: 125)
+                        .padding(10)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+                        .disabled(preparing)
+                        .accessibilityLabel("Transcript prompt")
+                    HStack {
+                        Text("Attachments").font(.headline)
+                        Spacer()
+                        Text("\(selection.items.count)/9").foregroundStyle(.secondary)
+                    }
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(selection.items) { item in
+                            attachmentCell(item)
+                        }
+                    }
+                    HStack(spacing: 10) {
+                        pickerButton(.camera, title: "Camera")
+                        pickerButton(.photos, title: "Photos")
+                        pickerButton(.files, title: "Files")
+                    }
+                    .disabled(selection.items.count >= 9)
+                    Text("Add up to nine photos and files. Your originals stay in Photos or Files.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                .padding(20)
+                .frame(maxWidth: 650)
+                .frame(maxWidth: .infinity)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Review request")
+            .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom) {
+                HStack(spacing: 12) {
+                    Button(action: cancel) {
+                        Text("Cancel").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
+                    }.modifier(ForgeReviewButtonStyle(kind: .cancel))
+                    Button { generate(prompt.trimmingCharacters(in: .whitespacesAndNewlines)) } label: {
+                        Text("Generate").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
+                    }
+                    .modifier(ForgeReviewButtonStyle(kind: .generate))
+                    .disabled(preparing || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .padding(20)
+                .background(.regularMaterial)
+            }
+        }
+        .task {
+            if let transcript = await selection.finishVoice(dictation) { prompt = transcript }
+            preparing = false
+        }
+        .sheet(item: $selection.target) { target in
+            ForgeAttachmentPicker(target: target, maximumCount: 9 - selection.items.count) { items, error in
+                selection.target = nil
+                if let error { selection.error = error }
+                if let items {
+                    let remaining = max(0, 9 - selection.items.count)
+                    selection.items.append(contentsOf: items.prefix(remaining))
+                    if items.count > remaining { selection.error = "A request can include up to nine attachments. The extra items were not added." }
+                }
             }.ignoresSafeArea()
         }
         .alert("Attachment", isPresented: Binding(get: { selection.error != nil }, set: { if !$0 { selection.error = nil } })) {
             Button("OK", role: .cancel) { selection.error = nil }
         } message: { Text(selection.error ?? "") }
+        .confirmationDialog("Remove this attachment?", isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }), titleVisibility: .visible, presenting: removal) { item in
+            Button("Remove attachment", role: .destructive) {
+                selection.items.removeAll { $0.id == item.id }
+                removal = nil
+            }
+            Button("Keep attachment", role: .cancel) { removal = nil }
+        } message: { item in Text(item.name) }
+    }
+
+    private func pickerButton(_ target: ForgeAttachmentTarget, title: String) -> some View {
+        Button { Task { await selection.open(target) } } label: {
+            VStack(spacing: 7) {
+                Image(systemName: target.symbol).font(.title2)
+                Text(title).font(.caption.weight(.semibold))
+            }.frame(maxWidth: .infinity).padding(.vertical, 10)
+        }.modifier(ForgeReviewButtonStyle(kind: .secondary))
+    }
+
+    private func attachmentCell(_ item: ForgeAttachment) -> some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                GeometryReader { geometry in
+                    if let data = item.jpeg {
+                        ForgeAttachmentThumbnail(data: data)
+                            .frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                    } else {
+                        VStack(spacing: 8) {
+                            Image(systemName: fileSymbol(item.name)).font(.largeTitle).foregroundStyle(.blue)
+                            Text(item.name).font(.caption).lineLimit(2).multilineTextAlignment(.center)
+                        }
+                        .padding(10)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(alignment: .topTrailing) {
+                Button { removal = item } label: {
+                    Image(systemName: "xmark").font(.caption.bold()).frame(width: 30, height: 30)
+                }
+                .modifier(ForgeReviewButtonStyle(kind: .remove))
+                .padding(5)
+                .accessibilityLabel("Remove \(item.name)")
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(item.name)
+    }
+
+    private func fileSymbol(_ name: String) -> String {
+        switch (name as NSString).pathExtension.lowercased() {
+        case "pdf": return "doc.richtext"
+        case "json", "js", "ts", "html", "css", "swift", "py": return "curlybraces.square"
+        case "csv", "tsv": return "tablecells"
+        default: return "doc.text"
+        }
     }
 }
+
+private struct ForgeAttachmentThumbnail: View {
+    let data: Data
+    @State private var thumbnail: UIImage?
+    var body: some View {
+        Group {
+            if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFill() }
+            else { Color(uiColor: .secondarySystemGroupedBackground).overlay { ProgressView() } }
+        }
+        .task {
+            // Grid previews need far fewer pixels than the AI input. Retain the
+            // thumbnail so editing the transcript doesn't decode every photo.
+            guard thumbnail == nil,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                      kCGImageSourceCreateThumbnailFromImageAlways: true,
+                      kCGImageSourceCreateThumbnailWithTransform: true,
+                      kCGImageSourceThumbnailMaxPixelSize: 400
+                  ] as CFDictionary) else { return }
+            thumbnail = UIImage(cgImage: image)
+        }
+    }
+}
+
+private struct ForgeReviewButtonStyle: ViewModifier {
+    enum Kind { case generate, cancel, secondary, remove }
+    let kind: Kind
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            switch kind {
+            case .generate: content.buttonStyle(.glassProminent).tint(.blue).foregroundStyle(.white).buttonBorderShape(.capsule)
+            case .cancel: content.buttonStyle(.glass).tint(.gray).foregroundStyle(.red).buttonBorderShape(.capsule)
+            case .secondary: content.buttonStyle(.glass).buttonBorderShape(.roundedRectangle(radius: 18))
+            case .remove: content.buttonStyle(.glass).buttonBorderShape(.circle)
+            }
+        } else {
+            switch kind {
+            case .generate: content.buttonStyle(.borderedProminent).tint(.blue).foregroundStyle(.white).buttonBorderShape(.capsule)
+            case .cancel: content.buttonStyle(.bordered).tint(.gray).foregroundStyle(.red).buttonBorderShape(.capsule)
+            case .secondary: content.buttonStyle(.bordered).buttonBorderShape(.roundedRectangle)
+            case .remove: content.buttonStyle(.plain).background(.regularMaterial, in: Circle())
+            }
+        }
+    }
+}
+

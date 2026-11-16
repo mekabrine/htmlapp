@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.16"
-    static let compiledBuild = "121"
+    static let compiledVersion = "1.9.17"
+    static let compiledBuild = "122"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,18 +32,18 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "voice-attachments", title: "Show Forge what you mean",
-                  description: "Drag the edit microphone onto Camera, Photos, or Files. Select references, then Forge transcribes your request and uses the attachments for an edit or a new app.",
+            Entry(id: "review-request", title: "Review before generating",
+                  description: "Camera, Photos, and Files now open a review page. Edit your transcript and choose Generate when you’re ready, or Cancel without sending a request.",
                   symbol: "paperclip", tint: .purple),
-            Entry(id: "questions", title: "Keep moving through questions",
-                  description: "Forge asks only when a choice matters. After five seconds without interaction, or when you lock the screen, it continues with a practical default using the existing background generation support.",
-                  symbol: "bubble.left.and.bubble.right", tint: .blue),
-            Entry(id: "conversation-history", title: "Your app’s continuing story",
-                  description: "App Conversation keeps requests, technical edit summaries, reversions, and completed share events. Recent history informs later edits, and personal backups include the full log.",
-                  symbol: "text.bubble", tint: .green),
-            Entry(id: "quiet-forge", title: "A simpler generation screen",
-                  description: "Watch the live activity graph and Forge’s current status, with fewer distractions while it works.",
-                  symbol: "chart.pie", tint: .orange)
+            Entry(id: "mixed-attachments", title: "Build a complete reference set",
+                  description: "Mix up to nine photos and files in a three-column grid. Take another picture, add more references, or confirm removal with each attachment’s × button.",
+                  symbol: "square.grid.3x3", tint: .blue),
+            Entry(id: "review-glass", title: "Clear, familiar controls",
+                  description: "The review page uses Liquid Glass buttons on supported devices: blue Generate with white text and gray Cancel with red text.",
+                  symbol: "sparkles", tint: .orange),
+            Entry(id: "library-prewarm", title: "A smoother Library launch",
+                  description: "Normal launches prepare your saved Library before displaying it, avoiding the empty-library flash. Direct app links keep their fast launch path.",
+                  symbol: "books.vertical", tint: .green)
         ]
     }
 }
@@ -148,3 +148,4 @@ struct HTMLAppWhatsNewView: View {
         .accessibilityElement(children: .combine)
     }
 }
+

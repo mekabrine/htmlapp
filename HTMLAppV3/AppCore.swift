@@ -36,6 +36,20 @@ struct HTMLAppMain: App {
                     .environmentObject(store)
                 } else if store.runningApp != nil {
                     HTMLAppRunningCover(store: store)
+                } else if !store.libraryLoaded {
+                    // Never mount an empty Library while its disk snapshot is
+                    // loading. A URL route can still replace this launch view.
+                    ProgressView("Opening Library…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color(uiColor: .systemGroupedBackground))
+                        .task {
+                            do { try await Task.sleep(nanoseconds: 180_000_000) }
+                            catch { return }
+                            guard store.runningApp == nil, !store.lockScreenVoiceCreatePresented else { return }
+                            // Also runs when returning from a direct launch,
+                            // whose launch maintenance intentionally skipped it.
+                            await store.prewarmLibrary()
+                        }
                 } else {
                     HTMLAppDisplayRoot()
                 }
@@ -100,7 +114,8 @@ struct HTMLAppMain: App {
                     // while a requested app or voice capture is opening.
                     try? await Task.sleep(nanoseconds: 180_000_000)
                     guard store.runningApp == nil, !store.lockScreenVoiceCreatePresented else { return }
-                    store.ensureLibraryLoaded()
+                    await store.prewarmLibrary()
+                    guard store.runningApp == nil, !store.lockScreenVoiceCreatePresented else { return }
                     store.claimShareExtensionFiles()
                     _ = HTMLAppGPUCache.maintenance
                     await HTMLAppOfflineSpeech.shared.preloadIfSelected()
@@ -438,6 +453,35 @@ final class AppStore: ObservableObject {
     func ensureLibraryLoaded() {
         guard !libraryLoaded else { return }
         load()
+        finishLibraryLoad()
+    }
+
+    private var libraryPrewarm: Task<[SavedHTMLApp]?, Never>?
+
+    /// Decode the normal launch snapshot away from the main actor. Direct URL
+    /// launches use LaunchCache and do not need to wait for this operation.
+    func prewarmLibrary() async {
+        guard !libraryLoaded else { return }
+        if libraryPrewarm == nil {
+            let url = libraryURL
+            libraryPrewarm = Task.detached(priority: .userInitiated) {
+                guard let data = try? Data(contentsOf: url) else { return nil }
+                return try? JSONDecoder().decode([SavedHTMLApp].self, from: data)
+            }
+        }
+        let snapshot = await libraryPrewarm?.value
+        libraryPrewarm = nil
+        guard !libraryLoaded else { return }
+        if let snapshot {
+            apps = snapshot
+            finishLibraryLoad()
+        } else {
+            // Keep the existing backup/corrupt-library recovery path.
+            ensureLibraryLoaded()
+        }
+    }
+
+    private func finishLibraryLoad() {
         loadFoldersAndMigrate()
         libraryLoaded = true
         if let pendingDirectOpenID,
@@ -1863,3 +1907,4 @@ final class AppStore: ObservableObject {
         }
     }
 }
+

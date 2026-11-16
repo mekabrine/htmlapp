@@ -369,7 +369,7 @@ struct AIGenerationView: View {
                 )
             }
         }
-        .forgeAttachments(attachments) {
+        .forgeAttachments(attachments, dictation: dictation) {
             Task {
                 if let words = await attachments.finishVoice(dictation) {
                     changePrompt = words
@@ -2802,3 +2802,4 @@ private struct ForgeTranscriptReview: View {
         }
     }
 }
+

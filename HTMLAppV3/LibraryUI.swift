@@ -1241,7 +1241,7 @@ private struct LibraryCreateMicrophone: View {
                     })
         }
         .overlay { ForgeAttachmentTargets(active: armed) }
-        .forgeAttachments(attachmentSelection) {
+        .forgeAttachments(attachmentSelection, dictation: dictation) {
             Task {
                 if let words = await attachmentSelection.finishVoice(dictation) { onPrompt(words, attachmentSelection.items) }
             }
@@ -1306,3 +1306,4 @@ private struct LibraryCreateMicrophone: View {
         }
     }
 }
+

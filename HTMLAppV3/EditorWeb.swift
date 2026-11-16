@@ -201,7 +201,7 @@ struct WebRunner: View {
                                  initialEdit: spokenEdit, initialAttachments: attachmentSelection.items)
                     .environmentObject(store)
             }
-            .forgeAttachments(attachmentSelection) {
+            .forgeAttachments(attachmentSelection, dictation: editDictation) {
                 Task {
                     if let words = await attachmentSelection.finishVoice(editDictation) {
                         editDictation.transcript = words
@@ -1632,3 +1632,4 @@ private final class HTMLAppFaceDownShakeExit {
         darkness = nil
     }
 }
+
