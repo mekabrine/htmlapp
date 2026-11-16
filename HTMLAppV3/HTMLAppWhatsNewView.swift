@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.18"
-    static let compiledBuild = "123"
+    static let compiledVersion = "1.9.19"
+    static let compiledBuild = "124"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,18 +32,12 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "attachment-research", title: "Better research with references",
-                  description: "Forge can use attached documents and photos to identify what needs checking, then spend more time finding and reading relevant documentation.",
-                  symbol: "doc.text.magnifyingglass", tint: .blue),
-            Entry(id: "reliable-pickers", title: "Keep adding photos and files",
-                  description: "Fixed competing picker presentations in Review Request. Camera, Photos, and Files now open from their own presentation state, with clear camera-access errors.",
-                  symbol: "camera", tint: .purple),
-            Entry(id: "request-cleanup", title: "Attachments stay with one task",
-                  description: "References clear after successful generation or cancellation, so they won’t carry into your next request. Images already embedded in your generated app remain available.",
-                  symbol: "paperclip", tint: .green),
-            Entry(id: "backend-paused", title: "Backends temporarily paused",
-                  description: "Forge no longer generates hosted backends. Backend operations and automatic setup are disabled while existing files, saved configuration, and backend code are kept.",
-                  symbol: "pause.circle", tint: .orange)
+            Entry(id: "queued-pickers", title: "More reliable attachment pickers",
+                  description: "Camera, Photos, and Files wait for the screen to be ready, including after a cold launch or another popup. Requests stay queued while the app is inactive.",
+                  symbol: "paperclip", tint: .blue),
+            Entry(id: "picker-handoff", title: "Smoother request review",
+                  description: "The picker closes fully before your review page opens. If a picker cannot open, a clear message lets you retry without silently losing the request.",
+                  symbol: "checkmark.rectangle", tint: .purple)
         ]
     }
 }

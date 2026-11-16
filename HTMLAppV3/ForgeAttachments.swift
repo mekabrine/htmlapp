@@ -173,6 +173,108 @@ struct ForgeAttachmentPicker: UIViewControllerRepresentable {
     }
 }
 
+/// Retain requests across cold-launch/modal transitions. SwiftUI sheet bindings
+/// can be consumed before a presenter is attached to a foreground window.
+private struct ForgePickerPresentation: UIViewControllerRepresentable {
+    let target: ForgeAttachmentTarget?
+    let maximumCount: Int
+    let finished: ([ForgeAttachment]?, String?) -> Void
+
+    func makeUIViewController(context: Context) -> Host { Host() }
+    func updateUIViewController(_ host: Host, context: Context) {
+        host.request = target
+        host.maximumCount = maximumCount
+        host.finished = finished
+        host.schedule()
+    }
+    static func dismantleUIViewController(_ host: Host, coordinator: ()) {
+        host.timer?.invalidate()
+        host.timer = nil
+        host.picker?.dismiss(animated: false)
+    }
+
+    final class Host: UIViewController, UIAdaptivePresentationControllerDelegate {
+        var request: ForgeAttachmentTarget?
+        var maximumCount = 9
+        var finished: (([ForgeAttachment]?, String?) -> Void)?
+        var timer: Timer?
+        var picker: UIViewController?
+        private var visible = false
+        private var completing = false
+        private var attempts = 0
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            visible = true
+            schedule()
+        }
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            visible = false
+        }
+        func schedule() {
+            guard request != nil, picker == nil, timer == nil else { return }
+            timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.presentWhenReady() }
+            }
+        }
+        private func presentWhenReady() {
+            guard let target = request else { stopWaiting(); return }
+            guard UIApplication.shared.applicationState == .active else { return }
+            attempts += 1
+            guard attempts < 100 else {
+                stopWaiting()
+                request = nil
+                finished?(nil, "The picker could not open while another screen was changing. Please try Camera, Photos, or Files again.")
+                return
+            }
+            guard visible, let window = viewIfLoaded?.window,
+                  window.windowScene?.activationState == .foregroundActive else { return }
+            var presenter: UIViewController = self
+            while let parent = presenter.parent { presenter = parent }
+            guard presenter.presentedViewController == nil,
+                  presenter.transitionCoordinator == nil,
+                  !presenter.isBeingPresented, !presenter.isBeingDismissed else { return }
+            stopWaiting()
+            let controller = UIHostingController(rootView:
+                ForgeAttachmentPicker(target: target, maximumCount: maximumCount) { [weak self] items, error in
+                    self?.complete(items, error)
+                }.ignoresSafeArea())
+            // Keep the recording owner mounted so its disappear cleanup cannot
+            // discard deferred Whisper audio while the user chooses a file.
+            controller.modalPresentationStyle = .pageSheet
+            controller.sheetPresentationController?.detents = [.large()]
+            picker = controller
+            completing = false
+            presenter.present(controller, animated: true)
+            controller.presentationController?.delegate = self
+        }
+        private func stopWaiting() {
+            timer?.invalidate()
+            timer = nil
+            attempts = 0
+        }
+        private func complete(_ items: [ForgeAttachment]?, _ error: String?) {
+            guard !completing else { return }
+            completing = true
+            let callback = finished
+            picker?.dismiss(animated: true) { [weak self] in
+                self?.picker = nil
+                self?.request = nil
+                callback?(items, error)
+            }
+        }
+        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+            guard !completing else { return }
+            completing = true
+            picker = nil
+            request = nil
+            finished?(nil, nil)
+        }
+        deinit { timer?.invalidate() }
+    }
+}
+
 extension View {
     func forgeAttachments(_ selection: ForgeAttachmentSelection, dictation: ForgeDictation, onCancel: @escaping () -> Void = {}, onSelected: @escaping (String, [ForgeAttachment]) -> Void) -> some View {
         modifier(ForgeAttachmentPresentation(selection: selection, dictation: dictation, onCancel: onCancel, onSelected: onSelected))
@@ -183,14 +285,11 @@ private struct ForgeAttachmentPresentation: ViewModifier {
     @ObservedObject var dictation: ForgeDictation
     let onCancel: () -> Void
     let onSelected: (String, [ForgeAttachment]) -> Void
-    @State private var pendingSelection = false
     @State private var reviewing = false
     @State private var submission: (prompt: String, items: [ForgeAttachment])?
     func body(content: Content) -> some View {
-        content.sheet(item: Binding(get: { reviewing ? nil : selection.target }, set: { if !reviewing { selection.target = $0 } }), onDismiss: {
-            if pendingSelection { pendingSelection = false; reviewing = true }
-        }) { target in
-            ForgeAttachmentPicker(target: target, maximumCount: max(1, 9 - selection.items.count)) { items, error in
+        content.background {
+            ForgePickerPresentation(target: reviewing ? nil : selection.target, maximumCount: max(1, 9 - selection.items.count)) { items, error in
                 selection.target = nil
                 if let error { selection.error = error }
                 if items == nil && error == nil {
@@ -202,9 +301,9 @@ private struct ForgeAttachmentPresentation: ViewModifier {
                     let remaining = max(0, 9 - selection.items.count)
                     selection.items.append(contentsOf: items.prefix(remaining))
                     if items.count > remaining { selection.error = "A request can include up to nine attachments. Remove an existing item to make room." }
-                    pendingSelection = true
+                    reviewing = true
                 }
-            }.ignoresSafeArea()
+            }.frame(width: 0, height: 0)
         }
         .sheet(isPresented: $reviewing, onDismiss: {
             if let request = submission {
@@ -312,8 +411,8 @@ private struct ForgeAttachmentReview: View {
             if let transcript = await selection.finishVoice(dictation) { prompt = transcript }
             preparing = false
         }
-        .sheet(item: $pickerTarget) { target in
-            ForgeAttachmentPicker(target: target, maximumCount: 9 - selection.items.count) { items, error in
+        .background {
+            ForgePickerPresentation(target: pickerTarget, maximumCount: max(1, 9 - selection.items.count)) { items, error in
                 pickerTarget = nil
                 if let error { selection.error = error }
                 if let items {
@@ -321,7 +420,7 @@ private struct ForgeAttachmentReview: View {
                     selection.items.append(contentsOf: items.prefix(remaining))
                     if items.count > remaining { selection.error = "A request can include up to nine attachments. The extra items were not added." }
                 }
-            }.ignoresSafeArea()
+            }.frame(width: 0, height: 0)
         }
         .alert("Attachment", isPresented: Binding(get: { selection.error != nil }, set: { if !$0 { selection.error = nil } })) {
             Button("OK", role: .cancel) { selection.error = nil }
