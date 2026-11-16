@@ -190,6 +190,10 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         guard let id = body["id"] as? String,
               let method = body["method"] as? String else { return }
         let args = body["args"] as? [String: Any] ?? [:]
+        if !HTMLAppBackendFeature.enabled && method.hasPrefix("backend.") {
+            reject(id, code: "backend_disabled", message: HTMLAppBackendFeature.unavailableMessage)
+            return
+        }
         // Generated canonical schema validates known top-level payload shapes
         // before touching native frameworks. Service-specific range, origin
         // and permission validation remains mandatory in each operation.
@@ -1126,7 +1130,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             resolve(id, value: [
                 "protocolVersion": HTMLAppBridgeRegistry.protocolVersion,
                 "descriptorVersion": HTMLAppBridgeRegistry.descriptorVersion,
-                "methods": HTMLAppBridgeRegistry.methods,
+                "methods": HTMLAppBridgeRegistry.methods.filter { HTMLAppBackendFeature.enabled || !$0.hasPrefix("backend.") },
                 "permissions": HTMLPermission.allCases.map { $0.rawValue },
                 "widgetCustomization": [
                     "schemaVersion": 2,
@@ -1152,6 +1156,10 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             guard let name = args["method"] as? String,
                   var value = HTMLAppBridgeRegistry.describe(name) else {
                 reject(id, code: "unsupported_method", message: "The requested capability is not registered.")
+                return
+            }
+            if !HTMLAppBackendFeature.enabled && name.hasPrefix("backend.") {
+                reject(id, code: "backend_disabled", message: HTMLAppBackendFeature.unavailableMessage)
                 return
             }
             let hardwareAvailable: Bool
@@ -4648,5 +4656,6 @@ questionmark.circle info.circle exclamationmark.triangle hand.tap hand.raised ey
 square.on.square rectangle.portrait.on.rectangle.portrait app.badge apps.iphone square.grid.3x3.fill
 """.split(whereSeparator: \.isWhitespace).map(String.init)
 }
+
 
 

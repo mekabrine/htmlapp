@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.17"
-    static let compiledBuild = "122"
+    static let compiledVersion = "1.9.18"
+    static let compiledBuild = "123"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,18 +32,18 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "review-request", title: "Review before generating",
-                  description: "Camera, Photos, and Files now open a review page. Edit your transcript and choose Generate when you’re ready, or Cancel without sending a request.",
-                  symbol: "paperclip", tint: .purple),
-            Entry(id: "mixed-attachments", title: "Build a complete reference set",
-                  description: "Mix up to nine photos and files in a three-column grid. Take another picture, add more references, or confirm removal with each attachment’s × button.",
-                  symbol: "square.grid.3x3", tint: .blue),
-            Entry(id: "review-glass", title: "Clear, familiar controls",
-                  description: "The review page uses Liquid Glass buttons on supported devices: blue Generate with white text and gray Cancel with red text.",
-                  symbol: "sparkles", tint: .orange),
-            Entry(id: "library-prewarm", title: "A smoother Library launch",
-                  description: "Normal launches prepare your saved Library before displaying it, avoiding the empty-library flash. Direct app links keep their fast launch path.",
-                  symbol: "books.vertical", tint: .green)
+            Entry(id: "attachment-research", title: "Better research with references",
+                  description: "Forge can use attached documents and photos to identify what needs checking, then spend more time finding and reading relevant documentation.",
+                  symbol: "doc.text.magnifyingglass", tint: .blue),
+            Entry(id: "reliable-pickers", title: "Keep adding photos and files",
+                  description: "Fixed competing picker presentations in Review Request. Camera, Photos, and Files now open from their own presentation state, with clear camera-access errors.",
+                  symbol: "camera", tint: .purple),
+            Entry(id: "request-cleanup", title: "Attachments stay with one task",
+                  description: "References clear after successful generation or cancellation, so they won’t carry into your next request. Images already embedded in your generated app remain available.",
+                  symbol: "paperclip", tint: .green),
+            Entry(id: "backend-paused", title: "Backends temporarily paused",
+                  description: "Forge no longer generates hosted backends. Backend operations and automatic setup are disabled while existing files, saved configuration, and backend code are kept.",
+                  symbol: "pause.circle", tint: .orange)
         ]
     }
 }

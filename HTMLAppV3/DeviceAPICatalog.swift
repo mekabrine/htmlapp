@@ -32,7 +32,10 @@ enum HTMLAppDeviceAPIResearch {
         "needs", "make", "build", "create", "use", "using", "access", "support"
     ]
 
-    static let entries: [HTMLAppDeviceAPICatalogEntry] = [
+    static var entries: [HTMLAppDeviceAPICatalogEntry] {
+        allEntries.filter { HTMLAppBackendFeature.enabled || !$0.id.hasPrefix("backend.") }
+    }
+    private static let allEntries: [HTMLAppDeviceAPICatalogEntry] = [
         .init(
             id: "audio.record",
             title: "Foreground native iOS audio recording",

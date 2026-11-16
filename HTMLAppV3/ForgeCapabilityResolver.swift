@@ -24,6 +24,7 @@ struct ForgeCapabilityPlan {
     }
 
     static func requiresBackend(request: String, html: String) -> Bool {
+        guard HTMLAppBackendFeature.enabled else { return false }
         let content = html.lowercased()
         if content.contains("htmlapp-backend") || content.contains("backend.request") ||
             content.contains("backend.subscribe") || content.contains("backend?.request") { return true }
@@ -207,4 +208,5 @@ struct ForgeCapabilityPlan {
                                    permissions: permissions, constraints: constraints)
     }
 }
+
 

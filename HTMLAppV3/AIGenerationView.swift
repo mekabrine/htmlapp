@@ -90,6 +90,7 @@ struct AIGenerationView: View {
     @State private var activeShortcutPrompt = ""
     @State private var pendingChoiceQuestion = false
     @StateObject private var attachments = ForgeAttachmentSelection()
+    @State private var activeAttachmentJob: UUID?
     @State private var lastQuestionInteraction = Date()
     @FocusState private var questionFieldFocused: Bool
     @State private var questionResolved = false
@@ -292,6 +293,9 @@ struct AIGenerationView: View {
                 titleVisibility: .visible
             ) {
                 Button("Discard and Close", role: .destructive) {
+                    questionAlreadyAsked = false
+                    pendingChoiceQuestion = false
+                    questionTimer?.cancel()
                     generationTask?.cancel()
                     ForgeBackgroundUpload.shared.cancel()
                     preparedStyleTask?.cancel()
@@ -301,7 +305,7 @@ struct AIGenerationView: View {
                     dictation.stop()
                     AIDebugTraceStore.shared.finish(outcome: "Discarded")
                     ForgeConversationLog.append(conversationID, kind: "discard", text: "User discarded the current unsaved AI work.")
-                    ForgeAttachment.clear(conversationID)
+                    clearRequestAttachments()
                     workTracker.finish(outcome: "Discarded")
                     session.clearCheckpoint()
                     styleOptions = []
@@ -369,14 +373,11 @@ struct AIGenerationView: View {
                 )
             }
         }
-        .forgeAttachments(attachments, dictation: dictation) {
-            Task {
-                if let words = await attachments.finishVoice(dictation) {
-                    changePrompt = words
-                    showingChange = true
-                    applyAIChange()
-                }
-            }
+        .forgeAttachments(attachments, dictation: dictation, onCancel: { clearRequestAttachments() }) { words, items in
+            attachments.items = items
+            changePrompt = words
+            showingChange = true
+            applyAIChange()
         }
         .task {
             store.ensureLibraryLoaded()
@@ -921,10 +922,13 @@ struct AIGenerationView: View {
         session.isWorking = true
         session.phase = edit ? "Editing with on-device Apple Intelligence" : "Generating with on-device Apple Intelligence"
         generationTask?.cancel()
+        let attachmentJob = UUID()
+        activeAttachmentJob = attachmentJob
         generationTask = Task { @MainActor in
             ForgeConversationLog.append(conversationID, kind: "user", text: text)
             defer {
                 session.isWorking = false
+                if activeAttachmentJob == attachmentJob && (Task.isCancelled || (session.errorMessage == nil && !session.streamedHTML.isEmpty)) { clearRequestAttachments() }
                 ForgeConversationLog.append(conversationID, kind: "assistant", text: session.errorMessage ?? "Offline HTML/CSS/JavaScript generation ended: \(session.phase)")
             }
             do {
@@ -2068,6 +2072,8 @@ struct AIGenerationView: View {
         session.phase = "Reading your request"
         session.isWorking = true
         let activityJob = forgeActivityJobID
+        let attachmentJob = UUID()
+        activeAttachmentJob = attachmentJob
         generationTask = Task {
             await ForgeRunOptions.$quick.withValue(quickMode && !AISettingsStore.quickModel.isEmpty) {
             defer {
@@ -2075,6 +2081,7 @@ struct AIGenerationView: View {
                 let outcome = Task.isCancelled ? (ForgeBackgroundUpload.shared.isActive ? "Continuing in background" : "Stopped") :
                     (session.errorMessage == nil ? "Completed" : "Failed")
                 workTracker.finish(outcome: outcome)
+                if activeAttachmentJob == attachmentJob && !ForgeBackgroundUpload.shared.isActive && (Task.isCancelled || (session.errorMessage == nil && !session.streamedHTML.isEmpty)) { clearRequestAttachments() }
                 let technical = session.errorMessage ?? (session.lastEditSummary.isEmpty ? "Generated HTML/CSS/JavaScript (\(session.streamedHTML.utf8.count) bytes). \(session.description)" : session.lastEditSummary)
                 ForgeConversationLog.append(conversationID, kind: "assistant", text: outcome + ": " + String(technical.prefix(900)))
                 endForgeActivity(onlyIf: activityJob)
@@ -2092,16 +2099,21 @@ struct AIGenerationView: View {
             }
             let webReport: String
             var preplanned: AIPlanningResult?
-            if let pendingPreflight {
+            if !attachments.items.isEmpty, let pendingPreflight {
+                pendingPreflight.cancel()
+                _ = await pendingPreflight.value
+                guard !Task.isCancelled else { return }
+            }
+            if let pendingPreflight, attachments.items.isEmpty {
                 (webReport, preplanned) = await pendingPreflight.value
                 AIDebugTraceStore.shared.append("PREFLIGHT", "Used preparation started during style selection.")
-            } else if ForgeRunOptions.quick || AIHTMLAgent.canSkipPreflight(for: originalPrompt) {
+            } else if attachments.items.isEmpty && (ForgeRunOptions.quick || AIHTMLAgent.canSkipPreflight(for: originalPrompt)) {
                 session.phase = "Generating live preview"
                 webReport = ""
                 AIDebugTraceStore.shared.append("WEB RESEARCH", ForgeRunOptions.quick ? "Skipped for a QUICK! run." : "Skipped because this appears to be a simple local app request.")
-            } else if AIHTMLAgent.needsWebResearch(for: originalPrompt) {
+            } else if !attachments.items.isEmpty || AIHTMLAgent.needsWebResearch(for: originalPrompt) {
                 session.phase = "Planning web research"
-                webReport = await browserResearch.research(for: originalPrompt)
+                webReport = await browserResearch.research(for: originalPrompt, attachments: attachments.items)
                 AIDebugTraceStore.shared.append("WEB RESEARCH", webReport.isEmpty ? "No browser research result." : webReport)
             } else {
                 session.phase = "Checking device capabilities"
@@ -2235,12 +2247,15 @@ struct AIGenerationView: View {
         AIDebugTraceStore.shared.append("EDIT INPUT", "Prior HTML bytes: \(session.streamedHTML.utf8.count); existing app: \(existingApp?.name ?? "new draft")")
         session.isWorking = true
         let activityJob = forgeActivityJobID
+        let attachmentJob = UUID()
+        activeAttachmentJob = attachmentJob
         generationTask = Task {
             await ForgeRunOptions.$quick.withValue(quickMode && !AISettingsStore.quickModel.isEmpty) {
             defer {
                 let outcome = Task.isCancelled ? (ForgeBackgroundUpload.shared.isActive ? "Continuing in background" : "Stopped") :
                     (session.errorMessage == nil ? "Completed" : "Failed")
                 workTracker.finish(outcome: outcome)
+                if activeAttachmentJob == attachmentJob && !ForgeBackgroundUpload.shared.isActive && (Task.isCancelled || (session.errorMessage == nil && !session.streamedHTML.isEmpty)) { clearRequestAttachments() }
                 let technical = session.errorMessage ?? (session.lastEditSummary.isEmpty ? "Edited HTML/CSS/JavaScript (\(session.streamedHTML.utf8.count) bytes)." : session.lastEditSummary)
                 ForgeConversationLog.append(conversationID, kind: "assistant", text: outcome + ": " + String(technical.prefix(900)))
                 endForgeActivity(onlyIf: activityJob)
@@ -2254,9 +2269,9 @@ Requested edit:
 \(change)
 """
             let webReport: String
-            if !ForgeRunOptions.quick && AIHTMLAgent.needsWebResearch(for: change) {
+            if !attachments.items.isEmpty || (!ForgeRunOptions.quick && AIHTMLAgent.needsWebResearch(for: change)) {
                 session.phase = "Planning web research"
-                webReport = await browserResearch.research(for: researchRequest)
+                webReport = await browserResearch.research(for: researchRequest, attachments: attachments.items)
                 AIDebugTraceStore.shared.append("WEB RESEARCH", webReport.isEmpty ? "No browser research result." : webReport)
             } else {
                 session.phase = "Checking device capabilities"
@@ -2380,7 +2395,7 @@ Requested edit:
             do {
                 let backendIssues = ForgeBackendContract.issues(request: session.originalPrompt, html: html, required: session.runtimeBackendRequired) + ForgeWidgetTimeContract.issues(request: session.originalPrompt, html: html)
                 guard backendIssues.isEmpty else { throw HTMLAppBackendError(message: backendIssues.joined(separator: " "), status: 422) }
-                if let bundle = try HTMLAppRuntimeBundle.extract(html) {
+                if HTMLAppBackendFeature.enabled, let bundle = try HTMLAppRuntimeBundle.extract(html) {
                     try await HTMLAppRuntimeBackend.deploy(localID: existingApp?.id ?? runtimeCreationID,
                         name: HTMLTools.title(in: html) ?? "My app", bundle: bundle)
                 }
@@ -2428,7 +2443,7 @@ Requested edit:
                 }
             }
             AIDebugTraceStore.shared.finish(outcome: "Saved")
-            ForgeAttachment.clear(conversationID)
+            clearRequestAttachments()
             if existingApp == nil { draftWorkID = "draft-\(UUID().uuidString)" }
             session.clearCheckpoint()
             runtimeCreationID = UUID().uuidString
@@ -2438,6 +2453,10 @@ Requested edit:
     }
 
     private func stopKeepingDraft() {
+        questionAlreadyAsked = false
+        pendingChoiceQuestion = false
+        questionTimer?.cancel()
+        clearRequestAttachments()
         preparedStyleTask?.cancel()
         preparedStyleTask = nil
         preparedStylePrompt = nil
@@ -2452,6 +2471,13 @@ Requested edit:
         uiPolishNotice = session.streamedHTML.isEmpty
             ? "Stopped. The prompt and planning draft were kept locally."
             : "Stopped. The latest safe preview was kept locally."
+    }
+
+    private func clearRequestAttachments() {
+        activeAttachmentJob = nil
+        attachments.items.removeAll()
+        attachments.error = nil
+        ForgeAttachment.clear(conversationID)
     }
 
     private func retryLastFailure() {
@@ -2577,6 +2603,7 @@ Requested edit:
         session.streamedHTML = ForgeAttachment.materialize(session.streamedHTML, items: attachments.items)
         generationTask = Task {
             await session.verifyCurrent()
+            if session.errorMessage == nil { clearRequestAttachments() }
             ForgeConversationLog.append(conversationID, kind: "assistant", text: session.errorMessage ?? "Background result received and foreground checks completed for \(session.streamedHTML.utf8.count) bytes of HTML/CSS/JavaScript.")
         }
     }

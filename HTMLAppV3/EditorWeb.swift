@@ -107,6 +107,7 @@ struct WebRunner: View {
     @State private var awaitingEdit = false
     @State private var transcriptReview: String?
     @State private var spokenEdit = ""
+    @State private var spokenAttachments: [ForgeAttachment] = []
     @State private var recordingTask: Task<Void, Never>?
     @StateObject private var attachmentSelection = ForgeAttachmentSelection()
 
@@ -196,18 +197,15 @@ struct WebRunner: View {
                 editorPresentationTask?.cancel()
                 editDictation.cancel()
             }
-            .sheet(isPresented: $showingVoiceEditor) {
+            .sheet(isPresented: $showingVoiceEditor, onDismiss: { spokenAttachments.removeAll() }) {
                 AIGenerationView(existingApp: store.apps.first(where: { $0.id == app.id }) ?? app,
-                                 initialEdit: spokenEdit, initialAttachments: attachmentSelection.items)
+                                 initialEdit: spokenEdit, initialAttachments: spokenAttachments)
                     .environmentObject(store)
             }
-            .forgeAttachments(attachmentSelection, dictation: editDictation) {
-                Task {
-                    if let words = await attachmentSelection.finishVoice(editDictation) {
-                        editDictation.transcript = words
-                        submitSpokenEdit()
-                    }
-                }
+            .forgeAttachments(attachmentSelection, dictation: editDictation) { words, items in
+                spokenAttachments = items
+                editDictation.transcript = words
+                submitSpokenEdit()
             }
             .background(HTMLAppCarWindowProbe(isCarWindow: $carWindow))
             .statusBarHidden(carDisplay || carWindow || Self.shouldHideStatusBar(in: liveHTML))

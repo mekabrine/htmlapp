@@ -1,8 +1,22 @@
 import Foundation
 
+/// One reversible switch. Keep backend code, credentials and pending work intact.
+enum HTMLAppBackendFeature {
+    static let enabled = false
+    static let unavailableMessage = "HTMLApp backends are temporarily disabled. Your saved backend data and configuration have been kept."
+    static let authoringInstructions = """
+    HTMLApp-hosted backends are temporarily disabled. Do not generate server bundles,
+    deploy servers, or use HTMLApp's backend bridge. Use documented on-device
+    storage and native capabilities, or verified browser-safe public services.
+    Explain any feature that still requires an external server; never fake success.
+    Preserve existing backend source and data during unrelated edits, without activating it.
+    """
+}
+
 /// Backend completeness is a correctness requirement, independent of optional UI QA.
 enum ForgeBackendContract {
-    static let instructions = """
+    static var instructions: String { HTMLAppBackendFeature.enabled ? enabledInstructions : HTMLAppBackendFeature.authoringInstructions }
+    private static let enabledInstructions = """
     DEPLOYMENT ENVIRONMENT: APNs IS NOT CONFIGURED AND THE OWNER CANNOT SET IT UP.
     Do not require Apple push keys, push.register, backend.subscribe or app.notify as
     the only path for the primary workflow. Use the backend for durable messages/data;
@@ -105,10 +119,11 @@ enum ForgeBackendContract {
     """
 
     static func requiresBackend(request: String, html: String) -> Bool {
-        ForgeCapabilityPlan.requiresBackend(request: request, html: html)
+        HTMLAppBackendFeature.enabled && ForgeCapabilityPlan.requiresBackend(request: request, html: html)
     }
 
     static func issues(request: String, html: String, required: Bool = false) -> [String] {
+        guard HTMLAppBackendFeature.enabled else { return [] }
         guard required || requiresBackend(request: request, html: html) else { return [] }
         do {
             guard let bundle = try HTMLAppRuntimeBundle.extract(html) else {
@@ -163,3 +178,4 @@ enum ForgeWidgetTimeContract {
         return []
     }
 }
+

@@ -283,15 +283,15 @@ final class AIGenerationSession: ObservableObject {
         }
     }
 
-    private var attachmentInputs: [ForgeAttachment] = []
     func generate(prompt: String, originalUserPrompt: String? = nil, researchReport: String = "", preplanned: AIPlanningResult? = nil, fromVoice: Bool = false, preserveIcon: Bool = false, attachments: [ForgeAttachment]? = nil) async {
-        if let attachments { attachmentInputs = attachments }
-        await ForgeAttachmentContext.$images.withValue(attachmentInputs) {
-            await generateWithAttachments(prompt: prompt + ForgeAttachment.textContext(attachmentInputs),
+        let inputs = attachments ?? []
+        await ForgeAttachmentContext.$images.withValue(inputs) {
+            await generateWithAttachments(prompt: prompt + ForgeAttachment.textContext(inputs),
                 originalUserPrompt: originalUserPrompt, researchReport: researchReport,
                 preplanned: preplanned, fromVoice: fromVoice, preserveIcon: preserveIcon)
         }
-        streamedHTML = ForgeAttachment.materialize(streamedHTML, items: attachmentInputs)
+        guard !Task.isCancelled else { return }
+        streamedHTML = ForgeAttachment.materialize(streamedHTML, items: inputs)
     }
 
     private func generateWithAttachments(prompt: String, originalUserPrompt: String? = nil, researchReport: String = "", preplanned: AIPlanningResult? = nil, fromVoice: Bool = false, preserveIcon: Bool = false) async {
@@ -350,7 +350,7 @@ final class AIGenerationSession: ObservableObject {
                     }
                 }
                 if let planning {
-                runtimeBackendRequired = runtimeBackendRequired || planning.backendRequired
+                runtimeBackendRequired = HTMLAppBackendFeature.enabled && (runtimeBackendRequired || planning.backendRequired)
                 improved = planning.brief + visualReference
                 refinedBrief = improved
                 let plan = planning.research
@@ -395,7 +395,7 @@ final class AIGenerationSession: ObservableObject {
 
             lastResearch += "\n\n" + ForgePublicAPICatalog.context(for: originalPrompt)
             let generationBrief = """
-            BACKEND REQUIREMENT: \(runtimeBackendRequired ? "A complete runtime v2 source/manifest bundle and connected frontend are mandatory. Do not substitute a local-only demo." : "Use a runtime backend if needed by the actual requested workflow.")
+            BACKEND REQUIREMENT: \(HTMLAppBackendFeature.enabled ? (runtimeBackendRequired ? "A complete runtime v2 source/manifest bundle and connected frontend are mandatory. Do not substitute a local-only demo." : "Use a runtime backend if needed by the actual requested workflow.") : HTMLAppBackendFeature.authoringInstructions)
 
             AUTHORITATIVE USER REQUEST (takes precedence over inferred defaults):
             \(prompt)
@@ -556,12 +556,13 @@ final class AIGenerationSession: ObservableObject {
     }
 
     func revise(change: String, researchReport: String = "", styleInstruction: String? = nil, attachments: [ForgeAttachment]? = nil) async {
-        if let attachments { attachmentInputs = attachments }
-        await ForgeAttachmentContext.$images.withValue(attachmentInputs) {
-            await reviseWithAttachments(change: change + ForgeAttachment.textContext(attachmentInputs),
+        let inputs = attachments ?? []
+        await ForgeAttachmentContext.$images.withValue(inputs) {
+            await reviseWithAttachments(change: change + ForgeAttachment.textContext(inputs),
                 researchReport: researchReport, styleInstruction: styleInstruction)
         }
-        streamedHTML = ForgeAttachment.materialize(streamedHTML, items: attachmentInputs)
+        guard !Task.isCancelled else { return }
+        streamedHTML = ForgeAttachment.materialize(streamedHTML, items: inputs)
     }
 
     private func reviseWithAttachments(change: String, researchReport: String = "", styleInstruction: String? = nil) async {
@@ -970,7 +971,7 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
         editingExistingApp = checkpoint.existingAppID != nil
         generationStartedAt = checkpoint.startedAt ?? checkpoint.savedAt
         originalPrompt = checkpoint.originalPrompt
-        runtimeBackendRequired = checkpoint.backendRequired ?? ForgeBackendContract.requiresBackend(request: checkpoint.originalPrompt, html: checkpoint.html)
+        runtimeBackendRequired = HTMLAppBackendFeature.enabled && (checkpoint.backendRequired ?? ForgeBackendContract.requiresBackend(request: checkpoint.originalPrompt, html: checkpoint.html))
         refinedBrief = checkpoint.refinedBrief
         lastResearch = checkpoint.research
         streamedHTML = checkpoint.html
@@ -1308,11 +1309,11 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             let response = try await AIProviderClient.complete(config: config,
                 system: AIHTMLAgent.patchSystemPrompt(research: lastResearch),
                 messages: [("user", """
-                Complete the requested runtime and widget workflow. Time widgets alone do not need a server. Only introduce a backend if the requested workflow requires it. Preserve the current app identity and working UI.
-                The VPS supports generated Python; do not replace the requested server feature with a local test.
+                \(HTMLAppBackendFeature.enabled ? "Complete the requested runtime and widget workflow, including any required runtime bundle and matching frontend." : "Repair only the documented widget/time workflow. Backends are disabled; do not add server code or backend calls.")
+                Preserve the current app identity, stored data and working UI.
                 Authoritative request: \(intent)
                 Blocking issues: \(issues.joined(separator: "\n"))
-                Return a working patch or complete htmlapp_code, including the runtime bundle and matching frontend.
+                Return a working patch or complete htmlapp_code.
                 Current source:
                 \(icon.html)
                 """)])
@@ -1330,7 +1331,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
 
     private func verifyAndRepair(config: AIProviderConfiguration, omitIcon: Bool = false) async throws {
         try Task.checkCancellation()
-        streamedHTML = ForgeAttachment.materialize(streamedHTML, items: attachmentInputs)
+        streamedHTML = ForgeAttachment.materialize(streamedHTML, items: ForgeAttachmentContext.images)
         try await ensureRuntimeBackend(config: config)
         phase = "Testing the app"
         verificationReport = ""
@@ -2212,11 +2213,11 @@ Draw a distinctive, purpose-specific 1024px icon in IconScript. Use a crisp iOS-
             return cached
         }
         let system = """
-You are HTMLApp Forge's combined product-planning and capability-research planner. HTMLApp supports managed runtime v2: Python 3.12 + htmlapp_sdk, persistent per-app SQLite, custom routes, resource sessions, and resource-scoped APNs. The native host deploys the generated source automatically. APNs is NOT configured and the owner cannot set it up: plan foreground polling, durable inbox data and local scheduled reminders instead of mandatory remote push. Polling does not wake a suspended app. Never treat supported server storage/routes as unavailable. Turn the user's raw app idea into a compact implementation-ready brief AND decide what device/public API research is actually required.
+You are HTMLApp Forge's combined product-planning and capability-research planner. Plan useful working apps using verified APIs and the documented native bridges. \(HTMLAppBackendFeature.authoringInstructions)
 
 \(ForgeProductContract.rules)
 
-Return exactly one <brief>...</brief>, a one-line <purpose>who, where, why</purpose>, and <backend_required>yes or no</backend_required>. Set yes when the actual workflow needs server execution, remote writes, shared cross-device data, inbound external requests, or notification delivery from outside the phone. A third-party read-only API or local reminders alone do not require a generated server. Never set no merely because setup or Python generation is needed. Follow with zero or more:
+Return exactly one <brief>...</brief>, a one-line <purpose>who, where, why</purpose>, and <backend_required>no</backend_required>. Backend hosting is disabled in this release. Follow with zero or more:
 <assumption>reversible assumption to confirm (at most 3)</assumption>
 <implied_feature>feature, reason and confidence (at most 3)</implied_feature>
 <capability>specific device or public API capability needed</capability>
@@ -2228,7 +2229,7 @@ BRIEF REQUIREMENTS:
 - Keep the <brief> under 300 words and avoid repeating the user's wording.
 - Preserve the user's actual intent and define the smallest complete useful product.
 - Cover outcome, core loop, must features, 0-3 strongly implied adjacent conveniences, structure, data model/persistence, capabilities, widgets/background only when useful, onboarding only when needed, real states, phone/iPad/accessibility experience, completeness, and observable acceptance criteria.
-- Never add accounts, subscriptions, social features, analytics or tracking by default. When the requested workflow needs a server, plan the actual managed Python runtime v2, its routes, resource sessions and frontend payloads; do not downgrade it to a local-only app. The owner has a provisioned VPS and the host deploys generated Python automatically.
+- Never add accounts, subscriptions, social features, analytics or tracking by default. Backends are disabled; explain any unavailable server-dependent behavior instead of generating server code or fabricating working remote features.
 
 RESEARCH RULES:
 - Use <device_query> for iPhone/iPad hardware, sensors, camera/microphone, files, downloads, sharing, contacts, photos, calendar, reminders, notifications, biometrics, secure storage, speech, authentication, widgets, WidgetKit, background refresh, or other HTMLApp-native capabilities.
@@ -2416,8 +2417,7 @@ DEVICE CHROME AND STATUS BAR RULES:
 - Do not render a fake CSS bottom tab strip when native tabs are available. Use the host UIKit tab bar; do not promise a specific system material on unsupported iOS versions.
 - Do not put native status bar or Dynamic Island graphics inside previewHTML/mockups either.
 
-- APNs is not configured for this deployment. Use durable backend inboxes and foreground polling with local alerts, not mandatory push registration. Only if APNs is later configured may resource notifications use await HTMLAppNative.backend.subscribe(sessionToken) after explicit user consent and unsubscribe(sessionToken) before leaving the resource. Never send plaintext in encrypted-app push content.
-- Runtime v2: Generate custom Python only through the installed htmlapp_sdk v2. Include an inert JSON bundle in the HTML head: <script type="application/json" id="htmlapp-backend-v2">{"source":"complete Python source", "manifest":{"sdkVersion":2,"schemaVersion":1,"routes":[],"checks":[],"migrations":[],"outboundDomains":[]}}</script>. Escape all less-than characters inside JSON as a JSON Unicode escape for U+003C. The host deploys this before saving. Frontend calls await HTMLAppNative.backend.request({path:"/route",method:"GET",body:undefined,session:optionalSessionToken}). It returns the handler JSON directly and rejects HTTP errors. Never call management endpoints from HTML. Never embed secrets. Use resource-scoped sessions for private data; the public app key is not user authentication. Use Web Crypto authenticated encryption locally for encrypted storage, never send plaintext or passphrases to the server, and never invent cryptography. Use longer passphrases for offline guessing resistance. Only claim features supported by the contract below.
+- APNs is not configured for this deployment. Use native local notifications for known on-device reminders; do not promise remote delivery.
 \(HTMLAppRuntimeContract.instructions)
 - For genuine iOS 26 Liquid Glass on a small decorative viewport region, check HTMLAppNative.capabilities.has("ui.glassShow") and call HTMLAppNative.ui.glassShow({x,y,width,height}) with viewport points. This draws one native overlay per app. Keep labels and controls outside the effect region, update its bounds after layout changes, and call ui.glassHide() when leaving the screen. The overlay does not intercept touches. Use the web material below when unavailable.
 - For a web glass surface in HTMLApp, use data-htmlapp-glass on a small toolbar, floating control or sheet. This is a translucent WebKit material with a reduced-transparency fallback. Ensure readable foreground contrast; avoid using glass behind dense text.
@@ -2501,7 +2501,7 @@ the existing element can be styled instead. Ensure labels and inputs remain
 associated and tappable at 320pt width and tablet widths.
 
 EDIT ACCEPTANCE:
-If the requested feature needs a server, include a complete runtime v2 source/manifest JSON bundle and matching frontend calls. Preserve that bundle during unrelated edits. A legacy managed meta tag alone does not create a backend.
+\(HTMLAppBackendFeature.authoringInstructions)
 Animate meaningful new or changed interactions, including navigation, sheets, and state changes. Honor prefers-reduced-motion.
 When asked to fix tab selection after opening a destination from a button, route every entry point through the same navigation function. Prefer HTMLAppNative.screens for matching tab destinations when available, with a local fallback. Preserve existing IDs and state.
 Keep the original user request authoritative. Treat inferred targets and planner text as advisory; if they conflict with the actual DOM or request, inspect the full source and choose the smallest coherent change. For ambiguous requests preserve data, features and navigation. Trace the changed interaction from user action through state update and persistence to rendered result, then check its existing callers. Summarize only changes actually present in the patch. Never claim runtime tests were executed merely from reading source.

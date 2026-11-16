@@ -1241,10 +1241,8 @@ private struct LibraryCreateMicrophone: View {
                     })
         }
         .overlay { ForgeAttachmentTargets(active: armed) }
-        .forgeAttachments(attachmentSelection, dictation: dictation) {
-            Task {
-                if let words = await attachmentSelection.finishVoice(dictation) { onPrompt(words, attachmentSelection.items) }
-            }
+        .forgeAttachments(attachmentSelection, dictation: dictation) { words, items in
+            onPrompt(words, items)
         }
         .overlay(alignment: .top) {
             if (awaitingTranscript && (dictation.transcribingOffline || dictation.canRetryTranscription))

@@ -88,13 +88,17 @@ enum ForgeAttachmentContext {
     @Published var error: String?
     @Published var loading = false
     func open(_ target: ForgeAttachmentTarget) async {
+        guard self.target == nil, await canOpen(target) else { return }
+        self.target = target
+    }
+    func canOpen(_ target: ForgeAttachmentTarget) async -> Bool {
         if target == .camera {
-            guard UIImagePickerController.isSourceTypeAvailable(.camera) else { error = "This device has no available camera."; return }
+            guard UIImagePickerController.isSourceTypeAvailable(.camera) else { error = "This device has no available camera."; return false }
             var allowed = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
             if !allowed { allowed = await AVCaptureDevice.requestAccess(for: .video) }
-            guard allowed else { error = "Allow Camera access for HTMLApp in Settings."; return }
+            guard allowed else { error = "Allow Camera access for HTMLApp in Settings."; return false }
         }
-        self.target = target
+        return !Task.isCancelled
     }
     func finishVoice(_ dictation: ForgeDictation) async -> String? {
         if dictation.canRetryTranscription || dictation.hasDeferredTranscription { dictation.retryTranscription() }
@@ -170,24 +174,30 @@ struct ForgeAttachmentPicker: UIViewControllerRepresentable {
 }
 
 extension View {
-    func forgeAttachments(_ selection: ForgeAttachmentSelection, dictation: ForgeDictation, onSelected: @escaping () -> Void) -> some View {
-        modifier(ForgeAttachmentPresentation(selection: selection, dictation: dictation, onSelected: onSelected))
+    func forgeAttachments(_ selection: ForgeAttachmentSelection, dictation: ForgeDictation, onCancel: @escaping () -> Void = {}, onSelected: @escaping (String, [ForgeAttachment]) -> Void) -> some View {
+        modifier(ForgeAttachmentPresentation(selection: selection, dictation: dictation, onCancel: onCancel, onSelected: onSelected))
     }
 }
 private struct ForgeAttachmentPresentation: ViewModifier {
     @ObservedObject var selection: ForgeAttachmentSelection
     @ObservedObject var dictation: ForgeDictation
-    let onSelected: () -> Void
+    let onCancel: () -> Void
+    let onSelected: (String, [ForgeAttachment]) -> Void
     @State private var pendingSelection = false
     @State private var reviewing = false
-    @State private var submitAfterDismiss = false
+    @State private var submission: (prompt: String, items: [ForgeAttachment])?
     func body(content: Content) -> some View {
-        content.sheet(item: Binding(get: { reviewing ? nil : selection.target }, set: { selection.target = $0 }), onDismiss: {
+        content.sheet(item: Binding(get: { reviewing ? nil : selection.target }, set: { if !reviewing { selection.target = $0 } }), onDismiss: {
             if pendingSelection { pendingSelection = false; reviewing = true }
         }) { target in
             ForgeAttachmentPicker(target: target, maximumCount: max(1, 9 - selection.items.count)) { items, error in
                 selection.target = nil
                 if let error { selection.error = error }
+                if items == nil && error == nil {
+                    selection.items.removeAll()
+                    dictation.cancel()
+                    onCancel()
+                }
                 if let items, !items.isEmpty {
                     let remaining = max(0, 9 - selection.items.count)
                     selection.items.append(contentsOf: items.prefix(remaining))
@@ -197,17 +207,24 @@ private struct ForgeAttachmentPresentation: ViewModifier {
             }.ignoresSafeArea()
         }
         .sheet(isPresented: $reviewing, onDismiss: {
-            if submitAfterDismiss { submitAfterDismiss = false; onSelected() }
+            if let request = submission {
+                submission = nil
+                onSelected(request.prompt, request.items)
+            }
         }) {
             ForgeAttachmentReview(selection: selection, dictation: dictation) { prompt in
                 // Discard retry audio before handing off the edited transcript.
                 // The existing submission path must not overwrite it by retranscribing.
                 dictation.cancel()
                 dictation.transcript = prompt
-                submitAfterDismiss = true
+                submission = (prompt, selection.items)
+                selection.items.removeAll()
                 reviewing = false
             } cancel: {
                 dictation.cancel()
+                selection.items.removeAll()
+                selection.error = nil
+                onCancel()
                 reviewing = false
             }
             .presentationDetents([.large])
@@ -230,6 +247,10 @@ private struct ForgeAttachmentReview: View {
     @State private var prompt = ""
     @State private var preparing = true
     @State private var removal: ForgeAttachment?
+    // This sheet belongs to the review, never to the underlying microphone's
+    // presentation binding. Dismissing one cannot clear the other's request.
+    @State private var pickerTarget: ForgeAttachmentTarget?
+    @State private var openingPicker = false
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
 
     var body: some View {
@@ -261,7 +282,7 @@ private struct ForgeAttachmentReview: View {
                         pickerButton(.photos, title: "Photos")
                         pickerButton(.files, title: "Files")
                     }
-                    .disabled(selection.items.count >= 9)
+                    .disabled(selection.items.count >= 9 || openingPicker)
                     Text("Add up to nine photos and files. Your originals stay in Photos or Files.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
@@ -291,9 +312,9 @@ private struct ForgeAttachmentReview: View {
             if let transcript = await selection.finishVoice(dictation) { prompt = transcript }
             preparing = false
         }
-        .sheet(item: $selection.target) { target in
+        .sheet(item: $pickerTarget) { target in
             ForgeAttachmentPicker(target: target, maximumCount: 9 - selection.items.count) { items, error in
-                selection.target = nil
+                pickerTarget = nil
                 if let error { selection.error = error }
                 if let items {
                     let remaining = max(0, 9 - selection.items.count)
@@ -315,7 +336,14 @@ private struct ForgeAttachmentReview: View {
     }
 
     private func pickerButton(_ target: ForgeAttachmentTarget, title: String) -> some View {
-        Button { Task { await selection.open(target) } } label: {
+        Button {
+            guard !openingPicker, pickerTarget == nil else { return }
+            openingPicker = true
+            Task { @MainActor in
+                defer { openingPicker = false }
+                if await selection.canOpen(target) { pickerTarget = target }
+            }
+        } label: {
             VStack(spacing: 7) {
                 Image(systemName: target.symbol).font(.title2)
                 Text(title).font(.caption.weight(.semibold))

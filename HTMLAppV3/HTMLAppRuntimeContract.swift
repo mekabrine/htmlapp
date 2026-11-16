@@ -1,6 +1,7 @@
 import Foundation
 enum HTMLAppRuntimeContract {
-static let instructions = #"""
+static var instructions: String { HTMLAppBackendFeature.enabled ? enabledInstructions : "" }
+private static let enabledInstructions = #"""
 # HTMLApp Runtime v2 contract for Forge and client implementers
 
 Read GET https://htmlapp.hostish.site/v2/capabilities and this document via
@@ -270,3 +271,4 @@ credentials when needed. Keep setup errors actionable and preserve user data.
 
 """#
 }
+

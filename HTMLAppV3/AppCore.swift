@@ -813,6 +813,7 @@ final class AppStore: ObservableObject {
     }
 
     func prepareAutomaticBackends() {
+        guard HTMLAppBackendFeature.enabled else { return }
         Task { await HTMLAppRuntimeSubscriptions.refresh() }
         guard HTMLAppBackendProvisioning.isPaired else { return }
         for app in apps {

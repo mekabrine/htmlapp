@@ -80,6 +80,7 @@ indirect enum RuntimeJSON: Codable, Equatable {
 @MainActor
 enum HTMLAppRuntimeBackend {
     static func deploy(localID: String, name: String, bundle: HTMLAppRuntimeBundle) async throws {
+        guard HTMLAppBackendFeature.enabled else { throw HTMLAppBackendError(message: HTMLAppBackendFeature.unavailableMessage) }
         let capabilities = try await HTMLAppBackendAPI.raw("/v2/capabilities", method: "GET", key: "")
         guard capabilities["sdkVersion"] as? Int == 2 else { throw HTMLAppBackendError(message: "Your server does not support runtime v2.") }
         let existing = HTMLAppBackendStore.link(for: localID)
@@ -193,6 +194,7 @@ enum HTMLAppRuntimeSubscriptions {
         subscriptions = values
     }
     static func refresh() async {
+        guard HTMLAppBackendFeature.enabled else { return }
         guard !refreshing, let token = UserDefaults.standard.string(forKey: "htmlapp.apnsToken") else { return }
         refreshing = true
         defer { refreshing = false }
@@ -207,3 +209,4 @@ enum HTMLAppRuntimeSubscriptions {
         }
     }
 }
+

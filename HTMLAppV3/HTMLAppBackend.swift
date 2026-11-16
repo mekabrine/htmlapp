@@ -93,6 +93,7 @@ enum HTMLAppBackendDeletionQueue {
     }
 
     static func enqueue(_ appID: String) {
+        guard HTMLAppBackendFeature.enabled else { return }
         guard let link = HTMLAppBackendStore.link(for: appID), !link.managementKey.isEmpty else { return }
         let pending = Set(UserDefaults.standard.stringArray(forKey: queueKey) ?? [])
         UserDefaults.standard.set(Array(pending.union([appID])), forKey: queueKey)
@@ -101,6 +102,7 @@ enum HTMLAppBackendDeletionQueue {
     }
 
     static func flush() async {
+        guard HTMLAppBackendFeature.enabled else { return }
         guard !flushing else { return }
         flushing = true
         defer { flushing = false }
@@ -181,6 +183,7 @@ enum HTMLAppBackendAPI {
 
     static func authenticatedRequest(_ url: URL, method: String, key: String,
                                              body: [String: Any]?, idempotency: String? = nil, runtimeSession: String? = nil) async throws -> [String: Any] {
+        guard HTMLAppBackendFeature.enabled else { throw HTMLAppBackendError(message: HTMLAppBackendFeature.unavailableMessage) }
         var request = URLRequest(url: url)
         request.httpMethod = method
         if let idempotency { request.setValue(idempotency, forHTTPHeaderField: "Idempotency-Key") }
@@ -285,7 +288,9 @@ struct HTMLAppBackendView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if let link {
+                if !HTMLAppBackendFeature.enabled {
+                    Section { Text(HTMLAppBackendFeature.unavailableMessage) }
+                } else if let link {
                     Section("Backend details") {
                         LabeledContent("Backend ID", value: link.appID)
                         if link.sdkVersion == 2 {
@@ -522,6 +527,7 @@ struct HTMLAppBackendView: View {
             .disabled(busy)
         }
         .task {
+            guard HTMLAppBackendFeature.enabled else { return }
             link = HTMLAppBackendStore.link(for: app.id)
             if let url = try? HTMLAppBackendStore.sourceURL(for: app.id),
                let text = try? String(contentsOf: url, encoding: .utf8) {
@@ -667,6 +673,7 @@ enum HTMLAppBackendProvisioning {
     }
 
     static func enqueue(_ app: SavedHTMLApp, template: String, startImmediately: Bool = true) {
+        guard HTMLAppBackendFeature.enabled else { return }
         guard HTMLAppBackendStore.link(for: app.id) == nil, jobs[app.id] == nil else { return }
         jobs[app.id] = Pending(name: String(app.name.prefix(40)), template: template)
         if startImmediately { Task { await flush() } }
@@ -683,6 +690,7 @@ enum HTMLAppBackendProvisioning {
     }
 
     static func flush() async {
+        guard HTMLAppBackendFeature.enabled else { return }
         if let runningTask {
             await runningTask.value
             return
@@ -751,6 +759,9 @@ struct HTMLAppBackendPairingView: View {
 
     var body: some View {
         Form {
+            if !HTMLAppBackendFeature.enabled {
+                Section { Text(HTMLAppBackendFeature.unavailableMessage) }
+            } else {
             Section {
                 Text(paired ? "Connected. Apps that need a backend connect automatically."
                      : "Enter your secret once. HTMLApp handles backend setup for your apps.")
@@ -767,6 +778,7 @@ struct HTMLAppBackendPairingView: View {
                 .disabled(busy || key.isEmpty)
                 if busy { ProgressView() }
                 if let error { Text(error).foregroundStyle(.secondary) }
+            }
             }
         }
         .navigationTitle("Automatic backends")
@@ -789,3 +801,4 @@ struct HTMLAppBackendPairingView: View {
         }
     }
 }
+

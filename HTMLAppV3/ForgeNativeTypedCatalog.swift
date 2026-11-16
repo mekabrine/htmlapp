@@ -7,16 +7,20 @@ enum ForgeNativeTypedCatalog {
     static let promptContract: String = {
         guard let url = Bundle.main.url(
             forResource: "htmlapp-native-api", withExtension: "d.ts"
-        ), let content = try? String(contentsOf: url, encoding: .utf8),
-          content.utf8.count < 35_000 else {
+        ), let bundledContent = try? String(contentsOf: url, encoding: .utf8),
+          bundledContent.utf8.count < 35_000 else {
             // The app can still generate with the runtime capability registry
             // if an old/incomplete bundle was installed.
             return """
             Authoritative native method names:
-            \(HTMLAppBridgeRegistry.methods.joined(separator: ", "))
+            \(HTMLAppBridgeRegistry.methods.filter { HTMLAppBackendFeature.enabled || !$0.hasPrefix("backend.") }.joined(separator: ", "))
             Only call supported methods after feature detection and permission.
             """
         }
+        let content = HTMLAppBackendFeature.enabled ? bundledContent : bundledContent
+            .replacingOccurrences(of: #"(?ms)^  backend: \{.*?^  \};\n"#, with: "", options: .regularExpression)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.contains("| 'backend.") }.joined(separator: "\n")
         return """
 
         AUTHORITATIVE GENERATED NATIVE TYPESCRIPT API CONTRACT:
@@ -31,3 +35,4 @@ enum ForgeNativeTypedCatalog {
         """
     }()
 }
+
