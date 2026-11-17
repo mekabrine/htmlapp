@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.20"
-    static let compiledBuild = "125"
+    static let compiledVersion = "1.9.21"
+    static let compiledBuild = "126"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,18 +32,15 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "ui-review", title: "One more look at your UI",
-                  description: "After generation, choose an optional interface review. No is selected automatically after five seconds, and your working app is kept if refinement fails.",
-                  symbol: "eye", tint: .blue),
-            Entry(id: "voice", title: "Online voice for Forge",
-                  description: "Add a free-tier Groq key in Settings for online prompt and edit transcription, with on-device fallback and recording retry. Whisper is now labeled Alternative.",
-                  symbol: "waveform", tint: .purple),
-            Entry(id: "forge", title: "Richer app building",
-                  description: "Forge has stronger workflow and touch-gesture guidance, broader SF Symbol choices, and a detailed guide updated for the current native APIs.",
-                  symbol: "sparkles", tint: .orange),
-            Entry(id: "widgets", title: "Fresher widgets",
-                  description: "New widgets request 15-minute refreshes by default. Opening HTMLApp also checks for due data updates. iOS controls actual background timing.",
-                  symbol: "arrow.clockwise", tint: .green)
+            Entry(id: "keyless-voice", title: "Free voice transcription, no key",
+                  description: "Forge now uses NoteTakers for online prompt and edit transcription. No signup, API key, or payment setup is needed.",
+                  symbol: "waveform", tint: .blue),
+            Entry(id: "voice-fallback", title: "Keep speaking when online is unavailable",
+                  description: "The free service allows 10 requests per day per IP address. Forge tries on-device transcription if the limit is reached or the service fails, and keeps failed recordings for retry.",
+                  symbol: "arrow.triangle.2.circlepath", tint: .purple),
+            Entry(id: "voice-choice", title: "Your choice of voice engine",
+                  description: "Settings explains where online audio is sent. Turn off online transcription to use Apple Speech or Alternative instead.",
+                  symbol: "mic", tint: .green)
         ]
     }
 }

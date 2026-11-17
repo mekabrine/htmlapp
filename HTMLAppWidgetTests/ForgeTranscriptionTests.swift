@@ -13,25 +13,25 @@ final class ForgeTranscriptionTests: XCTestCase {
         config.httpAdditionalHeaders = ["X-Test-Status": String(status), "X-Test-Response": response]
         let session = URLSession(configuration: config)
         defer { session.invalidateAndCancel() }
-        return try await ForgeTranscriptionTransport.transcribe(fileURL: file, apiKey: "test-key", session: session)
+        return try await ForgeTranscriptionTransport.transcribe(fileURL: file, session: session)
     }
 
     func testSuccessfulTranscriptionTrimsWhitespace() async throws {
-        let words = try await transcribe(status: 200, response: "{\"text\":\"  Make a habit tracker  \"}")
+        let words = try await transcribe(status: 200, response: "{\"success\":true,\"text\":\"  Make a habit tracker  \"}")
         XCTAssertEqual(words, "Make a habit tracker")
     }
 
     func testQuotaAuthenticationAndServerFailuresDoNotBecomeTranscripts() async {
         for status in [401, 429, 500] {
             do {
-                _ = try await transcribe(status: status, response: "{\"text\":\"Do not accept this\"}")
+                _ = try await transcribe(status: status, response: "{\"success\":true,\"text\":\"Do not accept this\"}")
                 XCTFail("Accepted HTTP \(status)")
             } catch { XCTAssertEqual((error as? URLError)?.code, .badServerResponse) }
         }
     }
 
     func testEmptyAndMalformedResponsesFail() async {
-        for response in ["{}", "not JSON", "{\"text\":\"  \"}", "{\"text\":123}"] {
+        for response in ["{}", "not JSON", "{\"success\":true,\"text\":\"  \"}", "{\"success\":true,\"text\":123}", "{\"text\":\"Missing success flag\"}"] {
             do {
                 _ = try await transcribe(status: 200, response: response)
                 XCTFail("Accepted an invalid transcript")
@@ -39,11 +39,11 @@ final class ForgeTranscriptionTests: XCTestCase {
         }
     }
 
-    func testMissingCredentialsFailBeforeOpeningAudio() async {
+    func testServiceFailureIsRejectedEvenWithHTTP200() async {
         do {
-            _ = try await ForgeTranscriptionTransport.transcribe(fileURL: URL(fileURLWithPath: "/missing.wav"), apiKey: "")
-            XCTFail("Accepted missing credentials")
-        } catch { XCTAssertEqual((error as? URLError)?.code, .userAuthenticationRequired) }
+            _ = try await transcribe(status: 200, response: "{\"success\":false,\"text\":\"Do not accept this\"}")
+            XCTFail("Accepted service failure as a transcript")
+        } catch { XCTAssertEqual((error as? URLError)?.code, .cannotParseResponse) }
     }
 
     func testInvalidAudioSizeFailsBeforeNetworkUpload() async throws {
@@ -55,7 +55,7 @@ final class ForgeTranscriptionTests: XCTestCase {
             try handle.truncate(atOffset: UInt64(size))
             try handle.close()
             do {
-                _ = try await ForgeTranscriptionTransport.transcribe(fileURL: file, apiKey: "test-key")
+                _ = try await ForgeTranscriptionTransport.transcribe(fileURL: file)
                 XCTFail("Accepted invalid audio size \(size)")
             } catch { XCTAssertEqual((error as NSError).domain, "ForgeTranscription") }
         }
@@ -66,9 +66,9 @@ private final class TranscriptionMock: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        XCTAssertEqual(request.url?.absoluteString, "https://api.groq.com/openai/v1/audio/transcriptions")
+        XCTAssertEqual(request.url?.absoluteString, "https://notetakers.vipresearch.ca/stt/v1/transcribe")
         XCTAssertEqual(request.httpMethod, "POST")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-key")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
         XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=Forge-") == true)
         let status = Int(request.value(forHTTPHeaderField: "X-Test-Status") ?? "500") ?? 500
         let value = request.value(forHTTPHeaderField: "X-Test-Response") ?? ""

@@ -1022,7 +1022,11 @@ assert 'transcriptionTask?.cancel()' in dictation
 assert 'currentGeneration == generation, !Task.isCancelled' in dictation
 assert 'URLSessionConfiguration.ephemeral' in transport and 'completionHandler(nil)' in transport
 assert 'size <= 25_000_000' in transport and 'request.timeoutInterval = 30' in transport
-assert 'KeychainValueStore' in source("HTMLAppV3/ForgeOnlineTranscription.swift")
+assert 'KeychainValueStore' not in source("HTMLAppV3/ForgeOnlineTranscription.swift")
+assert 'apiKey' not in transport and 'forHTTPHeaderField: "Authorization"' not in transport
+assert 'https://notetakers.vipresearch.ca/stt/v1/transcribe' in transport
+assert 'guard result.success else' in transport
+assert 'transcriptionKey' not in source("HTMLAppV3/OnboardingSettings.swift")
 assert 'Label("Alternative", systemImage: "mic").tag("whisper")' in source("HTMLAppV3/OnboardingSettings.swift")
 
 # Declining or ignoring the initial review cannot launch a redesign.

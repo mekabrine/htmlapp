@@ -1,5 +1,8 @@
 # Forge generation and dictation — 1.9.20 (125)
 
+The voice provider described below is historical. Version 1.9.21 replaces it
+with free keyless NoteTakers transcription; see [current voice behavior](forge-keyless-transcription-1.9.21.md).
+
 After a foreground initial generation (including a completed background result
 restored into Forge), a sheet offers one more UI review. No is selected after
 five seconds. Dismissal, backgrounding and cancellation decline the review.

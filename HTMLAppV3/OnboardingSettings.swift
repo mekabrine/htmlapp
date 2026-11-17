@@ -315,7 +315,7 @@ struct OnboardingView: View {
                     Text("Alternative").tag("whisper")
                 }
                 .pickerStyle(.segmented)
-                Text("Alternative records first, then transcribes. Forge can use online transcription when configured in Settings; otherwise it downloads an on-device model on first use.")
+                Text("Forge uses free online transcription with no account or key by default. If unavailable, Alternative transcribes on device and may download a model on first use.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         case 11:
@@ -438,7 +438,6 @@ struct SettingsView: View {
     @AppStorage("htmlapp.previousOpenedVersion") private var previousOpenedVersion = ""
     @State private var showWhatsNew = false
     @State private var working = false
-    @State private var transcriptionKey = ForgeOnlineTranscription.apiKey
     @AppStorage("forge.onlineTranscription") private var onlineTranscription = true
     @AppStorage("htmlapp.dictationEngine") private var dictationEngine = "apple"
 
@@ -484,18 +483,14 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.navigationLink)
                     Text(dictationEngine == "apple"
-                         ? "See words live while speaking. Some devices may use Apple's speech service."
+                         ? "When Forge online transcription is off, see words live while speaking. Saved apps also use this engine. Some devices may use Apple's speech service."
                          : "Record first, then transcribe after releasing the microphone. Saved apps use on-device transcription.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     Toggle("Online transcription for Forge", isOn: $onlineTranscription)
-                    SecureField("Groq transcription API key", text: $transcriptionKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onChange(of: transcriptionKey) { ForgeOnlineTranscription.apiKey = $0 }
-                    Link("Get a free-tier Groq key", destination: URL(string: "https://console.groq.com/keys")!)
-                    Text("With a key and online transcription enabled, Forge sends generation and edit recordings to Groq. The key stays in Keychain. Groq offers a rate-limited free tier; your account plan determines any charges. If online transcription fails, Forge tries on-device transcription and keeps failed recordings for retry. Saved apps do not use this cloud setting.")
+                    Text("Enabled by default: Forge sends prompt and edit audio to NoteTakers, a free service with no signup, API key, or payment setup. It allows 10 requests per day per IP address, which may be shared with other people on your network. At the limit or if unavailable, Forge tries on-device transcription and keeps failed recordings for retry. Turn this off to use the selected Apple/Alternative engine. Saved apps do not use this cloud setting.")
                         .font(.footnote).foregroundStyle(.secondary)
+                    Link("NoteTakers service and limits", destination: URL(string: "https://notetakers.vipresearch.ca/stt_docs.php")!)
                 }
 
                 Section("Library") {

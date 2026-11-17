@@ -3,8 +3,7 @@ import Foundation
 /// Bounded transport with no app/settings dependencies, so failure handling can
 /// be tested without a microphone, network credentials or private audio.
 enum ForgeTranscriptionTransport {
-    static func transcribe(fileURL: URL, apiKey: String, session testSession: URLSession? = nil) async throws -> String {
-        guard !apiKey.isEmpty else { throw URLError(.userAuthenticationRequired) }
+    static func transcribe(fileURL: URL, session testSession: URLSession? = nil) async throws -> String {
         let size = try fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size > 44, size <= 25_000_000 else {
             throw NSError(domain: "ForgeTranscription", code: 1,
@@ -14,16 +13,15 @@ enum ForgeTranscriptionTransport {
         let boundary = "Forge-" + UUID().uuidString
         var body = Data()
         func append(_ value: String) { body.append(Data(value.utf8)) }
-        for (name, value) in [("model", "whisper-large-v3-turbo"), ("response_format", "json")] {
+        for (name, value) in [("engine", "whisper")] {
             append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n")
         }
         append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"prompt.wav\"\r\nContent-Type: audio/wav\r\n\r\n")
         body.append(try Data(contentsOf: fileURL))
         append("\r\n--\(boundary)--\r\n")
-        var request = URLRequest(url: URL(string: "https://api.groq.com/openai/v1/audio/transcriptions")!)
+        var request = URLRequest(url: URL(string: "https://notetakers.vipresearch.ca/stt/v1/transcribe")!)
         request.httpMethod = "POST"
         request.timeoutInterval = 30
-        request.setValue("Bearer " + apiKey, forHTTPHeaderField: "Authorization")
         request.setValue("multipart/form-data; boundary=" + boundary, forHTTPHeaderField: "Content-Type")
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForResource = 40
@@ -37,9 +35,13 @@ enum ForgeTranscriptionTransport {
             // Never log provider bodies, credentials, audio or private transcripts.
             throw URLError(.badServerResponse)
         }
-        struct Transcript: Decodable { let text: String }
-        let text = try JSONDecoder().decode(Transcript.self, from: data).text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        struct Transcript: Decodable {
+            let success: Bool
+            let text: String
+        }
+        let result = try JSONDecoder().decode(Transcript.self, from: data)
+        guard result.success else { throw URLError(.cannotParseResponse) }
+        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw URLError(.cannotParseResponse) }
         return text
     }

@@ -283,7 +283,7 @@ final class ForgeDictation: ObservableObject {
                 transcript = ""
                 recording = true
                 status = onlineForRecording
-                    ? "Recording… Stop to send audio to Groq for transcription."
+                    ? "Recording… Stop to send audio to NoteTakers for free transcription."
                     : (tapToStop ? "Recording… Tap the mic to transcribe on device." : "Recording… Release to transcribe on device.")
                 timeout?.cancel()
                 timeout = Task { [weak self] in
@@ -359,7 +359,7 @@ final class ForgeDictation: ObservableObject {
             }
             if onlineForRecording && ForgeOnlineTranscription.isEnabled {
                 do {
-                    status = "Transcribing with Groq…"
+                    status = "Transcribing with NoteTakers…"
                     let words = try await ForgeOnlineTranscription.transcribe(fileURL: url)
                     guard currentGeneration == generation, !Task.isCancelled else { return }
                     transcript = words

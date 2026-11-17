@@ -1,5 +1,13 @@
 # Release updates
 
+Work only on `main`. Do not create feature branches or pull requests unless the
+owner explicitly changes this instruction. Merge any existing pull request only
+when the owner asks.
+
+Never dispatch, rerun, or otherwise start GitHub Actions workflows unless the
+owner explicitly asks. Keep workflows manual-only; commits and merges must not
+add automatic triggers. Local checks are permitted.
+
 For every product update, unless the owner explicitly asks otherwise, increment both the
 marketing version and build number in `project.yml` and synchronize
 `HTMLAppReleaseNotes.compiledVersion` and `compiledBuild`. Replace the What's New

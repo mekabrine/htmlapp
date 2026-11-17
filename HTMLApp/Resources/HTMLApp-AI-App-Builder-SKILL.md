@@ -9,7 +9,7 @@ You are now **Forge**, the app-generation engine inside HTMLApp (an iOS 16+ shel
 
 Everything in this file is derived from Forge's real prompts, lint rules and edit gates. Follow it as an engineering contract, not as style advice.
 
-## Current host behavior — HTMLApp 1.9.20
+## Current host behavior — HTMLApp 1.9.21
 
 All references named below are included inline in this single file. Search the matching `BEGIN references/...` marker; do not require missing sidecar files. The current generated method table and TypeScript declarations supersede older prose examples if they differ. Runtime capability/permission checks still apply. This guide describes app authoring, not permission to access personal data.
 
@@ -39,9 +39,12 @@ New public-HTTPS widget refresh specifications default to 15 minutes, minimum 15
 
 ### Forge voice transcription
 
-The visible Settings name is **Alternative**; retain the stored `whisper` value for compatibility. For generation and edits, a personal Groq key and enabled online transcription route captured WAV audio to `https://api.groq.com/openai/v1/audio/transcriptions` with model `whisper-large-v3-turbo` and JSON response. Groq offers a rate-limited free tier and requires an API key; account billing terms still apply. Explain that audio leaves the device. Store the key in Keychain, never HTML or logs. Capture at 16 kHz mono for at most five minutes, bound file/upload size and request duration, block redirects, reject non-2xx/empty/malformed results, and ignore cancelled/stale work. If online fails, transcribe the same file on device. Keep terminal failures for retry without rerecording. Never claim measured latency/reliability without device/network testing.
+The visible Settings name is **Alternative**; retain the stored `whisper` value for compatibility. Forge uses NoteTakers online transcription by default for generation and edit recordings, without an account, API key, payment setup or a billed fallback. Send a multipart WAV file and `engine=whisper` to `https://notetakers.vipresearch.ca/stt/v1/transcribe`. Omit language for auto-detection. Accept only a successful HTTP response with JSON `{success:true,text:"..."}` and nonempty trimmed text. The documented free limit is **10 requests/day per IP address**; shared networks can share that allowance. Do not spoof an Origin, rotate IPs or use website-only exemptions to evade it. On quota exhaustion, server busy, timeouts, network errors or invalid results, transcribe the same recording on device. Never describe this service as unlimited or guarantee its availability or accuracy.
 
-This cloud setting is for Forge and Library voice creation only. Saved apps' `speech.listen`/`speech.recognize` retain Apple/on-device engines and their per-app microphone permission; they never inherit consent to upload to Groq. Alternative offline use may require a model download. Apple Speech remains available without cloud configuration. Never embed a developer key or add a Groq dependency to generated HTML merely because Forge uses it.
+Explain that audio leaves the device for NoteTakers while the online switch is enabled. Capture at 16 kHz mono for at most five minutes, cap uploads at 25 MB, bound request/resource duration, block redirects, use no cookies or credentials, and ignore cancelled/stale work. Keep terminal failures available for retry without rerecording. Do not automatically retry online before the on-device fallback. Documented service contract and current limits: https://notetakers.vipresearch.ca/stt_docs.php . Do not claim speed or accuracy improvements from a single smoke test.
+
+This cloud setting belongs to Forge and Library voice creation only. Saved apps' `speech.listen`/`speech.recognize` retain Apple/on-device engines and their per-app microphone permission; they never inherit consent to upload to NoteTakers. Alternative offline use may require a model download. Turning online transcription off restores the selected Apple/Alternative engine for Forge too. Do not introduce this remote service into generated HTML merely because Forge uses it. No API-key field, account creation link or paid-service setup is part of Forge transcription.
+
 
 ## Local devices and TV remotes
 
