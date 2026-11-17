@@ -20,6 +20,13 @@ final class ForgeDictation: ObservableObject {
     private var offlineURL: URL?
     private var retainedAudioURL: URL?
     private var offlineMode = false
+    private let allowsOnlineTranscription: Bool
+    private var onlineForRecording = false
+    private var transcriptionTask: Task<Void, Never>?
+
+    init(allowsOnlineTranscription: Bool = true) {
+        self.allowsOnlineTranscription = allowsOnlineTranscription
+    }
     var offlineCompletion: ((Result<String, Error>) -> Void)?
 
     private func finishOffline(_ result: Result<String, Error>) {
@@ -87,7 +94,7 @@ final class ForgeDictation: ObservableObject {
         transcript = ""
         guard microphoneCanStart() else { return }
         discardRetainedAudio()
-        if preferWhisperWhenAppleUnavailable || UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
+        if (allowsOnlineTranscription && ForgeOnlineTranscription.isEnabled) || preferWhisperWhenAppleUnavailable || UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
             await startOffline(tapToStop: tapToStop)
             return
         }
@@ -100,7 +107,7 @@ final class ForgeDictation: ObservableObject {
         guard generation == attempt, !Task.isCancelled else { return }
         guard permission == .authorized else {
             preferWhisperWhenAppleUnavailable = true
-            status = "Apple Speech is unavailable. Switching to Whisper Offline."
+            status = "Apple Speech is unavailable. Switching to Alternative on-device transcription."
             await startOffline(tapToStop: tapToStop)
             return
         }
@@ -110,7 +117,7 @@ final class ForgeDictation: ObservableObject {
         guard generation == attempt, !Task.isCancelled else { return }
         guard microphone else { status = "Enable Microphone for HTMLApp in Settings, or type your idea."; return }
         guard let recognizer = SFSpeechRecognizer(locale: .current), recognizer.isAvailable else {
-            status = "Apple Speech is unavailable. Switching to Whisper Offline."
+            status = "Apple Speech is unavailable. Switching to Alternative on-device transcription."
             await startOffline(tapToStop: tapToStop)
             return
         }
@@ -172,7 +179,7 @@ final class ForgeDictation: ObservableObject {
         } catch {
             stop()
             preferWhisperWhenAppleUnavailable = true
-            status = "Apple Speech failed; trying Whisper Offline."
+            status = "Apple Speech failed; trying Alternative on-device transcription."
             await startOffline(tapToStop: tapToStop)
         }
     }
@@ -181,7 +188,7 @@ final class ForgeDictation: ObservableObject {
     /// user's prompt. This initializes the audio path and decoder after a cold
     /// launch, while keeping the warm-up audio out of the prompt transcript.
     func startFromLockScreen() async {
-        if UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
+        if !(allowsOnlineTranscription && ForgeOnlineTranscription.isEnabled), UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
             status = "Warming up Whisper…"
             await warmWhisperFromColdStart()
         }
@@ -224,7 +231,8 @@ final class ForgeDictation: ObservableObject {
         }
     }
     private func startOffline(tapToStop: Bool = false) async {
-        HTMLAppOfflineSpeech.shared.preloadIfSelected()
+        onlineForRecording = allowsOnlineTranscription && ForgeOnlineTranscription.isEnabled
+        if !onlineForRecording { HTMLAppOfflineSpeech.shared.preloadIfSelected() }
         appleSpeechActive = false
         let requestedGeneration = generation
         requestingPermission = true
@@ -274,9 +282,15 @@ final class ForgeDictation: ObservableObject {
                 offlineMode = true
                 transcript = ""
                 recording = true
-                status = tapToStop
-                    ? "Recording for Whisper… Tap the mic to stop recording."
-                    : "Recording for Whisper… Release to transcribe offline."
+                status = onlineForRecording
+                    ? "Recording… Stop to send audio to Groq for transcription."
+                    : (tapToStop ? "Recording… Tap the mic to transcribe on device." : "Recording… Release to transcribe on device.")
+                timeout?.cancel()
+                timeout = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: 300_000_000_000)
+                    guard !Task.isCancelled else { return }
+                    self?.stop()
+                }
                 return
             } catch {
                 if let candidateURL { try? FileManager.default.removeItem(at: candidateURL) }
@@ -295,6 +309,9 @@ final class ForgeDictation: ObservableObject {
 
     func cancel() {
         offlineCompletion = nil
+        timeout?.cancel(); timeout = nil
+        transcriptionTask?.cancel(); transcriptionTask = nil
+        transcribingOffline = false
         discardRetainedAudio()
         appleSpeechActive = false
         generation = UUID()
@@ -333,8 +350,28 @@ final class ForgeDictation: ObservableObject {
         transcribingOffline = true
         canRetryTranscription = false
         status = "Transcribing your recording…"
-        Task {
-            defer { transcribingOffline = false }
+        transcriptionTask = Task {
+            defer {
+                if currentGeneration == generation {
+                    transcribingOffline = false
+                    transcriptionTask = nil
+                }
+            }
+            if onlineForRecording && ForgeOnlineTranscription.isEnabled {
+                do {
+                    status = "Transcribing with Groq…"
+                    let words = try await ForgeOnlineTranscription.transcribe(fileURL: url)
+                    guard currentGeneration == generation, !Task.isCancelled else { return }
+                    transcript = words
+                    status = "Transcription is ready. Review your text."
+                    discardRetainedAudio()
+                    finishOffline(.success(words))
+                    return
+                } catch {
+                    guard currentGeneration == generation, !Task.isCancelled else { return }
+                    status = "Online transcription unavailable. Transcribing on device…"
+                }
+            }
             for attempt in 1...3 {
                 guard currentGeneration == generation, !Task.isCancelled else { return }
                 do {
@@ -343,7 +380,7 @@ final class ForgeDictation: ObservableObject {
                     )
                     guard currentGeneration == generation, !Task.isCancelled else { return }
                     transcript = words
-                    status = "Whisper transcription is ready."
+                    status = "On-device transcription is ready. Review your text."
                     discardRetainedAudio()
                     finishOffline(.success(words))
                     return
@@ -367,6 +404,7 @@ final class ForgeDictation: ObservableObject {
     func stop(transcribe: Bool = true) {
         appleSpeechActive = false
         if offlineMode {
+            timeout?.cancel(); timeout = nil
             offlineRecorder?.stop()
             offlineRecorder = nil
             offlineMode = false

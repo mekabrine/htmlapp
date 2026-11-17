@@ -31,7 +31,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private let eventStore = EKEventStore()
     private let speechSynthesizer = AVSpeechSynthesizer()
     private let speechRecognition = HTMLAppSpeechRecognition()
-    private let offlineSpeech = ForgeDictation()
+    private let offlineSpeech = ForgeDictation(allowsOnlineTranscription: false)
     private var offlineSpeechID: String?
     private var offlineSpeechLimit: Task<Void, Never>?
     private let nfcReader = HTMLAppNFCReader()
@@ -1591,9 +1591,9 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             }
         case "symbols.search":
             let query = (args["query"] as? String ?? "").lowercased()
-            let names = HTMLAppSymbolCatalog.names.filter { (query.isEmpty || $0.contains(query)) && UIImage(systemName: $0) != nil }
+            let names = HTMLAppSymbolCatalog.search(query).filter { UIImage(systemName: $0) != nil }
             let exact = !query.isEmpty && UIImage(systemName: query) != nil ? [query] : []
-            resolve(id, value: ["names": Array((exact + names.filter { !exact.contains($0) }).prefix(100))])
+            resolve(id, value: ["names": Array((exact + names.filter { !exact.contains($0) }).prefix(200))])
         case "symbols.render":
             let name = args["name"] as? String ?? ""
             guard let image = UIImage(systemName: name)?.withTintColor(.black, renderingMode: .alwaysOriginal),
@@ -2452,7 +2452,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                 reject(id, code: "invalid_refresh_url", message: "Widget background refresh supports public HTTPS JSON endpoints only.")
                 return
             }
-            let interval = min(max((refresh["intervalMinutes"] as? NSNumber)?.intValue ?? 30, 15), 1440)
+            let interval = min(max((refresh["intervalMinutes"] as? NSNumber)?.intValue ?? 15, 15), 1440)
             let rawBindings = refresh["bindings"] as? [String: Any] ?? [:]
             var bindings: [String: String] = [:]
             for (target, source) in rawBindings.prefix(24) {
@@ -4638,7 +4638,7 @@ enum HTMLNativeAPIScript {
 // Curated, stable iOS 16-compatible catalog; avoid claiming the system can
 // enumerate all SF Symbols, which UIKit does not publicly expose.
 enum HTMLAppSymbolCatalog {
-    static let names: [String] = """
+    private static let seeds = """
 house house.fill gearshape gearshape.fill plus plus.circle plus.circle.fill minus minus.circle checkmark checkmark.circle checkmark.circle.fill xmark xmark.circle
 star star.fill heart heart.fill bell bell.fill calendar clock stopwatch timer hourglass magnifyingglass line.3.horizontal slider.horizontal.3
 square.grid.2x2 square.grid.2x2.fill list.bullet folder folder.fill doc doc.text doc.on.doc square.and.arrow.up arrow.down.doc
@@ -4654,7 +4654,50 @@ book book.fill bookmark bookmark.fill text.alignleft textformat text.cursor rect
 fork.knife cup.and.saucer cart cart.fill bag bag.fill creditcard dollar signpost.right gift gift.fill
 questionmark.circle info.circle exclamationmark.triangle hand.tap hand.raised eye eye.slash wrench screwdriver hammer
 square.on.square rectangle.portrait.on.rectangle.portrait app.badge apps.iphone square.grid.3x3.fill
+
+figure.yoga figure.pilates figure.mind.and.body figure.cooldown figure.hiking figure.climbing figure.cycling figure.outdoor.cycle figure.indoor.cycle figure.pool.swim figure.open.water.swim figure.rower figure.elliptical figure.core.training figure.cross.training figure.dance figure.golf figure.tennis figure.badminton figure.basketball figure.soccer figure.skiing.downhill figure.snowboarding figure.skating figure.boxing figure.jumprope figure.stairs figure.roll dumbbell sportscourt tennis.racket tennisball soccerball basketball baseball football volleyball hockey.puck trophy medal rosette target
+brain brain.head.profile lungs cross cross.case medical.thermometer thermometer medium medicine bottle pills pill bandage heart.text.square heart.circle waveform.path.ecg stethoscope syringe ivfluid.bag testtube vitals bolt.heart bed.double facemask allergen hand.wave hand.thumbsup hand.thumbsdown accessibility figure.stand ear ear.badge.waveform hearingdevice eye.circle eyeglasses
+checklist list.bullet.clipboard list.clipboard list.number list.dash calendar.badge.clock calendar.badge.plus calendar.badge.minus calendar.circle clock.badge.checkmark clock.arrow.circlepath alarm stopwatch.fill timer.square hourglass.bottomhalf.filled note note.text note.text.badge.plus square.and.pencil pencil.tip pencil.and.outline highlighter signature eraser ruler graduationcap books.vertical book.closed character.book.closed text.book.closed newspaper doc.richtext doc.plaintext doc.badge.plus doc.text.magnifyingglass doc.zipper doc.append doc.text.below.ecg clipboard note.text tag tag.circle bookmark.circle tray tray.and.arrow.down tray.and.arrow.up tray.2 archivebox folder.badge.plus folder.badge.gearshape folder.badge.person.crop person.text.rectangle person.crop.rectangle.stack
+banknote dollarsign dollarsign.circle eurosign sterlingsign yensign bitcoinsign creditcard.circle wallet.pass bitcoinsign.circle chart.xyaxis.line chart.bar.xaxis chart.dots.scatter chart.bar.doc chart.pie.fill percent number equal multiply divide plusminus function sum currency.dollar.circle building.columns building.2 building store storefront receipt text.document checkmark.seal shippingbox.circle suitcase suitcase.rolling handbag briefcase basket cart.badge.plus cart.badge.minus bag.circle barcode qrcode qrcode.viewfinder scanner
+sunrise sunset sun.haze sun.dust cloud.fog cloud.drizzle cloud.heavyrain cloud.snow cloud.sleet cloud.hail cloud.bolt cloud.bolt.rain cloud.moon cloud.moon.rain cloud.sun.rain wind wind.snow snowflake tornado hurricane thermometer.sun thermometer.snowflake humidity rainbow moon.stars sparkles mountain.2 tree palm.tree cactus flower water.waves water.waves.and.arrow.up water.waves.and.arrow.down fish bird ant ladybug pawprint hare tortoise lizard dog cat
+frying.pan takeoutbag.and.cup.and.straw cup.and.saucer mug wineglass waterbottle birthday.cake carrot leaf.circle fork.knife.circle oven microwave refrigerator dishwasher cooktop flame.circle avocado popcorn icecream cone salad
+car.side car.front.waves.up car.2 bus.doubledecker tram.circle tram.fill train.side.front.car train.side.middle.car train.side.rear.car cablecar ferry sailboat fuelpump ev.charger steeringwheel engine.combustion road.lanes point.topleft.down.to.point.bottomright.curvepath arrow.triangle.turn.up.right.diamond map.circle globe.americas globe.europe.africa globe.asia.australia airplane.circle airplane.departure airplane.arrival airplane.ticket passport backpack tent beach.umbrella binoculars compass mappin.and.ellipse mappin.circle location.circle location.north location.north.line paperplane
+play.circle pause.circle stop.circle record.circle backward.end forward.end goforward.10 gobackward.10 repeat repeat.1 shuffle airplayaudio airplayvideo music.note.list music.mic waveform.circle waveform.path waveform.path.badge.plus speaker.slash speaker.wave.1 speaker.wave.3 hifispeaker radio tv play.rectangle film camera.circle camera.macro camera.aperture camera.filters photo.on.rectangle.angled photo.stack photo.artframe video.circle videoprojector headphones.circle earbuds airpods gamecontroller arcade.stick dice puzzlepiece.extension paintbrush.pointed eyedropper swatchpalette theatermasks guitar pianokeys metronome
+terminal chevron.left.forwardslash.chevron.right curlybraces square.grid.3x3 cpu memorychip server.rack internaldrive externaldrive.badge.wifi opticaldisc network point.3.connected.trianglepath personalhotspot dot.radiowaves.left.and.right wifi.slash wifi.exclamationmark iphone.radiowaves.left.and.right ipad.landscape applewatch display display.2 macwindow computermouse magicmouse command option shift return delete.left escape rectangle.and.pencil.and.ellipsis switch.2 power powerplug poweroutlet.type.b battery.0percent battery.25percent battery.75percent battery.100percent.bolt lock.shield lock.rectangle shield.lefthalf.filled key key.horizontal key.radiowaves.forward
+hand.tap hand.draw hand.point.up hand.pinch hand.point.up.left hand.point.up.braille hand.raised.fingers.spread arrow.up.and.down arrow.left.and.right arrow.up.left.and.arrow.down.right arrow.down.right.and.arrow.up.left arrow.triangle.2.circlepath arrows.up.and.down arrowshape.turn.up.left arrow.uturn.backward arrow.turn.down.right arrow.down.circle arrow.up.circle arrow.right.circle arrow.left.circle chevron.compact.down chevron.compact.up ellipsis ellipsis.circle line.3.horizontal.decrease circle circle.dotted square rectangle rectangle.portrait capsule oval triangle diamond hexagon pentagon octagon seal square.dashed rectangle.dashed checkmark.square xmark.square plus.square minus.square plus.forwardslash.minus square.split.2x2 rectangle.split.3x1 rectangle.grid.1x2 rectangle.grid.2x2 square.grid.4x3.fill square.3.layers.3d
+person.badge.plus person.badge.minus person.crop.circle.badge.checkmark person.2.circle person.2.wave.2 bubble.left bubble.right bubble.left.and.bubble.right bubble.middle.bottom quote.bubble message envelope envelope.open envelope.badge bell.badge bell.slash megaphone phone phone.circle phone.arrow.up.right video.badge.waveform wave.3.right wave.3.left shareplay rectangle.inset.filled.and.person.filled
+wrench.and.screwdriver wrench.adjustable hammer.fill screwdriver.fill lightbulb lightbulb.led light.switch smoke smoke.fill fan fanblades air.conditioner heater house.lodge house.and.flag door.left.hand.open door.left.hand.closed window.vertical.open sensor garage cabinet drawer table.furniture chair sofa lamp.desk lamp.floor outlet thermostat sprinkler shower bathtub washer dryer vacuum
 """.split(whereSeparator: \.isWhitespace).map(String.init)
+
+    // Some variants are newer or absent; search filters every candidate through
+    // UIImage on the installed OS, and render validates again before use.
+    static let names: [String] = Array(Set(seeds.flatMap { name in
+        [name, name + ".fill", name + ".circle", name + ".circle.fill"]
+    })).sorted()
+
+    private static let topics: [String: [String]] = [
+        "fitness": ["figure.", "dumbbell", "sport", "ball", "trophy"],
+        "health": ["heart", "cross", "pill", "brain", "lungs", "medical", "stethoscope"],
+        "weather": ["sun", "moon", "cloud", "wind", "snow", "thermometer", "humidity"],
+        "food": ["fork", "cup", "mug", "frying", "takeout", "carrot", "wineglass"],
+        "travel": ["airplane", "car", "bus", "train", "tram", "ferry", "map", "suitcase", "globe"],
+        "finance": ["banknote", "sign", "creditcard", "wallet", "chart", "percent", "building.columns"],
+        "media": ["play", "pause", "music", "waveform", "photo", "camera", "film", "speaker"],
+        "study": ["book", "graduation", "pencil", "doc", "note", "brain"],
+        "tools": ["wrench", "hammer", "screwdriver", "ruler", "gear", "terminal"],
+        "nature": ["leaf", "tree", "mountain", "water", "bird", "fish", "paw", "flower"]
+    ]
+
+    static func search(_ query: String) -> [String] {
+        let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return names }
+        return names.filter { name in
+            words.allSatisfy { word in
+                name.contains(word) || (topics[word]?.contains(where: { name.contains($0) }) ?? false)
+            }
+        }
+    }
+
 }
 
 

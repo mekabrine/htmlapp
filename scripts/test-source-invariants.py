@@ -67,7 +67,7 @@ assert "lastEditSummary" in ai
 assert 'WhisperKit' in project and 'package: WhisperKit' in project
 assert 'htmlapp.dictationEngine' in source("HTMLAppV3/ForgeDictation.swift")
 assert 'HTMLAppOfflineSpeech.shared.transcribe' in source("HTMLAppV3/ForgeDictation.swift")
-assert 'Try Whisper Offline Instead' in source("HTMLAppV3/OnboardingSettings.swift")
+assert 'Try Alternative Instead' in source("HTMLAppV3/OnboardingSettings.swift")
 assert 'Picker("Voice Dictation"' in source("HTMLAppV3/OnboardingSettings.swift"), "Settings must offer Apple Speech and Whisper"
 assert "generateSingle(for request:" in source("HTMLAppV3/ForgeStylePreview.swift"), "AI preview generator must accept an independent request"
 assert "exploringStyles = true" in source("HTMLAppV3/AIGenerationView.swift"), "Preview loading state must render"
@@ -1012,5 +1012,25 @@ assert 'HTMLAppNetworkDomainConsent.request(host: host, appID: self.appID)' in n
 assert 'didReceiveRemoteNotification userInfo:' in pushDelegate and '"htmlapp_refresh"' in pushDelegate
 assert '- remote-notification' in source("project.yml")
 assert '"permission": "network"' in source("scripts/native-capability-definitions.json")
+
+# Forge cloud dictation must never leak its upload policy into saved apps.
+assert 'ForgeDictation(allowsOnlineTranscription: false)' in native
+dictation = source("HTMLAppV3/ForgeDictation.swift")
+transport = source("HTMLAppV3/ForgeTranscriptionTransport.swift")
+assert 'onlineForRecording && ForgeOnlineTranscription.isEnabled' in dictation
+assert 'transcriptionTask?.cancel()' in dictation
+assert 'currentGeneration == generation, !Task.isCancelled' in dictation
+assert 'URLSessionConfiguration.ephemeral' in transport and 'completionHandler(nil)' in transport
+assert 'size <= 25_000_000' in transport and 'request.timeoutInterval = 30' in transport
+assert 'KeychainValueStore' in source("HTMLAppV3/ForgeOnlineTranscription.swift")
+assert 'Label("Alternative", systemImage: "mic").tag("whisper")' in source("HTMLAppV3/OnboardingSettings.swift")
+
+# Declining or ignoring the initial review cannot launch a redesign.
+forge = source("HTMLAppV3/AIGenerationView.swift")
+assert 'uiReviewSeconds = 5' in forge
+assert 'guard uiReviewAccepted, scenePhase == .active, !Task.isCancelled' in forge
+assert 'showingUIReviewChoice && uiReviewSeconds > 0 && !Task.isCancelled' in forge
+assert 'session.acceptExternalHTML(functionalHTML)' in forge
+assert 'session.verificationReport = functionalVerification' in forge
 
 

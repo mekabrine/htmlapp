@@ -29,7 +29,7 @@ enum HTMLAppWidgetTimeline {
         let refreshed = definition // Display committed App Group content immediately; never block on HTTPS.
         // Request shorter timelines for generated widgets. WidgetKit owns
         // actual background scheduling and may delay refreshes to save power.
-        let interval = max(15, refreshed.refresh?.intervalMinutes ?? 30)
+        let interval = max(15, refreshed.refresh?.intervalMinutes ?? 15)
         var dates = [now]
         if let range = refreshed.snapshot.nativeTimeInterval {
             dates += [range.lowerBound, range.upperBound].filter { $0 > now }

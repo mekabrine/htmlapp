@@ -131,6 +131,7 @@ struct HTMLAppMain: App {
                         await HTMLAppForgeActivityService.recoverStale()
                     }
                     HTMLAppBackgroundCoordinator.shared.schedule()
+                    _ = await HTMLAppBackgroundCoordinator.shared.runDueJobs()
                     ForgeBackgroundUpload.shared.reconnectIfNeeded()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: HTMLAppPortableDataStore.localDataChanged)) { _ in
@@ -153,6 +154,7 @@ struct HTMLAppMain: App {
                         }
                         if store.libraryLoaded {
                             Task {
+                                _ = await HTMLAppBackgroundCoordinator.shared.runDueJobs()
                                 store.prepareAutomaticBackends()
                                 await HTMLAppBackendProvisioning.flush()
                                 await HTMLAppBackendDeletionQueue.flush()

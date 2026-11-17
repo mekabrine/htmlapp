@@ -535,7 +535,7 @@ enum HTMLAppDeviceAPIResearch {
               },
               refresh: {
                 url: "https://api.example.org/status",
-                intervalMinutes: 30,
+                intervalMinutes: 15,
                 bindings: {
                   "value": "battery.percent",
                   "subtitle": "battery.rangeText",
@@ -582,7 +582,7 @@ enum HTMLAppDeviceAPIResearch {
             await HTMLAppNative.background.configure({
               id: "forecast-refresh",
               url: "https://api.example.org/forecast",
-              intervalMinutes: 30,
+              intervalMinutes: 15,
               storageKey: "latestForecast",
               jsonPath: "forecast",
               widgetID: "weather"

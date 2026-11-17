@@ -299,7 +299,7 @@ struct HTMLAppWidgetRefreshSpec: Codable, Hashable {
     var intervalMinutes: Int
     var bindings: [String: String]
 
-    init(url: String, intervalMinutes: Int = 30, bindings: [String: String] = [:]) {
+    init(url: String, intervalMinutes: Int = 15, bindings: [String: String] = [:]) {
         self.url = url
         self.intervalMinutes = min(max(intervalMinutes, 15), 1440)
         self.bindings = bindings

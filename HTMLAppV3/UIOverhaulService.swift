@@ -6,9 +6,9 @@ struct UIOverhaulResult: Sendable {
 }
 
 enum UIOverhaulService {
-    static func polish(html: String, originalPrompt: String) async throws -> UIOverhaulResult {
+    static func polish(html: String, originalPrompt: String, userRequested: Bool = false) async throws -> UIOverhaulResult {
         let config = AISettingsStore.uiConfiguration
-        guard AISettingsStore.isUIOverhaulEnabled else {
+        guard config.isConfigured, userRequested || AISettingsStore.isUIOverhaulEnabled else {
             return UIOverhaulResult(html: html, changedOnlyCSS: true)
         }
 
@@ -18,6 +18,7 @@ You are HTMLApp's optional UI refinement model. You receive a finished, function
 NON-NEGOTIABLE RULES:
 - Preserve every feature, API call, event listener, storage key, form field, control action, navigation path, endpoint, widget/background definition, and user-visible capability.
 - Do not rewrite or modify any <script> block.
+- Preserve the selected style's identity, palette and design tokens; adjust them only to correct readability or contrast. Review the actual interface rather than applying a generic redesign.
 - Prefer CSS-only changes. Markup changes are allowed only when required for presentation and must preserve IDs, classes used by JavaScript, data attributes, form semantics, and DOM relationships.
 - Keep safe-area handling, viewport-fit=cover, dark mode, reduced motion, accessibility, 44px touch targets, and iPhone/iPad responsiveness intact or improve them.
 - Preserve car display adaptation: html[data-htmlapp-display="car"], window.HTMLAppDisplay, htmlapp:display-change, short-landscape scrolling and --htmlapp-tabbar-height. Use at least 48px targets in car mode, avoid dense detail and oversized headers, and keep primary controls visible above native chrome.
@@ -69,6 +70,10 @@ Finished functioning HTML app:
         }
         guard scriptBlocks(in: polished) == scriptBlocks(in: html) else {
             throw AIGenerationError.provider("UI Overhaul attempted to modify app behavior, so the visual change was rejected.")
+        }
+        let safety = ForgeEditSafetyGate.violations(before: html, after: polished, request: "Refine UI appearance only")
+        guard safety.isEmpty else {
+            throw AIGenerationError.provider("UI review attempted to remove a protected data or navigation contract.")
         }
 
         return UIOverhaulResult(
