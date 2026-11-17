@@ -1,5 +1,8 @@
 # Keyless Forge transcription — 1.9.21 (126)
 
+Version 1.9.22 limits the online API to the first eligible transcription per
+process launch; see [current launch policy](forge-first-transcription-1.9.22.md).
+
 Forge now uses the public NoteTakers REST API by default for generation and edit
 recordings. No signup, API key, account billing or payment setup is involved.
 The former Groq configuration and key field are removed. Settings retains the

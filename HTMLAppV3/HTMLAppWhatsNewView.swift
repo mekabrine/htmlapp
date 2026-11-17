@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.21"
-    static let compiledBuild = "126"
+    static let compiledVersion = "1.9.22"
+    static let compiledBuild = "127"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,15 +32,12 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "keyless-voice", title: "Free voice transcription, no key",
-                  description: "Forge now uses NoteTakers for online prompt and edit transcription. No signup, API key, or payment setup is needed.",
+            Entry(id: "first-voice", title: "Online voice once per launch",
+                  description: "Only the first voice recording for creating or editing an app uses the free online API. Later recordings use your selected Apple Speech or Alternative engine.",
                   symbol: "waveform", tint: .blue),
-            Entry(id: "voice-fallback", title: "Keep speaking when online is unavailable",
-                  description: "The free service allows 10 requests per day per IP address. Forge tries on-device transcription if the limit is reached or the service fails, and keeps failed recordings for retry.",
-                  symbol: "arrow.triangle.2.circlepath", tint: .purple),
-            Entry(id: "voice-choice", title: "Your choice of voice engine",
-                  description: "Settings explains where online audio is sent. Turn off online transcription to use Apple Speech or Alternative instead.",
-                  symbol: "mic", tint: .green)
+            Entry(id: "voice-retries", title: "Retries stay on device",
+                  description: "An unsuccessful online attempt still counts for this launch. Retry the saved audio on device without another upload. Practice recordings do not use the online attempt.",
+                  symbol: "arrow.triangle.2.circlepath", tint: .purple)
         ]
     }
 }

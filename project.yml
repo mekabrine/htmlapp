@@ -7,8 +7,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: targeted
-    MARKETING_VERSION: "1.9.21"
-    CURRENT_PROJECT_VERSION: "126"
+    MARKETING_VERSION: "1.9.22"
+    CURRENT_PROJECT_VERSION: "127"
     TARGETED_DEVICE_FAMILY: "1,2"
     SUPPORTS_MACCATALYST: NO
     CODE_SIGN_STYLE: Automatic
@@ -251,6 +251,7 @@ targets:
       - path: HTMLAppV3/ForgeAttachmentTarget.swift
       - path: HTMLAppV3/ForgeConversationLog.swift
       - path: HTMLAppV3/ForgeTranscriptionTransport.swift
+      - path: HTMLAppV3/ForgeOnlineTranscription.swift
       - path: HTMLAppWidgetTests
     settings:
       base:

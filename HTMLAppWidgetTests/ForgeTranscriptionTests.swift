@@ -2,6 +2,34 @@ import XCTest
 import Foundation
 
 final class ForgeTranscriptionTests: XCTestCase {
+    func testOnlyOneOnlineAttemptPerLaunch() {
+        var session = ForgeTranscriptionSession()
+        XCTAssertTrue(session.canAttemptOnline)
+        XCTAssertTrue(session.claimOnlineAttempt(enabled: true))
+        XCTAssertFalse(session.canAttemptOnline)
+        // The same launch state is shared by creation, editing and retry paths.
+        XCTAssertFalse(session.claimOnlineAttempt(enabled: true))
+        XCTAssertFalse(session.claimOnlineAttempt(enabled: true))
+    }
+
+    func testDisabledSettingDoesNotConsumeAttemptOrRestoreConsumedAttempt() {
+        var session = ForgeTranscriptionSession()
+        XCTAssertFalse(session.claimOnlineAttempt(enabled: false))
+        XCTAssertTrue(session.canAttemptOnline)
+        XCTAssertTrue(session.claimOnlineAttempt(enabled: true))
+        XCTAssertFalse(session.claimOnlineAttempt(enabled: false))
+        XCTAssertFalse(session.claimOnlineAttempt(enabled: true))
+    }
+
+    func testFreshLaunchGetsNewAllowanceAfterPreviousLaunchAttempt() {
+        var previousLaunch = ForgeTranscriptionSession()
+        XCTAssertTrue(previousLaunch.claimOnlineAttempt(enabled: true))
+        // Neither success nor failure has an API to return a consumed attempt.
+        XCTAssertFalse(previousLaunch.claimOnlineAttempt(enabled: true))
+        var nextLaunch = ForgeTranscriptionSession()
+        XCTAssertTrue(nextLaunch.claimOnlineAttempt(enabled: true))
+    }
+
     /// The mock response is carried in each request's test session, avoiding
     /// mutable global response handlers when XCTest runs tests in parallel.
     private func transcribe(status: Int, response: String) async throws -> String {

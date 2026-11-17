@@ -94,7 +94,7 @@ final class ForgeDictation: ObservableObject {
         transcript = ""
         guard microphoneCanStart() else { return }
         discardRetainedAudio()
-        if (allowsOnlineTranscription && ForgeOnlineTranscription.isEnabled) || preferWhisperWhenAppleUnavailable || UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
+        if (allowsOnlineTranscription && ForgeOnlineTranscription.isAvailable) || preferWhisperWhenAppleUnavailable || UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
             await startOffline(tapToStop: tapToStop)
             return
         }
@@ -188,7 +188,7 @@ final class ForgeDictation: ObservableObject {
     /// user's prompt. This initializes the audio path and decoder after a cold
     /// launch, while keeping the warm-up audio out of the prompt transcript.
     func startFromLockScreen() async {
-        if !(allowsOnlineTranscription && ForgeOnlineTranscription.isEnabled), UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
+        if !(allowsOnlineTranscription && ForgeOnlineTranscription.isAvailable), UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" {
             status = "Warming up Whisper…"
             await warmWhisperFromColdStart()
         }
@@ -231,7 +231,7 @@ final class ForgeDictation: ObservableObject {
         }
     }
     private func startOffline(tapToStop: Bool = false) async {
-        onlineForRecording = allowsOnlineTranscription && ForgeOnlineTranscription.isEnabled
+        onlineForRecording = allowsOnlineTranscription && ForgeOnlineTranscription.isAvailable
         if !onlineForRecording { HTMLAppOfflineSpeech.shared.preloadIfSelected() }
         appleSpeechActive = false
         let requestedGeneration = generation
@@ -357,7 +357,8 @@ final class ForgeDictation: ObservableObject {
                     transcriptionTask = nil
                 }
             }
-            if onlineForRecording && ForgeOnlineTranscription.isEnabled {
+            guard currentGeneration == generation, !Task.isCancelled else { return }
+            if onlineForRecording && ForgeOnlineTranscription.isAvailable {
                 do {
                     status = "Transcribing with NoteTakers…"
                     let words = try await ForgeOnlineTranscription.transcribe(fileURL: url)

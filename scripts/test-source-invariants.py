@@ -1017,7 +1017,7 @@ assert '"permission": "network"' in source("scripts/native-capability-definition
 assert 'ForgeDictation(allowsOnlineTranscription: false)' in native
 dictation = source("HTMLAppV3/ForgeDictation.swift")
 transport = source("HTMLAppV3/ForgeTranscriptionTransport.swift")
-assert 'onlineForRecording && ForgeOnlineTranscription.isEnabled' in dictation
+assert 'onlineForRecording && ForgeOnlineTranscription.isAvailable' in dictation
 assert 'transcriptionTask?.cancel()' in dictation
 assert 'currentGeneration == generation, !Task.isCancelled' in dictation
 assert 'URLSessionConfiguration.ephemeral' in transport and 'completionHandler(nil)' in transport
@@ -1028,6 +1028,18 @@ assert 'https://notetakers.vipresearch.ca/stt/v1/transcribe' in transport
 assert 'guard result.success else' in transport
 assert 'transcriptionKey' not in source("HTMLAppV3/OnboardingSettings.swift")
 assert 'Label("Alternative", systemImage: "mic").tag("whisper")' in source("HTMLAppV3/OnboardingSettings.swift")
+
+# The shared allowance lasts for the process, across all creation/edit views.
+online = source("HTMLAppV3/ForgeOnlineTranscription.swift")
+assert '@MainActor\nenum ForgeOnlineTranscription' in online
+assert 'private static var session = ForgeTranscriptionSession()' in online
+assert 'isEnabled && session.canAttemptOnline' in online
+assert online.index('session.claimOnlineAttempt(enabled: isEnabled)') < online.index('return try await ForgeTranscriptionTransport.transcribe')
+assert online.index('try Task.checkCancellation()') < online.index('session.claimOnlineAttempt(enabled: isEnabled)')
+assert 'UserDefaults.standard.set' not in online
+assert 'dictationTest = ForgeDictation(allowsOnlineTranscription: false)' in source("HTMLAppV3/OnboardingSettings.swift")
+assert 'demoDictation = ForgeDictation(allowsOnlineTranscription: false)' in source("HTMLAppV3/OnboardingSettings.swift")
+assert 'guard !ForgeOnlineTranscription.isAvailable' in source("HTMLAppV3/HTMLAppOfflineSpeech.swift")
 
 # Declining or ignoring the initial review cannot launch a redesign.
 forge = source("HTMLAppV3/AIGenerationView.swift")
