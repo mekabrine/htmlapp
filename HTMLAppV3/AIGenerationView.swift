@@ -50,7 +50,9 @@ struct AIGenerationView: View {
     @State private var showHurryUp = false
     @State private var hurriedThisRun = false
     @State private var autoQuickReason: String?
-    @State private var polishThisRun = false
+    @State private var showingUIReviewChoice = false
+    @State private var uiReviewSeconds = 5
+    @State private var uiReviewAccepted = false
     @State private var exploringStyles = false
     @State private var styleMusicRun: UUID?
     @State private var preparedStylePrompt: String?
@@ -161,6 +163,24 @@ struct AIGenerationView: View {
                 }
             }
             .htmlAppFirstUseToasts()
+            .sheet(isPresented: $showingUIReviewChoice) {
+                VStack(spacing: 20) {
+                    Image(systemName: "eye").font(.largeTitle).foregroundStyle(.blue)
+                    Text("Look over the UI one more time?").font(.title2.bold())
+                    Text("Forge can refine spacing, readability and layout while preserving your app's features and chosen style.")
+                        .foregroundStyle(.secondary)
+                    Button("Yes, review the UI") {
+                        uiReviewAccepted = true
+                        showingUIReviewChoice = false
+                    }.buttonStyle(.borderedProminent)
+                    Button("No — continue (\(uiReviewSeconds)s)", role: .cancel) {
+                        showingUIReviewChoice = false
+                    }.buttonStyle(.bordered)
+                    Text("No is selected automatically after five seconds.").font(.footnote)
+                }
+                .padding(24)
+                .presentationDetents([.medium])
+            }
             .navigationTitle(importedDraft != nil ? "Edit imported HTML" : existingApp == nil ? "Generate" : "Edit with AI")
             .alert("Full app rewrite required?", isPresented: $rewriteApprovalPending) {
                 Button("Rewrite Entire App", role: .destructive) {
@@ -446,6 +466,8 @@ struct AIGenerationView: View {
             generationTask?.cancel()
         }
         .onDisappear {
+            showingUIReviewChoice = false
+            uiReviewAccepted = false
             if !session.isWorking {
                 preparedStyleTask?.cancel()
                 preparedStyleTask = nil
@@ -458,6 +480,10 @@ struct AIGenerationView: View {
             if !demoMode && session.isWorking { session.persistCheckpoint() }
         }
         .onChange(of: scenePhase) { value in
+            if value != .active {
+                showingUIReviewChoice = false
+                uiReviewAccepted = false
+            }
             if value == .active && shortcutSource != "libraryMic" {
                 restoreCompletedBackgroundDraft()
             }
@@ -758,12 +784,8 @@ struct AIGenerationView: View {
                     }
                     .disabled(AISettingsStore.quickModel.isEmpty)
                     }
-                    if AISettingsStore.isUIOverhaulEnabled {
-                        Toggle("Extra UI overhaul for this run", isOn: $polishThisRun)
-                            .font(.subheadline)
-                        Text("Optional. Adds a separate visual refinement pass; leave off for faster generation.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
+                    Text("After generation, you can request one more UI review. No is selected automatically after five seconds.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Toggle("Let me choose how it looks first", isOn: $stylePickerEnabled)
                         .font(.subheadline)
                     Text(stylePickerEnabled
@@ -797,7 +819,7 @@ struct AIGenerationView: View {
 
             if AISettingsStore.isUIOverhaulEnabled && !demoMode {
                 Section {
-                    Label("UI Overhaul is enabled. It can apply a visual CSS/markup patch, but script changes are rejected.", systemImage: "paintbrush")
+                    Label("A UI specialist is available for the optional review after generation. Script changes are rejected.", systemImage: "paintbrush")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1478,7 +1500,7 @@ struct AIGenerationView: View {
                                 Label("Retry using saved audio", systemImage: "arrow.clockwise")
                             }
                             .buttonStyle(.bordered)
-                            .accessibilityHint("Retries Whisper on the previous recording. You do not need to speak again.")
+                            .accessibilityHint("Retries transcription on the previous recording. You do not need to speak again.")
                         }
                         if let uiPolishNotice {
                             Text(uiPolishNotice)
@@ -1776,7 +1798,7 @@ struct AIGenerationView: View {
                         }
                         if inside && wasArmed && spoken.isEmpty && dictation.transcribingOffline {
                             pendingFloatingVoiceFeedback = forStyleFeedback
-                            microphoneEditNotice = "Whisper is transcribing…"
+                            microphoneEditNotice = "Transcribing your recording…"
                             return
                         }
                         if inside && wasArmed {
@@ -2175,8 +2197,9 @@ struct AIGenerationView: View {
                     )
                 }
                 // Avoid the optional generic UI-overhaul pass restyling the chosen mockup.
-            } else {
-                await runOptionalUIPolish(originalPrompt: designBrief)
+            }
+            if !Task.isCancelled && session.errorMessage == nil {
+                await offerInitialUIReview(originalPrompt: designBrief)
             }
             if session.errorMessage == nil && !Task.isCancelled {
                 await HTMLAppForgeCompletionFeedback.announce(edit: false)
@@ -2319,11 +2342,7 @@ Requested edit:
             ForgeTasteMemory.recordEditPreference(change)
             changePrompt = ""
             showingChange = true
-            if session.wantsUIPolish && selectedStyle == nil && polishThisRun {
-                await runOptionalUIPolish(originalPrompt: session.refinedBrief.isEmpty ? change : session.refinedBrief, edit: true)
-            } else {
-                uiPolishNotice = "This was a focused edit; no additional UI redesign was needed."
-            }
+            uiPolishNotice = "This was a focused edit; no additional UI redesign was needed."
             if session.errorMessage == nil && !Task.isCancelled {
                 await HTMLAppForgeCompletionFeedback.announce(edit: true)
                 HTMLAppForgeBackgroundNotice.completed(edit: true)
@@ -2332,38 +2351,72 @@ Requested edit:
         }
     }
 
-    private func runOptionalUIPolish(originalPrompt: String, edit: Bool = false) async {
-        guard AISettingsStore.isUIOverhaulEnabled, polishThisRun, !ForgeRunOptions.quick else { return }
+    private func offerInitialUIReview(originalPrompt: String) async {
+        guard !demoMode, existingApp == nil, scenePhase == .active else { return }
+        uiReviewAccepted = false
+        uiReviewSeconds = 5
+        showingUIReviewChoice = true
+        session.isWorking = true
+        session.phase = "Ready for an optional UI review"
+        // The timer belongs to this generation task; cancellation/disappearance
+        // dismisses the choice and can never start an unattended redesign.
+        while showingUIReviewChoice && uiReviewSeconds > 0 && !Task.isCancelled {
+            do { try await Task.sleep(nanoseconds: 1_000_000_000) }
+            catch { break }
+            uiReviewSeconds -= 1
+        }
+        showingUIReviewChoice = false
+        session.isWorking = false
+        session.phase = "Ready to review"
+        guard uiReviewAccepted, scenePhase == .active, !Task.isCancelled else { return }
+        await runOptionalUIPolish(originalPrompt: originalPrompt)
+    }
+
+    private func runOptionalUIPolish(originalPrompt: String) async {
         let functionalHTML = session.streamedHTML
-        let iconContext = ForgeEditIconContext(edit ? functionalHTML : "")
-        let polishSource = edit ? iconContext.html : functionalHTML
+        let functionalVerification = session.verificationReport
+        let iconContext = ForgeEditIconContext(functionalHTML)
+        let polishSource = iconContext.html
         session.isWorking = true
         session.phase = "Polishing the interface"
         skipUIPolish = false
         let worker = Task {
-            try await UIOverhaulService.polish(html: polishSource, originalPrompt: originalPrompt)
+            try await UIOverhaulService.polish(html: polishSource, originalPrompt: originalPrompt, userRequested: true)
         }
         polishTask = worker
         defer { polishTask = nil }
         do {
-            let result = try await worker.value
-            if skipUIPolish { throw CancellationError() }
-            session.acceptExternalHTML(iconContext.restoringIcons(in: result.html))
+            let result = try await withTaskCancellationHandler(operation: {
+                try await worker.value
+            }, onCancel: {
+                worker.cancel()
+            })
+            if skipUIPolish || Task.isCancelled { throw CancellationError() }
             session.isWorking = false
             if result.html == polishSource {
                 session.phase = "Ready to review"
                 uiPolishNotice = "UI Redesign found no safe change worth applying."
             } else {
+                session.acceptExternalHTML(iconContext.restoringIcons(in: result.html))
                 uiPolishNotice = "Checking the redesigned app's navigation, rendering and logic…"
-                await session.verifyCurrent(omitIcon: edit)
+                await session.verifyCurrent(omitIcon: true)
+                try Task.checkCancellation()
                 if session.errorMessage == nil {
                     uiPolishNotice = result.changedOnlyCSS
                         ? "Refined the interface and rechecked the finished app."
                         : "Redesigned the interface and rechecked its behavior."
+                } else {
+                    session.acceptExternalHTML(functionalHTML)
+                    session.verificationReport = functionalVerification
+                    session.errorMessage = nil
+                    session.isWorking = false
+                    session.phase = "Ready to review"
+                    uiPolishNotice = "The UI review did not pass verification. Your working app was kept."
                 }
             }
         } catch {
             session.acceptExternalHTML(functionalHTML)
+            session.verificationReport = functionalVerification
             session.isWorking = false
             session.phase = "Ready to review"
             uiPolishNotice = skipUIPolish
@@ -2603,7 +2656,12 @@ Requested edit:
         session.streamedHTML = ForgeAttachment.materialize(session.streamedHTML, items: attachments.items)
         generationTask = Task {
             await session.verifyCurrent()
-            if session.errorMessage == nil { clearRequestAttachments() }
+            if session.errorMessage == nil {
+                clearRequestAttachments()
+                if existingApp == nil && unsavedEditHistory.isEmpty && !Task.isCancelled {
+                    await offerInitialUIReview(originalPrompt: session.refinedBrief)
+                }
+            }
             ForgeConversationLog.append(conversationID, kind: "assistant", text: session.errorMessage ?? "Background result received and foreground checks completed for \(session.streamedHTML.utf8.count) bytes of HTML/CSS/JavaScript.")
         }
     }

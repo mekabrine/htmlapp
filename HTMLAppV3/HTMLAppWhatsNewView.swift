@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.19"
-    static let compiledBuild = "124"
+    static let compiledVersion = "1.9.20"
+    static let compiledBuild = "125"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,12 +32,18 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "queued-pickers", title: "More reliable attachment pickers",
-                  description: "Camera, Photos, and Files wait for the screen to be ready, including after a cold launch or another popup. Requests stay queued while the app is inactive.",
-                  symbol: "paperclip", tint: .blue),
-            Entry(id: "picker-handoff", title: "Smoother request review",
-                  description: "The picker closes fully before your review page opens. If a picker cannot open, a clear message lets you retry without silently losing the request.",
-                  symbol: "checkmark.rectangle", tint: .purple)
+            Entry(id: "ui-review", title: "One more look at your UI",
+                  description: "After generation, choose an optional interface review. No is selected automatically after five seconds, and your working app is kept if refinement fails.",
+                  symbol: "eye", tint: .blue),
+            Entry(id: "voice", title: "Online voice for Forge",
+                  description: "Add a free-tier Groq key in Settings for online prompt and edit transcription, with on-device fallback and recording retry. Whisper is now labeled Alternative.",
+                  symbol: "waveform", tint: .purple),
+            Entry(id: "forge", title: "Richer app building",
+                  description: "Forge has stronger workflow and touch-gesture guidance, broader SF Symbol choices, and a detailed guide updated for the current native APIs.",
+                  symbol: "sparkles", tint: .orange),
+            Entry(id: "widgets", title: "Fresher widgets",
+                  description: "New widgets request 15-minute refreshes by default. Opening HTMLApp also checks for due data updates. iOS controls actual background timing.",
+                  symbol: "arrow.clockwise", tint: .green)
         ]
     }
 }

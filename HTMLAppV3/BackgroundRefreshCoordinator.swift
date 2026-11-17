@@ -31,7 +31,7 @@ final class HTMLAppBackgroundCoordinator {
         }
 
         let intervals = jobs.map(\.intervalMinutes) + widgetRefreshes.compactMap { $0.refresh?.intervalMinutes }
-        let minutes = max(15, intervals.min() ?? 30)
+        let minutes = max(15, intervals.min() ?? 15)
         let request = BGAppRefreshTaskRequest(identifier: Self.taskIdentifier)
         request.earliestBeginDate = Date().addingTimeInterval(TimeInterval(minutes * 60))
 
@@ -117,7 +117,8 @@ final class HTMLAppBackgroundCoordinator {
         var refreshedWidgets = false
         for widget in HTMLAppWidgetStore.all() where widget.refresh != nil {
             if Task.isCancelled { break }
-            let minutes = max(15, widget.refresh?.intervalMinutes ?? 30)
+            if let appID, widget.appID != appID { continue }
+            let minutes = max(15, widget.refresh?.intervalMinutes ?? 15)
             let due = widget.lastRefreshAt.map { now.timeIntervalSince($0) >= Double(minutes * 60) } ?? true
             guard force || due else { continue }
             let refreshed = await HTMLAppWidgetNetwork.refreshed(widget)

@@ -298,9 +298,9 @@ struct OnboardingView: View {
                     .background(Color(uiColor: .secondarySystemGroupedBackground),
                                 in: RoundedRectangle(cornerRadius: 16))
                 if dictationTest.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("Nothing appeared? Apple's speech recognition may not work on this device. Try Whisper.")
+                    Text("Nothing appeared? Try the Alternative dictation engine.")
                         .font(.subheadline)
-                    Button("Try Whisper Offline Instead") {
+                    Button("Try Alternative Instead") {
                         dictationTest.stop()
                         dictationEngine = "whisper"
                         dictationTest.transcript = ""
@@ -312,10 +312,10 @@ struct OnboardingView: View {
                 }
                 Picker("Dictation engine", selection: $dictationEngine) {
                     Text("Apple").tag("apple")
-                    Text("Whisper Offline").tag("whisper")
+                    Text("Alternative").tag("whisper")
                 }
                 .pickerStyle(.segmented)
-                Text("Whisper downloads a model on first use. No account, API key, or speech-recognition charge is required. Audio stays on your device.")
+                Text("Alternative records first, then transcribes. Forge can use online transcription when configured in Settings; otherwise it downloads an on-device model on first use.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         case 11:
@@ -438,6 +438,8 @@ struct SettingsView: View {
     @AppStorage("htmlapp.previousOpenedVersion") private var previousOpenedVersion = ""
     @State private var showWhatsNew = false
     @State private var working = false
+    @State private var transcriptionKey = ForgeOnlineTranscription.apiKey
+    @AppStorage("forge.onlineTranscription") private var onlineTranscription = true
     @AppStorage("htmlapp.dictationEngine") private var dictationEngine = "apple"
 
     private var selectedSortMode: LibrarySortMode {
@@ -478,14 +480,22 @@ struct SettingsView: View {
                     Toggle("Show edit microphone at all times", isOn: $alwaysShowEditMicrophone)
                     Picker("Voice Dictation", selection: $dictationEngine) {
                         Label("Apple Speech — Live", systemImage: "waveform").tag("apple")
-                        Label("Whisper Offline", systemImage: "mic").tag("whisper")
+                        Label("Alternative", systemImage: "mic").tag("whisper")
                     }
                     .pickerStyle(.navigationLink)
                     Text(dictationEngine == "apple"
                          ? "See words live while speaking. Some devices may use Apple's speech service."
-                         : "Record first, then transcribe on-device after releasing the microphone.")
+                         : "Record first, then transcribe after releasing the microphone. Saved apps use on-device transcription.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    Toggle("Online transcription for Forge", isOn: $onlineTranscription)
+                    SecureField("Groq transcription API key", text: $transcriptionKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onChange(of: transcriptionKey) { ForgeOnlineTranscription.apiKey = $0 }
+                    Link("Get a free-tier Groq key", destination: URL(string: "https://console.groq.com/keys")!)
+                    Text("With a key and online transcription enabled, Forge sends generation and edit recordings to Groq. The key stays in Keychain. Groq offers a rate-limited free tier; your account plan determines any charges. If online transcription fails, Forge tries on-device transcription and keeps failed recordings for retry. Saved apps do not use this cloud setting.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
 
                 Section("Library") {

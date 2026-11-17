@@ -1893,6 +1893,10 @@ enum AIProviderClient {
                host == "api.openai.com", reasoningModel,
                !model.contains("-pro") {
                 body["reasoning_effort"] = "low"
+            } else if !ForgeRunOptions.quick, host == "api.openai.com",
+                      (model.hasPrefix("gpt-5") || model.hasPrefix("gpt-6")),
+                      !model.contains("-pro") {
+                body["reasoning_effort"] = "medium"
             }
             // Creative sampling is safe only for compatible non-reasoning
             // models on the first-party endpoint.
@@ -2439,7 +2443,7 @@ DEVICE CHROME AND STATUS BAR RULES:
 
 HTMLAPP SF SYMBOLS:
 - Generated apps may call await HTMLAppNative.symbols.search("heart") to find supported curated system-symbol names, and await HTMLAppNative.symbols.render("heart.fill") to receive {dataURL} for an <img>. SF Symbols are not a web font: do not pretend arbitrary symbol names work directly in CSS or HTML.
-- Call the local catalog before selecting a symbol; render it as an image with descriptive alt text and use CSS filters/tint thoughtfully. Missing symbols must fall back to inline SVG/text. Do not use SF Symbols as app icons or trademarks. The catalog is a safe iOS 16-oriented subset, not every symbol Apple ships.
+- Search the expanded local catalog by topic (fitness, weather, food, travel, finance, media, study, tools) or symbol fragment; names are validated on the installed iOS version. Useful choices include figure.yoga, dumbbell, tennis.racket, brain.head.profile, cross.case, pills, lungs, graduationcap, books.vertical, calendar.badge.clock, checklist, list.bullet.clipboard, chart.xyaxis.line, banknote, creditcard, wallet.pass, airplane.departure, tram, ferry, mountain.2, tree, cloud.bolt.rain, sunset, frying.pan, takeoutbag.and.cup.and.straw, gamecontroller, puzzlepiece.extension, waveform, camera.macro, externaldrive, server.rack, wrench.and.screwdriver and their supported .fill variants. Call symbols.search before selecting names and render with symbols.render, using descriptive alt text. Missing symbols must fall back to inline SVG/text. Do not use SF Symbols as app icons or trademarks. The catalog covers many categories but is not every symbol Apple ships.
 
 HTMLAPP APPEARANCE AND FUNCTIONAL CONTROLS:
 - Every NEW generated app MUST implement light and dark color palettes, with readable semantic surface, text, border, primary, secondary, and error tokens. Use @media (prefers-color-scheme: dark) and (prefers-color-scheme: light), and apply the tokens throughout; avoid fixed light backgrounds or dark text that become unreadable in the opposite appearance. Keep the selected visual identity in both schemes.
