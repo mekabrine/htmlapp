@@ -761,6 +761,10 @@ struct AIGenerationView: View {
                      : "Tell Forge what your app should do. You can type or hold the gray microphone to speak.")
             }
 
+            if !demoMode {
+                Section { ForgeAdditionalContext(selection: attachments) }
+            }
+
             Section {
                 VStack(alignment: .leading, spacing: 6) {
                     Picker("App testing", selection: $forgeTestMode) {
@@ -1533,6 +1537,9 @@ struct AIGenerationView: View {
                                 .buttonStyle(.bordered)
                                 .disabled(dictation.requestingPermission)
                                 .accessibilityLabel(dictation.recording && dictationForEdit ? "Stop edit dictation" : "Dictate edit")
+                            }
+                            if !demoMode {
+                                ForgeAdditionalContext(selection: attachments)
                             }
                             HStack(spacing: 10) {
                                 Button("Apply Change") { applyAIChange() }

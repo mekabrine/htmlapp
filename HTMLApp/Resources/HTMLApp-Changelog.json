@@ -1,0 +1,510 @@
+[
+  {
+    "version": "1.9.23",
+    "summary": "Added release history, searchable Forge skills, and versioned Discord IPA delivery."
+  },
+  {
+    "version": "1.9.22",
+    "summary": "Limited online Forge transcription to one attempt per launch."
+  },
+  {
+    "version": "1.9.21",
+    "summary": "Switched Forge dictation to free, keyless NoteTakers."
+  },
+  {
+    "version": "1.9.20",
+    "summary": "Added an optional Forge UI review, more symbols and gesture guidance, faster widget refresh requests, and online dictation."
+  },
+  {
+    "version": "1.9.19",
+    "summary": "Queue attachment pickers until presentation is ready."
+  },
+  {
+    "version": "1.9.18",
+    "summary": "Improve attachment research and lifecycle; pause backends."
+  },
+  {
+    "version": "1.9.17",
+    "summary": "Add attachment review and prewarm Library for 1.9.17."
+  },
+  {
+    "version": "1.9.16",
+    "summary": "Add voice attachment targets, durable app conversations and focused Forge progress."
+  },
+  {
+    "version": "1.9.15",
+    "summary": "Restore pre-refresh widget behavior and add Refresh Widget Data shortcut."
+  },
+  {
+    "version": "1.9.14",
+    "summary": "Speed cold launches and add focused Lock Screen voice creation."
+  },
+  {
+    "version": "1.9.13",
+    "summary": "Restore Forge 1.9.11 behavior and fix picked file fetches."
+  },
+  {
+    "version": "1.9.12",
+    "summary": "Improve Forge local fixers, device guidance and shared controls."
+  },
+  {
+    "version": "1.9.11",
+    "summary": "Rich Live Activities and configurable system controls."
+  },
+  {
+    "version": "1.9.10",
+    "summary": "Fix Core ML model compilation."
+  },
+  {
+    "version": "1.9.9",
+    "summary": "Native Liquid Glass settings controls."
+  },
+  {
+    "version": "1.9.8",
+    "summary": "Offline 3D views, shared controls and GPU cleanup."
+  },
+  {
+    "version": "1.9.7",
+    "summary": "Fix zero storage readings and itemize Whisper models."
+  },
+  {
+    "version": "1.9.6",
+    "summary": "Show on-device storage and per-app file breakdown in Settings."
+  },
+  {
+    "version": "1.9.5",
+    "summary": "Add compatible per-instance widget selection for iOS 16 and later."
+  },
+  {
+    "version": "1.9.4",
+    "summary": "Show concise release notes for only the current edit."
+  },
+  {
+    "version": "1.9.3",
+    "summary": "Fix configurable widget refreshes and share configuration intents."
+  },
+  {
+    "version": "1.9.2",
+    "summary": "Support independent widgets, four Home Screen sizes, and Live Activity handoff."
+  },
+  {
+    "version": "1.9.1",
+    "summary": "Improved game QA, native tabs and API health checks."
+  },
+  {
+    "version": "1.9.0",
+    "summary": "Native Forge navigation and expanded runtime."
+  },
+  {
+    "version": "1.8.5",
+    "summary": "Customizable native widgets and time formats."
+  },
+  {
+    "version": "1.8.4",
+    "summary": "Fix private prompt access blocking compilation."
+  },
+  {
+    "version": "1.8.3",
+    "summary": "Generic time-range widgets and changes since 1.8.0."
+  },
+  {
+    "version": "1.8.2",
+    "summary": "Native widget countdowns and no-APNs Forge planning."
+  },
+  {
+    "version": "1.8.1",
+    "summary": "Require complete Forge backends and fix v2 connection status."
+  },
+  {
+    "version": "1.8.0",
+    "summary": "Integrate generated Python backends with runtime v2."
+  },
+  {
+    "version": "1.7.3",
+    "summary": "Simplify automatic backends and remember microphone warning dismissal."
+  },
+  {
+    "version": "1.7.2",
+    "summary": "Automatically connect backends for existing apps."
+  },
+  {
+    "version": "1.7.1",
+    "summary": "Provision and link Forge backends automatically."
+  },
+  {
+    "version": "1.7.0",
+    "summary": "Link approved Hostish backends to saved apps."
+  },
+  {
+    "version": "1.6.86",
+    "summary": "Keep embedded icons out of AI edit context."
+  },
+  {
+    "version": "1.6.85",
+    "summary": "Use direct edit prompts and clear outgoing native tabs."
+  },
+  {
+    "version": "1.6.84",
+    "summary": "Start Library voice builds directly and review Whisper prompts."
+  },
+  {
+    "version": "1.6.83",
+    "summary": "Fit microphone glass and animate the drag return."
+  },
+  {
+    "version": "1.6.82",
+    "summary": "Match the editor microphone and expose native Liquid Glass."
+  },
+  {
+    "version": "1.6.81",
+    "summary": "Restore drag-to-edit dictation and start edits sooner."
+  },
+  {
+    "version": "1.6.80",
+    "summary": "Explain recent changes in What's New."
+  },
+  {
+    "version": "1.6.79",
+    "summary": "Improve app switching, dictation and Forge presentation."
+  },
+  {
+    "version": "1.6.78",
+    "summary": "Sync managed app screens with native tabs."
+  },
+  {
+    "version": "1.6.77",
+    "summary": "Keep tied partial edit targets ambiguous."
+  },
+  {
+    "version": "1.6.76",
+    "summary": "Improve Forge intent, native app guidance and generation reliability."
+  },
+  {
+    "version": "1.6.75",
+    "summary": "Enforce consented network boundaries for background refresh."
+  },
+  {
+    "version": "1.6.74",
+    "summary": "Add forward geocoding, offline distance and network path events."
+  },
+  {
+    "version": "1.6.73",
+    "summary": "Fail closed on unverified Forge mobile style previews."
+  },
+  {
+    "version": "1.6.72",
+    "summary": "Extract portable ZIP engine and test real compressed backups."
+  },
+  {
+    "version": "1.6.71",
+    "summary": "Teach Forge generated native API types, cache plans and estimate stage cost."
+  },
+  {
+    "version": "1.6.70",
+    "summary": "Add native UIKit list sheets and pull-to-refresh events."
+  },
+  {
+    "version": "1.6.69",
+    "summary": "Add private on-device sentence-vector search to SQLite."
+  },
+  {
+    "version": "1.6.68",
+    "summary": "Validate Forge look geometry and add iPhone/iPad import UI tests."
+  },
+  {
+    "version": "1.6.67",
+    "summary": "Apple Foundation Models guided answers and consented cloud fallback."
+  },
+  {
+    "version": "1.6.66",
+    "summary": "Add iOS Share extension and App Group HTML import inbox."
+  },
+  {
+    "version": "1.6.65",
+    "summary": "Stream genuine AI tokens into saved apps with cancellation."
+  },
+  {
+    "version": "1.6.64",
+    "summary": "Bounded in-app AI conversations with confirmed native tools."
+  },
+  {
+    "version": "1.6.63",
+    "summary": "Add on-device SQLite FTS5 for saved HTML apps."
+  },
+  {
+    "version": "1.6.62",
+    "summary": "Root-owned HTML imports, responsive style previews, safer HTTPS and ZIP archives."
+  },
+  {
+    "version": "1.6.61",
+    "summary": "Show visible microphone and Whisper retry progress."
+  },
+  {
+    "version": "1.6.60",
+    "summary": "Accept corrected dialog form layouts after CSS overrides."
+  },
+  {
+    "version": "1.6.59",
+    "summary": "Keep Whisper retry intent and corrected visual edit metadata."
+  },
+  {
+    "version": "1.6.58",
+    "summary": "Repair weak popup redesigns and retry Whisper on saved audio."
+  },
+  {
+    "version": "1.6.57",
+    "summary": "Current product improvements and version-bump guard."
+  },
+  {
+    "version": "1.6.56",
+    "summary": "Keep 1.6.56 (64) for build-only compiler fix."
+  },
+  {
+    "version": "1.6.55",
+    "summary": "Build test compatibility fix; Experimental offline resource snapshots; Live app state continuity."
+  },
+  {
+    "version": "1.6.54",
+    "summary": "Update HTMLApp to 1.6.54 (62) for offline snapshots and live state continuity."
+  },
+  {
+    "version": "1.6.53",
+    "summary": "Update HTMLApp to 1.6.53 (61) for restored style quality and automatic previews."
+  },
+  {
+    "version": "1.6.52",
+    "summary": "Update HTMLApp to 1.6.52 (60) after dynamic release invariant repair."
+  },
+  {
+    "version": "1.6.51",
+    "summary": "Update HTMLApp to 1.6.51 (59) after build runner invariant fix."
+  },
+  {
+    "version": "1.6.50",
+    "summary": "Update release metadata to 1.6.50 (58) for selectable build runners."
+  },
+  {
+    "version": "1.6.49",
+    "summary": "Bundle downloadable HTMLApp skill and bump release to 1.6.49 (57)."
+  },
+  {
+    "version": "1.6.48",
+    "summary": "Register HTMLApp as HTML document handler and bump 1.6.48 (56)."
+  },
+  {
+    "version": "1.6.47",
+    "summary": "Add car display compatibility and flexible AI styles (1.6.47 build 55)."
+  },
+  {
+    "version": "1.6.46",
+    "summary": "Whisper startup retry and hold-to-record feedback."
+  },
+  {
+    "version": "1.6.45",
+    "summary": "Smarter Forge planning; Optional visual taste memory; HealthKit date ranges."
+  },
+  {
+    "version": "1.6.44",
+    "summary": "Smarter Forge instructions and voice; Photo bridge build fix; Reliable multi-photo imports."
+  },
+  {
+    "version": "1.6.43",
+    "summary": "Photo bridge build fix; Reliable multi-photo imports; Reliable bulk photo import."
+  },
+  {
+    "version": "1.6.42",
+    "summary": "Reliable multi-photo imports; Reliable bulk photo import; Road lookup resilience."
+  },
+  {
+    "version": "1.6.41",
+    "summary": "Reliable bulk photo import; Road lookup resilience; Road data diagnostics."
+  },
+  {
+    "version": "1.6.40",
+    "summary": "Road lookup resilience; Road data diagnostics; Spotlight indexing."
+  },
+  {
+    "version": "1.6.39",
+    "summary": "Road data diagnostics; Spotlight indexing; Search documents and run Shortcuts actions."
+  },
+  {
+    "version": "1.6.38",
+    "summary": "Build 45 for opt-in Spotlight search indexing."
+  },
+  {
+    "version": "1.6.37",
+    "summary": "Build 44 for database search and Shortcuts delivery."
+  },
+  {
+    "version": "1.6.36",
+    "summary": "Portable data and Shortcuts."
+  },
+  {
+    "version": "1.6.35",
+    "summary": "Added a local SQLite document API."
+  },
+  {
+    "version": "1.6.34",
+    "summary": "Vision API additions."
+  },
+  {
+    "version": "1.6.33",
+    "summary": "On-device language tools; AI in saved apps; Adaptive shake exit."
+  },
+  {
+    "version": "1.6.32",
+    "summary": "AI in saved apps; Adaptive shake exit; On-demand native capability research."
+  },
+  {
+    "version": "1.6.31",
+    "summary": "Improved app exit transitions and expanded native device APIs."
+  },
+  {
+    "version": "1.6.30",
+    "summary": "Added on-demand native capability lookup."
+  },
+  {
+    "version": "1.6.29",
+    "summary": "Added motion settings."
+  },
+  {
+    "version": "1.6.28",
+    "summary": "Fixed shake gesture completion."
+  },
+  {
+    "version": "1.6.27",
+    "summary": "Shake exit build validation; Build validation for native tabs; Native tabs stay inside apps."
+  },
+  {
+    "version": "1.6.26",
+    "summary": "Corrected native tab build checks."
+  },
+  {
+    "version": "1.6.25",
+    "summary": "Fixed tab containment and shake transitions."
+  },
+  {
+    "version": "1.6.24",
+    "summary": "Added music source switching."
+  },
+  {
+    "version": "1.6.23",
+    "summary": "Face-down shake exit; Photo picker compatibility; Choose generation music from Files."
+  },
+  {
+    "version": "1.6.22",
+    "summary": "More dependable generation audio; Flip and shake to close; Up to seven native tabs."
+  },
+  {
+    "version": "1.6.21",
+    "summary": "Privacy tools, widget actions and battery API."
+  },
+  {
+    "version": "1.6.20",
+    "summary": "Build 27 for generation and workflow improvements."
+  },
+  {
+    "version": "1.6.19",
+    "summary": "Generation Music; Faster QUICK! creation; Instant style choices."
+  },
+  {
+    "version": "1.6.18",
+    "summary": "Generation Music; Faster QUICK! creation; Instant style choices."
+  },
+  {
+    "version": "1.6.17",
+    "summary": "Fix incomplete AI style previews with larger token budgets and model fallback (1.6.17)."
+  },
+  {
+    "version": "1.6.16",
+    "summary": "Improve iOS 16 voice widget routing, Forge mockups, QUICK mode and URL imports (1.6.16)."
+  },
+  {
+    "version": "1.6.15",
+    "summary": "Route Lock Screen microphone into Forge prompt and simplify What's New (1.6.15)."
+  },
+  {
+    "version": "1.6.14",
+    "summary": "Build 21 for voice, Whisper, location and mockup improvements."
+  },
+  {
+    "version": "1.6.13",
+    "summary": "Improved style variety, functional checks and loading guidance."
+  },
+  {
+    "version": "1.6.12",
+    "summary": "Opt-in iCloud sync."
+  },
+  {
+    "version": "1.6.11",
+    "summary": "Status bar, AI settings and widgets."
+  },
+  {
+    "version": "1.6.10",
+    "summary": "Improved native tab mounting and added first-use tips."
+  },
+  {
+    "version": "1.6.9",
+    "summary": "Reliable fast mockups."
+  },
+  {
+    "version": "1.6.8",
+    "summary": "Icon, native tabs, installation and Live Activity fixes."
+  },
+  {
+    "version": "1.6.7",
+    "summary": "Voice, mockups, native tabs, widgets and Bluetooth."
+  },
+  {
+    "version": "1.6.6",
+    "summary": "Forge and widget improvements."
+  },
+  {
+    "version": "1.6.5",
+    "summary": "Forge reliability fixes."
+  },
+  {
+    "version": "1.6.4",
+    "summary": "Forge background recovery."
+  },
+  {
+    "version": "1.6.3",
+    "summary": "Live Activity and voice shortcut updates."
+  },
+  {
+    "version": "1.6.2",
+    "summary": "Offline dictation fallback."
+  },
+  {
+    "version": "1.6.1",
+    "summary": "Restore AI edits; Start a fresh draft; Explain each AI edit."
+  },
+  {
+    "version": "1.6.0",
+    "summary": "Unified app and widget version settings and generated explicit Info.plists."
+  },
+  {
+    "version": "1.5.0",
+    "summary": "Updated app and widget bundle versions."
+  },
+  {
+    "version": "1.4.0",
+    "summary": "Fixed the installed version metadata for the app and widget."
+  },
+  {
+    "version": "1.3.0",
+    "summary": "Added guided onboarding."
+  },
+  {
+    "version": "1.2.0",
+    "summary": "Updated packaging defaults for the app and widget."
+  },
+  {
+    "version": "1.1.0",
+    "summary": "Updated app and widget release metadata."
+  },
+  {
+    "version": "1.0.0",
+    "summary": "Introduced HTMLApp, app icons, and WidgetKit support."
+  }
+]

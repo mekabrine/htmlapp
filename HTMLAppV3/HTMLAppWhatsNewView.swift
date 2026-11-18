@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.22"
-    static let compiledBuild = "127"
+    static let compiledVersion = "1.9.23"
+    static let compiledBuild = "128"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,12 +32,15 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "first-voice", title: "Online voice once per launch",
-                  description: "Only the first voice recording for creating or editing an app uses the free online API. Later recordings use your selected Apple Speech or Alternative engine.",
-                  symbol: "waveform", tint: .blue),
-            Entry(id: "voice-retries", title: "Retries stay on device",
-                  description: "An unsuccessful online attempt still counts for this launch. Retry the saved audio on device without another upload. Practice recordings do not use the online attempt.",
-                  symbol: "arrow.triangle.2.circlepath", tint: .purple)
+            Entry(id: "release-history", title: "See what changed since your last version",
+                  description: "Expand the release history below to catch up on versions you skipped.",
+                  symbol: "clock.arrow.circlepath", tint: .blue),
+            Entry(id: "forge-skills", title: "Bring your own Forge skills",
+                  description: "Import Markdown skills once, then search and attach them to creation and edit requests from Additional context.",
+                  symbol: "book.closed", tint: .purple),
+            Entry(id: "discord-ipa", title: "Versioned Discord builds",
+                  description: "IPA attachments and their Discord messages now identify the exact release.",
+                  symbol: "arrow.down.doc", tint: .green)
         ]
     }
 }
@@ -64,13 +67,9 @@ struct HTMLAppWhatsNewView: View {
                             )
                             .padding(.bottom, 8)
 
-                        Text(previousVersion == nil ? "What's New in HTMLApp" : "HTMLApp was updated!")
+                        Text("What’s new in \(version)")
                             .font(.largeTitle.bold())
                             .minimumScaleFactor(0.8)
-                        Text(previousVersion.map { "You went from version \($0) to \(version)." }
-                             ?? "Discover the latest features in your installed version.")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
                         Text("VERSION \(version) · BUILD \(HTMLAppReleaseNotes.installedBuild)")
                             .font(.caption.weight(.bold).monospacedDigit())
                             .foregroundStyle(.secondary)
@@ -93,6 +92,7 @@ struct HTMLAppWhatsNewView: View {
                                         symbol: item.symbol, tint: item.tint)
                         }
                     }
+                    releaseHistory
                     Text("You can find this page again in Settings → What's New.")
                         .font(.footnote).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -116,6 +116,40 @@ struct HTMLAppWhatsNewView: View {
                 .background(.regularMaterial)
             }
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private struct Release: Decodable, Identifiable {
+        let version: String
+        let summary: String
+        var id: String { version }
+    }
+
+    private static let history: [Release] = {
+        guard let url = Bundle.main.url(forResource: "HTMLApp-Changelog", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return [] }
+        return (try? JSONDecoder().decode([Release].self, from: data)) ?? []
+    }()
+
+    @ViewBuilder private var releaseHistory: some View {
+        let oldVersion = previousVersion.flatMap {
+            $0.isEmpty || $0.compare(version, options: .numeric) != .orderedAscending ? nil : $0
+        }
+        let releases = Self.history.filter { release in
+            release.version.compare(version, options: .numeric) != .orderedDescending &&
+                (oldVersion.map { release.version.compare($0, options: .numeric) == .orderedDescending } ?? true)
+        }
+        if !releases.isEmpty {
+            DisclosureGroup(oldVersion.map { "What happened since \($0)" } ?? "Release history") {
+                VStack(alignment: .leading, spacing: 9) {
+                    ForEach(releases) { release in
+                        Text("**\(release.version)** · \(release.summary)")
+                            .font(.footnote)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.top, 8)
+            }
         }
     }
 

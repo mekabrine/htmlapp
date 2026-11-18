@@ -656,7 +656,7 @@ struct SettingsView: View {
             }
             .overlay { if working { ProgressView().controlSize(.large) } }
             .sheet(isPresented: $showWhatsNew) {
-                HTMLAppWhatsNewView(previousVersion: nil) {
+                HTMLAppWhatsNewView(previousVersion: previousOpenedVersion.isEmpty ? nil : previousOpenedVersion) {
                     showWhatsNew = false
                 }
             }
