@@ -200,13 +200,13 @@ struct AIGenerationView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if !attachments.items.isEmpty {
+                if !attachments.files.isEmpty {
                     ToolbarItem(placement: .confirmationAction) {
                         Menu {
-                            ForEach(attachments.items) { item in
+                            ForEach(attachments.files) { item in
                                 Button("Remove \(item.name)", role: .destructive) { attachments.items.removeAll { $0.id == item.id } }
                             }
-                        } label: { Label("\(attachments.items.count)", systemImage: "paperclip") }
+                        } label: { Label("\(attachments.files.count)", systemImage: "paperclip") }
                         .disabled(session.isWorking || browserResearch.isBrowsing)
                     }
                 }
@@ -2535,7 +2535,7 @@ Requested edit:
 
     private func clearRequestAttachments() {
         activeAttachmentJob = nil
-        attachments.items.removeAll()
+        attachments.clear()
         attachments.error = nil
         ForgeAttachment.clear(conversationID)
     }

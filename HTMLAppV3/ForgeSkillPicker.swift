@@ -50,7 +50,15 @@ private struct ForgeImportedSkill: Codable, Identifiable {
 }
 
 struct ForgeSkillPicker: View {
-    let selected: (ForgeAttachment) -> Void
+    let selected: ([ForgeAttachment]) -> Void
+    @State private var selection: [ForgeAttachment]
+
+    init(initialSelection: [ForgeAttachment] = [], selected: @escaping ([ForgeAttachment]) -> Void,
+         cancel: @escaping () -> Void) {
+        self.selected = selected
+        self.cancel = cancel
+        _selection = State(initialValue: initialSelection)
+    }
     let cancel: () -> Void
     @State private var skills: [ForgeImportedSkill] = []
     @State private var search = ""
@@ -86,32 +94,70 @@ struct ForgeSkillPicker: View {
                     }
                 }
                 .padding(12)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+
                 Button { importing = true } label: {
-                    Label("Import New Skill", systemImage: "plus").frame(maxWidth: .infinity, alignment: .leading)
+                    Label("Import New Skill", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
+                .buttonStyle(.bordered)
+                .padding(.horizontal, 16)
+
                 List {
-                    if filteredSkills.isEmpty {
-                        Text(skills.isEmpty ? "No skills imported yet." : "No matching skills.")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(filteredSkills) { skill in
-                        Button { selected(skill.attachment) } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(skill.title).foregroundStyle(.primary)
-                                Text("Imported \(skill.importedAt.formatted(date: .abbreviated, time: .omitted))")
-                                    .font(.caption).foregroundStyle(.secondary)
+                    Section {
+                        if filteredSkills.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "book.closed").font(.title2)
+                                Text(skills.isEmpty ? "No skills imported yet" : "No matching skills")
                             }
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
                         }
+                        ForEach(filteredSkills) { skill in
+                            let checked = selection.contains { $0.id == skill.id }
+                            Button {
+                                if checked { selection.removeAll { $0.id == skill.id } }
+                                else { selection.append(skill.attachment) }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "book.closed.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                        .frame(width: 36, height: 36)
+                                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(skill.title).font(.subheadline.weight(.semibold))
+                                        Text("Imported \(skill.importedAt.formatted(date: .abbreviated, time: .omitted))")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: checked ? "checkmark.square.fill" : "square")
+                                        .foregroundStyle(checked ? Color.accentColor : Color.secondary)
+                                }
+                                .padding(.vertical, 5)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(checked ? .isSelected : [])
+                        }
+                    } header: {
+                        Text("Imported skills")
                     }
                 }
-                .listStyle(.plain)
+                .listStyle(.insetGrouped)
+                .scrollDismissesKeyboard(.interactively)
             }
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Skills")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(selection.isEmpty ? "Done" : "Done (\(selection.count))") { selected(selection) }
+                }
             }
         }
         .task { load() }

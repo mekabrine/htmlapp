@@ -14,8 +14,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.23"
-    static let compiledBuild = "128"
+    static let compiledVersion = "1.9.24"
+    static let compiledBuild = "129"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -32,15 +32,15 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "release-history", title: "See what changed since your last version",
-                  description: "Expand the release history below to catch up on versions you skipped.",
-                  symbol: "clock.arrow.circlepath", tint: .blue),
-            Entry(id: "forge-skills", title: "Bring your own Forge skills",
-                  description: "Import Markdown skills once, then search and attach them to creation and edit requests from Additional context.",
-                  symbol: "book.closed", tint: .purple),
-            Entry(id: "discord-ipa", title: "Versioned Discord builds",
-                  description: "IPA attachments and their Discord messages now identify the exact release.",
-                  symbol: "arrow.down.doc", tint: .green)
+            Entry(id: "skills-drag", title: "Skills from the microphone",
+                  description: "Drag the microphone to Skills to choose guidance for a creation or edit request.",
+                  symbol: "mic.fill", tint: .blue),
+            Entry(id: "skills-selection", title: "Clearer context and skill selection",
+                  description: "Four context buttons fill the row. Pick multiple skills in the redesigned picker and toggle each one separately from your attached files.",
+                  symbol: "checkmark.square", tint: .purple),
+            Entry(id: "release-details", title: "Full release notes in history",
+                  description: "Release history shows every saved What’s New item, including its description.",
+                  symbol: "clock.arrow.circlepath", tint: .green)
         ]
     }
 }
@@ -120,6 +120,12 @@ struct HTMLAppWhatsNewView: View {
     }
 
     private struct Release: Decodable, Identifiable {
+        struct Change: Decodable {
+            let title: String
+            let description: String
+        }
+
+        let changes: [Change]?
         let version: String
         let summary: String
         var id: String { version }
@@ -143,9 +149,19 @@ struct HTMLAppWhatsNewView: View {
             DisclosureGroup(oldVersion.map { "What happened since \($0)" } ?? "Release history") {
                 VStack(alignment: .leading, spacing: 9) {
                     ForEach(releases) { release in
-                        Text("**\(release.version)** · \(release.summary)")
-                            .font(.footnote)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(release.version).font(.footnote.bold())
+                            if let changes = release.changes, !changes.isEmpty {
+                                ForEach(changes.indices, id: \.self) { index in
+                                    let change = changes[index]
+                                    Text(change.title).font(.footnote.weight(.semibold))
+                                    Text(change.description).font(.footnote).foregroundStyle(.secondary)
+                                }
+                            } else {
+                                Text(release.summary).font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .padding(.top, 8)

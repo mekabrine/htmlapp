@@ -1,291 +1,1289 @@
 [
   {
+    "version": "1.9.24",
+    "summary": "Added Skills to microphone drag targets, improved skill selection and layout, and archived full release notes.",
+    "changes": [
+      {
+        "title": "Skills from the microphone",
+        "description": "Drag the microphone to Skills to choose guidance for a creation or edit request."
+      },
+      {
+        "title": "Clearer context and skill selection",
+        "description": "Four context buttons fill the row. Pick multiple skills in the redesigned picker and toggle each one separately from your attached files."
+      },
+      {
+        "title": "Full release notes in history",
+        "description": "Release history shows every saved What’s New item, including its description."
+      }
+    ]
+  },
+  {
     "version": "1.9.23",
-    "summary": "Added release history, searchable Forge skills, and versioned Discord IPA delivery."
+    "summary": "Added release history, searchable Forge skills, and versioned Discord IPA delivery.",
+    "changes": [
+      {
+        "title": "See what changed since your last version",
+        "description": "Expand the release history below to catch up on versions you skipped."
+      },
+      {
+        "title": "Bring your own Forge skills",
+        "description": "Import Markdown skills once, then search and attach them to creation and edit requests from Additional context."
+      },
+      {
+        "title": "Versioned Discord builds",
+        "description": "IPA attachments and their Discord messages now identify the exact release."
+      }
+    ]
   },
   {
     "version": "1.9.22",
-    "summary": "Limited online Forge transcription to one attempt per launch."
+    "summary": "Limited online Forge transcription to one attempt per launch.",
+    "changes": [
+      {
+        "title": "Online voice once per launch",
+        "description": "Only the first voice recording for creating or editing an app uses the free online API. Later recordings use your selected Apple Speech or Alternative engine."
+      },
+      {
+        "title": "Retries stay on device",
+        "description": "An unsuccessful online attempt still counts for this launch. Retry the saved audio on device without another upload. Practice recordings do not use the online attempt."
+      }
+    ]
   },
   {
     "version": "1.9.21",
-    "summary": "Switched Forge dictation to free, keyless NoteTakers."
+    "summary": "Switched Forge dictation to free, keyless NoteTakers.",
+    "changes": [
+      {
+        "title": "Free voice transcription, no key",
+        "description": "Forge now uses NoteTakers for online prompt and edit transcription. No signup, API key, or payment setup is needed."
+      },
+      {
+        "title": "Keep speaking when online is unavailable",
+        "description": "The free service allows 10 requests per day per IP address. Forge tries on-device transcription if the limit is reached or the service fails, and keeps failed recordings for retry."
+      },
+      {
+        "title": "Your choice of voice engine",
+        "description": "Settings explains where online audio is sent. Turn off online transcription to use Apple Speech or Alternative instead."
+      }
+    ]
   },
   {
     "version": "1.9.20",
-    "summary": "Added an optional Forge UI review, more symbols and gesture guidance, faster widget refresh requests, and online dictation."
+    "summary": "Added an optional Forge UI review, more symbols and gesture guidance, faster widget refresh requests, and online dictation.",
+    "changes": [
+      {
+        "title": "One more look at your UI",
+        "description": "After generation, choose an optional interface review. No is selected automatically after five seconds, and your working app is kept if refinement fails."
+      },
+      {
+        "title": "Online voice for Forge",
+        "description": "Add a free-tier Groq key in Settings for online prompt and edit transcription, with on-device fallback and recording retry. Whisper is now labeled Alternative."
+      },
+      {
+        "title": "Richer app building",
+        "description": "Forge has stronger workflow and touch-gesture guidance, broader SF Symbol choices, and a detailed guide updated for the current native APIs."
+      },
+      {
+        "title": "Fresher widgets",
+        "description": "New widgets request 15-minute refreshes by default. Opening HTMLApp also checks for due data updates. iOS controls actual background timing."
+      }
+    ]
   },
   {
     "version": "1.9.19",
-    "summary": "Queue attachment pickers until presentation is ready."
+    "summary": "Queue attachment pickers until presentation is ready.",
+    "changes": [
+      {
+        "title": "More reliable attachment pickers",
+        "description": "Camera, Photos, and Files wait for the screen to be ready, including after a cold launch or another popup. Requests stay queued while the app is inactive."
+      },
+      {
+        "title": "Smoother request review",
+        "description": "The picker closes fully before your review page opens. If a picker cannot open, a clear message lets you retry without silently losing the request."
+      }
+    ]
   },
   {
     "version": "1.9.18",
-    "summary": "Improve attachment research and lifecycle; pause backends."
+    "summary": "Improve attachment research and lifecycle; pause backends.",
+    "changes": [
+      {
+        "title": "Better research with references",
+        "description": "Forge can use attached documents and photos to identify what needs checking, then spend more time finding and reading relevant documentation."
+      },
+      {
+        "title": "Keep adding photos and files",
+        "description": "Fixed competing picker presentations in Review Request. Camera, Photos, and Files now open from their own presentation state, with clear camera-access errors."
+      },
+      {
+        "title": "Attachments stay with one task",
+        "description": "References clear after successful generation or cancellation, so they won’t carry into your next request. Images already embedded in your generated app remain available."
+      },
+      {
+        "title": "Backends temporarily paused",
+        "description": "Forge no longer generates hosted backends. Backend operations and automatic setup are disabled while existing files, saved configuration, and backend code are kept."
+      }
+    ]
   },
   {
     "version": "1.9.17",
-    "summary": "Add attachment review and prewarm Library for 1.9.17."
+    "summary": "Add attachment review and prewarm Library for 1.9.17.",
+    "changes": [
+      {
+        "title": "Review before generating",
+        "description": "Camera, Photos, and Files now open a review page. Edit your transcript and choose Generate when you’re ready, or Cancel without sending a request."
+      },
+      {
+        "title": "Build a complete reference set",
+        "description": "Mix up to nine photos and files in a three-column grid. Take another picture, add more references, or confirm removal with each attachment’s × button."
+      },
+      {
+        "title": "Clear, familiar controls",
+        "description": "The review page uses Liquid Glass buttons on supported devices: blue Generate with white text and gray Cancel with red text."
+      },
+      {
+        "title": "A smoother Library launch",
+        "description": "Normal launches prepare your saved Library before displaying it, avoiding the empty-library flash. Direct app links keep their fast launch path."
+      }
+    ]
   },
   {
     "version": "1.9.16",
-    "summary": "Add voice attachment targets, durable app conversations and focused Forge progress."
+    "summary": "Add voice attachment targets, durable app conversations and focused Forge progress.",
+    "changes": [
+      {
+        "title": "Show Forge what you mean",
+        "description": "Drag the edit microphone onto Camera, Photos, or Files. Select references, then Forge transcribes your request and uses the attachments for an edit or a new app."
+      },
+      {
+        "title": "Keep moving through questions",
+        "description": "Forge asks only when a choice matters. After five seconds without interaction, or when you lock the screen, it continues with a practical default using the existing background generation support."
+      },
+      {
+        "title": "Your app’s continuing story",
+        "description": "App Conversation keeps requests, technical edit summaries, reversions, and completed share events. Recent history informs later edits, and personal backups include the full log."
+      },
+      {
+        "title": "A simpler generation screen",
+        "description": "Watch the live activity graph and Forge’s current status, with fewer distractions while it works."
+      }
+    ]
   },
   {
     "version": "1.9.15",
-    "summary": "Restore pre-refresh widget behavior and add Refresh Widget Data shortcut."
+    "summary": "Restore pre-refresh widget behavior and add Refresh Widget Data shortcut.",
+    "changes": [
+      {
+        "title": "Previous widget behavior restored",
+        "description": "Removed the recent foreground refresh loop, automatic publication selection, and experimental rendering diagnostics and plain-text test."
+      },
+      {
+        "title": "Refresh widgets with Shortcuts",
+        "description": "Add HTMLApp’s Refresh Widget Data action to a shortcut. It refreshes saved data bindings and approved native background data, then requests a widget reload. iOS controls display timing."
+      }
+    ]
   },
   {
     "version": "1.9.14",
-    "summary": "Speed cold launches and add focused Lock Screen voice creation."
+    "summary": "Speed cold launches and add focused Lock Screen voice creation.",
+    "changes": [
+      {
+        "title": "Apps open faster",
+        "description": "Cold-start work is deferred, and URL links can open a cached saved app directly without loading or warming the Library first."
+      },
+      {
+        "title": "Speak an app from the Lock Screen",
+        "description": "The Lock Screen microphone opens a focused recorder with an editable transcript and one-tap generation. Whisper performs a short cold-start warm-up before recording your prompt."
+      },
+      {
+        "title": "Cleaner Settings and storage",
+        "description": "Settings has a clearer design, and Storage can remove recreatable caches, completed GPU archives, and old temporary exports."
+      },
+      {
+        "title": "Direct launches skip Library loading",
+        "description": "Removed an early shortcut check that could still load the Library before a URL launch was handled."
+      },
+      {
+        "title": "Widget updates refresh automatically",
+        "description": "Published snapshots request a widget refresh immediately. While a saved app with widgets is open, HTMLApp requests another refresh every five seconds and once more when you leave the app. iOS controls the final display timing."
+      },
+      {
+        "title": "Better blank-widget diagnostics",
+        "description": "Widget diagnostics now show progress separately for each size, list installed widget kinds, and include a reversible plain-text rendering test to help identify blank widgets."
+      }
+    ]
   },
   {
     "version": "1.9.13",
-    "summary": "Restore Forge 1.9.11 behavior and fix picked file fetches."
+    "summary": "Restore Forge 1.9.11 behavior and fix picked file fetches.",
+    "changes": [
+      {
+        "title": "Forge, back to familiar behavior",
+        "description": "Restored Forge’s generation and testing behavior from version 1.9.11, removing the stricter API checks and automatic fixers from the previous update."
+      },
+      {
+        "title": "Read picked files inside apps",
+        "description": "Apps can fetch files selected through HTMLApp’s Files picker, including MP3s. Imported bytes are read in small chunks instead of relying on WebKit to fetch local file URLs."
+      },
+      {
+        "title": "Widgets recover automatically",
+        "description": "HTMLApp automatically selects an accessible signing group shared with its widget extension when widget storage is unavailable. Missing signing permissions still require a correctly signed installation."
+      },
+      {
+        "title": "Widget warnings stay visible",
+        "description": "On phones, widget publication errors appear at the top of the screen so they stay clear of the tab bar."
+      }
+    ]
   },
   {
     "version": "1.9.12",
-    "summary": "Improve Forge local fixers, device guidance and shared controls."
+    "summary": "Improve Forge local fixers, device guidance and shared controls.",
+    "changes": [
+      {
+        "title": "Smarter checks and repairs",
+        "description": "Forge fixes known API mistakes locally and checks generated apps for broken scripts, blocked buttons, and layout problems. Fast checks request a focused repair only when a problem is found."
+      },
+      {
+        "title": "More consistent controls",
+        "description": "Forge has shared building blocks for switches, forms, tabs, and confirmation dialogs, with better touch targets and keyboard support."
+      },
+      {
+        "title": "Better device compatibility",
+        "description": "Forge receives your system version and native API guidance. Browser face detection can use HTMLApp’s native Vision bridge, with bounded image sampling and permission handling."
+      }
+    ]
   },
   {
     "version": "1.9.11",
-    "summary": "Rich Live Activities and configurable system controls."
+    "summary": "Rich Live Activities and configurable system controls.",
+    "changes": [
+      {
+        "title": "More expressive Live Activities",
+        "description": "Forge can add charts, waveforms, gauges, and routes to the Lock Screen and Dynamic Island. Timer activities can include Pause, Resume, and Complete actions."
+      },
+      {
+        "title": "Your projects in Control Center",
+        "description": "On iOS 18 and later, add HTMLApp buttons and toggles, then choose a project and action for each. Find published controls in Widgets & Background."
+      }
+    ]
   },
   {
     "version": "1.9.10",
-    "summary": "Fix Core ML model compilation."
+    "summary": "Fix Core ML model compilation.",
+    "changes": [
+      {
+        "title": "Real iOS controls in Forge apps",
+        "description": "Forge can open native settings sheets with switches, sliders, pickers, and text fields. On iOS 26 and later, they use Liquid Glass."
+      }
+    ]
   },
   {
     "version": "1.9.9",
-    "summary": "Native Liquid Glass settings controls."
+    "summary": "Native Liquid Glass settings controls.",
+    "changes": [
+      {
+        "title": "Real iOS controls in Forge apps",
+        "description": "Forge can open native settings sheets with switches, sliders, pickers, and text fields. On iOS 26 and later, they use Liquid Glass."
+      }
+    ]
   },
   {
     "version": "1.9.8",
-    "summary": "Offline 3D views, shared controls and GPU cleanup."
+    "summary": "Offline 3D views, shared controls and GPU cleanup.",
+    "changes": [
+      {
+        "title": "Explore 3D objects",
+        "description": "Forge can add offline 3D views to projects. Drag to rotate, pinch to zoom, or open a local 3D model."
+      },
+      {
+        "title": "Switches that fit",
+        "description": "Forge can reuse centered switches and settings rows. Layout checks catch clipping and misalignment across screen sizes."
+      },
+      {
+        "title": "Automatic GPU file cleanup",
+        "description": "At startup, HTMLApp removes the oldest 10 eligible GPU cache folders once 20 collect. See the results in Settings → Storage."
+      }
+    ]
   },
   {
     "version": "1.9.7",
-    "summary": "Fix zero storage readings and itemize Whisper models."
+    "summary": "Fix zero storage readings and itemize Whisper models.",
+    "changes": [
+      {
+        "title": "See your actual storage use",
+        "description": "Storage now measures files more reliably and shows how much space the Whisper Offline model takes."
+      },
+      {
+        "title": "Open apps faster",
+        "description": "Saved apps start without waiting for cache cleanup. Links and Home Screen icons switch apps in the same window."
+      }
+    ]
   },
   {
     "version": "1.9.6",
-    "summary": "Show on-device storage and per-app file breakdown in Settings."
+    "summary": "Show on-device storage and per-app file breakdown in Settings.",
+    "changes": [
+      {
+        "title": "See what takes up space",
+        "description": "Open Storage in Settings to see downloads, caches, and saved apps. Tap an app for its breakdown."
+      }
+    ]
   },
   {
     "version": "1.9.5",
-    "summary": "Add compatible per-instance widget selection for iOS 16 and later."
+    "summary": "Add compatible per-instance widget selection for iOS 16 and later.",
+    "changes": [
+      {
+        "title": "Compatible widget selection",
+        "description": "Add HTMLApp Compatible to choose a different app for each widget on iPhone and iPad, including iOS 16.2."
+      }
+    ]
   },
   {
     "version": "1.9.4",
-    "summary": "Show concise release notes for only the current edit."
+    "summary": "Show concise release notes for only the current edit.",
+    "changes": [
+      {
+        "title": "Just this update",
+        "description": "What’s New now shows only the changes from the latest edit, with short, easy-to-read notes."
+      }
+    ]
   },
   {
     "version": "1.9.3",
-    "summary": "Fix configurable widget refreshes and share configuration intents."
+    "summary": "Fix configurable widget refreshes and share configuration intents.",
+    "changes": [
+      {
+        "title": "Refresh configured widgets",
+        "description": "Published updates now refresh independently selected widgets as well as Primary. Widget selection has a shorter label and shared configuration support."
+      }
+    ]
   },
   {
     "version": "1.9.2",
-    "summary": "Support independent widgets, four Home Screen sizes, and Live Activity handoff."
+    "summary": "Support independent widgets, four Home Screen sizes, and Live Activity handoff.",
+    "changes": [
+      {
+        "title": "Choose an app for each widget",
+        "description": "Add HTMLApp widgets for different saved apps together on your Home Screen and Lock Screen. Edit each widget to choose its app on iOS 17 and later."
+      },
+      {
+        "title": "All four Home Screen sizes",
+        "description": "Forge includes small, medium, large and extra-large iPad widgets. Older Home Screen publications gain compatible size fallbacks."
+      },
+      {
+        "title": "Live Activities follow app requests",
+        "description": "When the active app requests a Live Activity, the previous app’s activity ends and the new one starts. Requests from old app sessions are rejected."
+      }
+    ]
   },
   {
     "version": "1.9.1",
-    "summary": "Improved game QA, native tabs and API health checks."
+    "summary": "Improved game QA, native tabs and API health checks.",
+    "changes": [
+      {
+        "title": "Check canvas rendering and frame rate",
+        "description": "Opt-in canvas checks flag blank game scenes during Forge QA, and running apps can measure visible-device frame cadence."
+      }
+    ]
   },
   {
     "version": "1.9.0",
-    "summary": "Native Forge navigation and expanded runtime."
+    "summary": "Native Forge navigation and expanded runtime.",
+    "changes": [
+      {
+        "title": "Edits must make a change",
+        "description": "Forge uses the edit contract, retries unchanged output and missing requested native navigation, and restores the previous app when acceptance fails."
+      },
+      {
+        "title": "Built-in navigation",
+        "description": "Apps can declare their screens once and let HTMLApp configure native tabs. Verification checks declared navigation and hidden preview fallbacks."
+      },
+      {
+        "title": "More capable app foundations",
+        "description": "Bundled 3D, physics, charts, maps and audio libraries work with a package resource loader, portable modules and reusable game, canvas and sound helpers."
+      },
+      {
+        "title": "More real data sources",
+        "description": "Forge selects relevant entries from a 168-provider catalog. Endpoint check results, credential requirements and provider-policy warnings stay explicit."
+      },
+      {
+        "title": "Design richer Live Activities",
+        "description": "Arrange native text, symbols, timers, progress and shapes separately for the Lock Screen and Dynamic Island. Layout and payload limits are validated."
+      },
+      {
+        "title": "Fresh sources when online",
+        "description": "Choose fresh online loading with offline fallback, network only, or standard browser caching. Bundled resources and saved app data remain local."
+      },
+      {
+        "title": "Camera, models and native scenes",
+        "description": "New APIs support foreground camera frame files, compatible local Core ML image models, and bounded RealityKit scenes with optional AR."
+      },
+      {
+        "title": "Native music and location history",
+        "description": "Apps can use a supplied sound bank, send MIDI channel messages, and explicitly enable bounded background location collection with Always permission."
+      },
+      {
+        "title": "Live Activity controls",
+        "description": "Add Open and End controls to Live Activities. End uses a native App Intent on iOS 17 and later."
+      },
+      {
+        "title": "Interactive maps and motion",
+        "description": "Apps can embed a native map with annotations and route geometry, and subscribe to foreground motion readings with explicit cleanup."
+      }
+    ]
   },
   {
     "version": "1.8.5",
-    "summary": "Customizable native widgets and time formats."
+    "summary": "Customizable native widgets and time formats.",
+    "changes": [
+      {
+        "title": "Design widgets your way",
+        "description": "Forge can arrange text, icons, images, shapes, rings and progress bars, with different layouts for each Home Screen and Lock Screen size."
+      },
+      {
+        "title": "Choose what time shows",
+        "description": "Ask for hours and minutes, seconds only, or a countdown without seconds. iOS 18 and later support live selected units; older versions use compatible fallbacks."
+      },
+      {
+        "title": "Centered Lock Screen timers",
+        "description": "Countdown text now fits inside circular widgets, with centered alignment and space around the ring."
+      }
+    ]
   },
   {
     "version": "1.8.4",
-    "summary": "Fix private prompt access blocking compilation."
+    "summary": "Fix private prompt access blocking compilation.",
+    "changes": [
+      {
+        "title": "Fixed a build error",
+        "description": "Corrected access to the original app request used by backend and widget validation."
+      }
+    ]
   },
   {
     "version": "1.8.3",
-    "summary": "Generic time-range widgets and changes since 1.8.0."
+    "summary": "Generic time-range widgets and changes since 1.8.0.",
+    "changes": [
+      {
+        "title": "Widgets understand time",
+        "description": "Countdowns, elapsed timers and time progress use native displays. The same feature works for events, sessions, workouts and more, without constant app refreshes."
+      },
+      {
+        "title": "Plan widget changes ahead",
+        "description": "Widgets can prepare Upcoming, In progress and Finished states from their start and end times. iOS controls when scheduled changes appear."
+      },
+      {
+        "title": "Forge builds the backend too",
+        "description": "Forge checks for missing server code and matching app routes, then attempts repairs. Developer → Backend can repair an older incomplete app or connect its generated code using your saved secret."
+      },
+      {
+        "title": "Work without Apple push setup",
+        "description": "Forge plans saved server messages, checks while the app is open and local reminders. It explains why instant remote alerts cannot be guaranteed while the app is closed."
+      },
+      {
+        "title": "More reliable Lock Screen countdowns",
+        "description": "Published deadlines reach all widget sizes and native countdowns stop at zero. Backend status also shows the real API address and available notification support."
+      }
+    ]
   },
   {
     "version": "1.8.2",
-    "summary": "Native widget countdowns and no-APNs Forge planning."
+    "summary": "Native widget countdowns and no-APNs Forge planning.",
+    "changes": [
+      {
+        "title": "Build around available notifications",
+        "description": "Forge uses saved server messages, foreground checks and local reminders when Apple push is unavailable, and explains background limits."
+      },
+      {
+        "title": "Countdowns keep counting",
+        "description": "Event widgets use a native timer on the Home Screen and Lock Screen. They no longer need constant refreshes and stop at zero."
+      }
+    ]
   },
   {
     "version": "1.8.1",
-    "summary": "Require complete Forge backends and fix v2 connection status."
+    "summary": "Require complete Forge backends and fix v2 connection status.",
+    "changes": [
+      {
+        "title": "Forge builds the backend too",
+        "description": "Apps that need a server must include real backend code. Forge repairs missing pieces instead of calling a local-only demo finished."
+      },
+      {
+        "title": "Repair existing backend apps",
+        "description": "Open Developer → Backend to repair an incomplete app with Forge or connect its generated server code using your saved secret."
+      },
+      {
+        "title": "Clearer backend status",
+        "description": "Runtime apps show their real API address and server notification availability. You do not need provisioning JSON for automatic setup."
+      }
+    ]
   },
   {
     "version": "1.8.0",
-    "summary": "Integrate generated Python backends with runtime v2."
+    "summary": "Integrate generated Python backends with runtime v2.",
+    "changes": [
+      {
+        "title": "Build apps with real backends",
+        "description": "Forge can include custom Python server code. Saving deploys and checks the backend before saving your app."
+      },
+      {
+        "title": "Share apps without control keys",
+        "description": "Nearby shares keep the public connection and leave out Python source and private management keys."
+      }
+    ]
   },
   {
     "version": "1.7.3",
-    "summary": "Simplify automatic backends and remember microphone warning dismissal."
+    "summary": "Simplify automatic backends and remember microphone warning dismissal.",
+    "changes": [
+      {
+        "title": "Enter your secret and you’re connected",
+        "description": "Backend setup starts as soon as you enter your secret. Existing apps connect automatically, and new apps connect when you open or save them."
+      },
+      {
+        "title": "The microphone warning appears once",
+        "description": "Dismiss the music warning once to keep using the microphone. HTMLApp remembers your choice after you close it."
+      }
+    ]
   },
   {
     "version": "1.7.2",
-    "summary": "Automatically connect backends for existing apps."
+    "summary": "Automatically connect backends for existing apps.",
+    "changes": [
+      {
+        "title": "Connect existing apps automatically",
+        "description": "Open Developer → Backend for an app that needs cloud storage or notifications. HTMLApp uses your paired VPS to create and link its backend, including for imported apps."
+      }
+    ]
   },
   {
     "version": "1.7.1",
-    "summary": "Provision and link Forge backends automatically."
+    "summary": "Provision and link Forge backends automatically.",
+    "changes": [
+      {
+        "title": "Backends link automatically",
+        "description": "Pair your VPS once in Settings. When you save a Forge app that needs a backend, HTMLApp creates and links it for you. If you’re offline, it retries when you return."
+      }
+    ]
   },
   {
     "version": "1.7.0",
-    "summary": "Link approved Hostish backends to saved apps."
+    "summary": "Link approved Hostish backends to saved apps.",
+    "changes": [
+      {
+        "title": "Connect your apps to a backend",
+        "description": "Open Developer → Backend to link a server template, see its details and keys, and manage its saved data."
+      },
+      {
+        "title": "Send notifications from a webhook",
+        "description": "Link a notification backend and register your phone. Use its send-only key from your website or automation."
+      },
+      {
+        "title": "Backend access stays private",
+        "description": "Nearby transfers leave out backend keys and Python source. Deleting a linked app also queues its backend for deletion."
+      }
+    ]
   },
   {
     "version": "1.6.86",
-    "summary": "Keep embedded icons out of AI edit context."
+    "summary": "Keep embedded icons out of AI edit context.",
+    "changes": [
+      {
+        "title": "Large icons stay out of AI edits",
+        "description": "HTMLApp keeps embedded app icons out of edit requests, leaving more room for your app code. Your saved icon is kept."
+      }
+    ]
   },
   {
     "version": "1.6.85",
-    "summary": "Use direct edit prompts and clear outgoing native tabs."
+    "summary": "Use direct edit prompts and clear outgoing native tabs.",
+    "changes": [
+      {
+        "title": "Edits use your own words",
+        "description": "Forge sends your edit as you wrote or spoke it. New app ideas can still be refined before building."
+      },
+      {
+        "title": "Tabs stay with their app",
+        "description": "Opening a different saved app from the Home Screen clears the previous app’s tab bar."
+      }
+    ]
   },
   {
     "version": "1.6.84",
-    "summary": "Start Library voice builds directly and review Whisper prompts."
+    "summary": "Start Library voice builds directly and review Whisper prompts.",
+    "changes": [
+      {
+        "title": "Start building from the Library mic",
+        "description": "Release the mic to start your app without opening the prompt form. Turn on Show styles for Library voice creation in Settings if you want previews first."
+      },
+      {
+        "title": "Check what Whisper heard",
+        "description": "Your words appear briefly after transcription. Tap them to make a correction and send."
+      },
+      {
+        "title": "Pause music before dictating",
+        "description": "If another app is playing audio, HTMLApp asks you to pause it before opening the microphone."
+      }
+    ]
   },
   {
     "version": "1.6.83",
-    "summary": "Fit microphone glass and animate the drag return."
+    "summary": "Fit microphone glass and animate the drag return.",
+    "changes": [
+      {
+        "title": "Chat with Apple Intelligence",
+        "description": "Saved apps can send recent chat messages to Apple Intelligence and display an answer generated on your device. Turn on generated-app AI access in Settings."
+      },
+      {
+        "title": "Music while styles are made",
+        "description": "Your generation music now plays during style previews. If you leave HTMLApp and the previews finish, you can get a notification."
+      },
+      {
+        "title": "A better guide for external AI",
+        "description": "The app-building guide now explains local devices, chat, dictation, native tabs and Liquid Glass."
+      },
+      {
+        "title": "Speak an app idea from Library",
+        "description": "Drag the Library microphone inward, speak, and release. If style previews are on, Forge shows designs first. If they are off, Forge starts building."
+      },
+      {
+        "title": "The edit mic follows your finger",
+        "description": "Drag the mic in any direction. When you release it, it stretches and springs back as the editor opens. On iOS 26, the glass fits inside the outline and turns a translucent red while recording."
+      },
+      {
+        "title": "The same edit mic in both places",
+        "description": "The saved-app mic now matches the tilted mic in Edit with AI. Both use Apple’s Liquid Glass on iOS 26 and later."
+      },
+      {
+        "title": "Real Liquid Glass for saved apps",
+        "description": "On iOS 26 and later, apps can add a native glass surface to a small area of the screen. The glass lets taps pass through."
+      }
+    ]
   },
   {
     "version": "1.6.82",
-    "summary": "Match the editor microphone and expose native Liquid Glass."
+    "summary": "Match the editor microphone and expose native Liquid Glass.",
+    "changes": [
+      {
+        "title": "The same edit mic in both places",
+        "description": "The saved-app mic now matches the tilted mic in Edit with AI. Both use Apple’s Liquid Glass on iOS 26 and later."
+      },
+      {
+        "title": "Real Liquid Glass for saved apps",
+        "description": "On iOS 26 and later, apps can add a native glass surface to a small area of the screen. The glass lets taps pass through."
+      }
+    ]
   },
   {
     "version": "1.6.81",
-    "summary": "Restore drag-to-edit dictation and start edits sooner."
+    "summary": "Restore drag-to-edit dictation and start edits sooner.",
+    "changes": [
+      {
+        "title": "Drag, speak, then release",
+        "description": "Drag the edge mic inward, hold it while you speak, and release to start the edit. Long dictation keeps earlier words when Apple Speech starts a new segment."
+      },
+      {
+        "title": "Edits start sooner",
+        "description": "Apply Change and voice edits skip the extra planning check for ordinary edits. Full rewrites still ask you first."
+      }
+    ]
   },
   {
     "version": "1.6.80",
-    "summary": "Explain recent changes in What's New."
+    "summary": "Explain recent changes in What's New.",
+    "changes": [
+      {
+        "title": "AI edits are easier to follow",
+        "description": "Edit summaries tell you what changed in a short sentence. Forge uses the app around your edit to better understand short requests and protect features you want to keep."
+      },
+      {
+        "title": "More reliable app generation",
+        "description": "Forge catches cut-off answers and incomplete edits before using them. Stopping a request also stops its retries."
+      },
+      {
+        "title": "More variety in app designs",
+        "description": "Forge can try more creative layouts and add motion where it helps. Compare previews with the numbered buttons on the right. The text below the preview is gone."
+      },
+      {
+        "title": "Tabs follow the screen",
+        "description": "In apps that use the new navigation, opening a screen from a button also highlights its tab. Apps can use any system icon available on your device. Missing icons show an app icon instead of a square."
+      },
+      {
+        "title": "A glass look for app controls",
+        "description": "Apps can give toolbars and other controls a see-through, frosted look. The effect respects your Reduce Transparency setting."
+      },
+      {
+        "title": "Pick up where you left off",
+        "description": "Opening a different app saves the previous app’s screen. When you return, it restores automatically. If you close HTMLApp from the app switcher, the app you had open starts fresh next time."
+      },
+      {
+        "title": "Your voice setting works in saved apps",
+        "description": "Apps that use dictation follow your choice of Apple Speech or Whisper in Settings. Whisper prepares while you speak, and Forge can retry a failed transcription using the same recording."
+      },
+      {
+        "title": "Keep the edit mic within reach",
+        "description": "Turn on Show edit microphone at all times in Settings. A small part of the mic stays visible at the edge of your phone screen. Tap it or drag it inward to start a voice edit."
+      },
+      {
+        "title": "Widgets follow the app you open",
+        "description": "When you open an app with widgets, its widgets become the default. The change appears when iOS refreshes them."
+      },
+      {
+        "title": "Find recent apps faster in car display",
+        "description": "The launcher shows app icons with the most recently opened apps first."
+      }
+    ]
   },
   {
     "version": "1.6.79",
-    "summary": "Improve app switching, dictation and Forge presentation."
+    "summary": "Improve app switching, dictation and Forge presentation.",
+    "changes": [
+      {
+        "title": "More expressive previews",
+        "description": "Compare designs with numbered controls and read shorter AI edit summaries."
+      },
+      {
+        "title": "Dictation where you need it",
+        "description": "Saved apps follow your dictation setting, and you can pin a voice edit shortcut to the edge."
+      },
+      {
+        "title": "Smoother app switching",
+        "description": "Switching apps saves the previous screen for automatic restoration and makes the opened app’s widgets the default."
+      }
+    ]
   },
   {
     "version": "1.6.78",
-    "summary": "Sync managed app screens with native tabs."
+    "summary": "Sync managed app screens with native tabs.",
+    "changes": [
+      {
+        "title": "Screens and tabs stay in sync",
+        "description": "Generated apps can use a built-in screen router so opening a tab destination from a button also selects its native tab."
+      }
+    ]
   },
   {
     "version": "1.6.77",
-    "summary": "Keep tied partial edit targets ambiguous."
+    "summary": "Keep tied partial edit targets ambiguous.",
+    "changes": [
+      {
+        "title": "Smarter small edits",
+        "description": "Forge ranks specific screen and component matches, avoids accidental Bluetooth matches in ordinary words, and keeps broader context for ambiguous or functional edits."
+      },
+      {
+        "title": "Safer generation and patches",
+        "description": "Incomplete provider responses and unfinished patch blocks are rejected. Cancelled requests stop retrying, and visual edits protect existing screens, routes and native integrations."
+      },
+      {
+        "title": "More thoughtful app generation",
+        "description": "Updated generation guidance emphasizes complete workflows from short prompts, native iOS interactions, keyboard and accessibility behavior, reliable saving and recovery."
+      }
+    ]
   },
   {
     "version": "1.6.76",
-    "summary": "Improve Forge intent, native app guidance and generation reliability."
+    "summary": "Improve Forge intent, native app guidance and generation reliability.",
+    "changes": [
+      {
+        "title": "Smarter small edits",
+        "description": "Forge ranks specific screen and component matches, avoids accidental Bluetooth matches in ordinary words, and keeps broader context for ambiguous or functional edits."
+      },
+      {
+        "title": "Safer generation and patches",
+        "description": "Incomplete provider responses and unfinished patch blocks are rejected. Cancelled requests stop retrying, and visual edits protect existing screens, routes and native integrations."
+      },
+      {
+        "title": "More thoughtful app generation",
+        "description": "Updated generation guidance emphasizes complete workflows from short prompts, native iOS interactions, keyboard and accessibility behavior, reliable saving and recovery."
+      }
+    ]
   },
   {
     "version": "1.6.75",
-    "summary": "Enforce consented network boundaries for background refresh."
+    "summary": "Enforce consented network boundaries for background refresh.",
+    "changes": [
+      {
+        "title": "Background sync now honors network permissions",
+        "description": "Scheduled JSON refreshes require saved-app network approval and a separately approved public DNS host. Background requests use the same bounded, no-redirect, public-address-checked HTTPS transport as foreground APIs."
+      },
+      {
+        "title": "Optional APNs-triggered refresh",
+        "description": "When HTMLApp is properly signed for APNs and iOS delivers a content-available notification, the host can refresh only due, consented background jobs. Apple controls delivery and no background JavaScript is executed."
+      },
+      {
+        "title": "Stricter background API contracts",
+        "description": "The generated native bridge now requires the background job ID, public HTTPS URL and storage key and declares its network permission, helping Forge generate safer refresh behavior."
+      }
+    ]
   },
   {
     "version": "1.6.74",
-    "summary": "Add forward geocoding, offline distance and network path events."
+    "summary": "Add forward geocoding, offline distance and network path events.",
+    "changes": [
+      {
+        "title": "Search addresses with Apple's geocoder",
+        "description": "Saved apps can look up approximate coordinates for a user-entered address or place through HTMLAppNative.location.geocode(). This needs location permission but does not request the device's GPS position."
+      },
+      {
+        "title": "Calculate distance without GPS",
+        "description": "HTMLAppNative.location.distance() computes straight-line great-circle distance between two supplied coordinate pairs entirely offline, without location permission."
+      },
+      {
+        "title": "Wi-Fi and cellular connection awareness",
+        "description": "HTMLAppNative.network.status() provides passive iOS network-path state and sends change events, allowing saved apps to display offline and constrained-network conditions without requesting a domain."
+      },
+      {
+        "title": "Native API signatures stay in sync",
+        "description": "The new methods are part of the canonical generated native bridge, TypeScript contract, Forge capability planning and automated argument tests."
+      }
+    ]
   },
   {
     "version": "1.6.73",
-    "summary": "Fail closed on unverified Forge mobile style previews."
+    "summary": "Fail closed on unverified Forge mobile style previews.",
+    "changes": [
+      {
+        "title": "No more unchecked tiny preview sketches",
+        "description": "Forge now refuses to approve a style if the mobile WebView times out or cannot be measured. Its layout checker always evaluates a real 320-point phone viewport and regenerates layouts that are too wide or unreadable."
+      },
+      {
+        "title": "ZIP import compatibility checks",
+        "description": "Backups now have automated tests against normal and streaming Deflate ZIPs, bad CRCs, duplicate entries, excessive file counts, unsafe paths and exports."
+      }
+    ]
   },
   {
     "version": "1.6.72",
-    "summary": "Extract portable ZIP engine and test real compressed backups."
+    "summary": "Extract portable ZIP engine and test real compressed backups.",
+    "changes": [
+      {
+        "title": "More reliable HTMLApp backups",
+        "description": "ZIP handling is now isolated in a small tested module. Automated macOS tests check compressed archives, data descriptors, integrity failures, duplicate entries, path traversal and backup round trips."
+      },
+      {
+        "title": "Import tested across phone and tablet",
+        "description": "The continuous UI test matrix exercises the root Import screen on both iPhone and iPad simulators. Actual Files and Share Sheet handoff still depends on iOS delivery and signing."
+      }
+    ]
   },
   {
     "version": "1.6.71",
-    "summary": "Teach Forge generated native API types, cache plans and estimate stage cost."
+    "summary": "Teach Forge generated native API types, cache plans and estimate stage cost.",
+    "changes": [
+      {
+        "title": "Forge knows the exact native APIs",
+        "description": "Forge now includes the schema-generated TypeScript native contract in its generation and editing prompts, helping prevent invented device methods and incorrect argument shapes."
+      },
+      {
+        "title": "Less repeated planning work",
+        "description": "Retrying an identical app idea can reuse an in-memory planning result from the prior twelve minutes, avoiding unnecessary repeated provider calls without saving prompts to disk."
+      },
+      {
+        "title": "Optional AI work cost estimates",
+        "description": "Advanced AI Settings now lets you enter an output-token price, and the Forge stage timeline shows a clearly labeled approximate output-only cost. Estimates are not actual bills and exclude other token charges."
+      },
+      {
+        "title": "Smarter native bridge checks",
+        "description": "Forge also checks literal native RPC method names against the generated registry while recognizing supported higher-level SDK helpers."
+      }
+    ]
   },
   {
     "version": "1.6.70",
-    "summary": "Add native UIKit list sheets and pull-to-refresh events."
+    "summary": "Add native UIKit list sheets and pull-to-refresh events.",
+    "changes": [
+      {
+        "title": "Native lists and sheets for generated apps",
+        "description": "Generated HTML apps can now present genuine UIKit list sheets with accessible rows, selected-item results and native sheet transitions instead of relying only on web-styled dialogs."
+      },
+      {
+        "title": "Pull to refresh native lists",
+        "description": "Optional native pull-to-refresh emits an event to the saved app, which can publish updated rows using HTMLAppNative.ui.listUpdate(). Lists are foreground-only and isolated per saved app."
+      },
+      {
+        "title": "On-device semantic search",
+        "description": "App-private SQLite documents can now be searched by semantic similarity using installed Apple NaturalLanguage sentence embeddings, with no cloud service required."
+      }
+    ]
   },
   {
     "version": "1.6.69",
-    "summary": "Add private on-device sentence-vector search to SQLite."
+    "summary": "Add private on-device sentence-vector search to SQLite.",
+    "changes": [
+      {
+        "title": "Private semantic document search",
+        "description": "Saved HTML apps can search their own SQLite notes by meaning using Apple's on-device sentence embeddings. The indexed vectors remain on the device and are updated when records change."
+      },
+      {
+        "title": "Search that respects device capability",
+        "description": "Semantic search reports when a device lacks an embedding model instead of using cloud AI silently. Existing exact and full-text SQLite search remain available as fallbacks."
+      },
+      {
+        "title": "More readable generated style previews",
+        "description": "Forge now checks real WebKit layout geometry for overflow or unreadably tiny text before offering a look, and retries when the sketch is broken."
+      }
+    ]
   },
   {
     "version": "1.6.68",
-    "summary": "Validate Forge look geometry and add iPhone/iPad import UI tests."
+    "summary": "Validate Forge look geometry and add iPhone/iPad import UI tests.",
+    "changes": [
+      {
+        "title": "Bad style sketches now get repaired",
+        "description": "Forge tests generated style previews in a real offscreen 320-point WebKit viewport. Offscreen content or unreadably small text triggers another design attempt before the look can be offered."
+      },
+      {
+        "title": "Simulator import tests",
+        "description": "A new simulator UI test target exercises HTMLApp launch, a staged external HTML open, and a Share-extension inbox import on both iPhone and iPad. Tests are available in a dedicated GitHub Actions workflow."
+      },
+      {
+        "title": "Continued native improvements",
+        "description": "Saved apps now support AI tool conversations, live token streaming, structured on-device model responses, approved cloud fallback, and a Share-sheet import inbox."
+      }
+    ]
   },
   {
     "version": "1.6.67",
-    "summary": "Apple Foundation Models guided answers and consented cloud fallback."
+    "summary": "Apple Foundation Models guided answers and consented cloud fallback.",
+    "changes": [
+      {
+        "title": "Reliable on-device structured answers",
+        "description": "On iOS 26 with Foundation Models, saved apps can request typed answer, summary and confidence fields using Apple's native guided generation instead of relying on unvalidated text JSON."
+      },
+      {
+        "title": "Optional, clearly approved cloud fallback",
+        "description": "If the on-device model cannot answer, saved apps can request a one-time fallback to the configured cloud provider. HTMLApp asks for explicit confirmation before sending the current prompt."
+      },
+      {
+        "title": "Documented local AI limits",
+        "description": "The bridge's contract now validates local AI inputs and documents when answers stay on-device versus when a user-confirmed fallback uses a cloud provider."
+      }
+    ]
   },
   {
     "version": "1.6.66",
-    "summary": "Add iOS Share extension and App Group HTML import inbox."
+    "summary": "Add iOS Share extension and App Group HTML import inbox.",
+    "changes": [
+      {
+        "title": "Share HTML straight into HTMLApp",
+        "description": "A new iOS Share extension receives HTML file attachments into a secure shared inbox and attempts to open the app. If iOS does not allow automatic launch, the file is ready to import the next time you open HTMLApp."
+      },
+      {
+        "title": "Import requests survive app switching",
+        "description": "HTMLApp now checks the shared inbox when it opens or returns to the foreground, presenting the New App or Update Existing import destination for staged documents."
+      },
+      {
+        "title": "Watch saved-app AI answer live",
+        "description": "Live token streaming and bounded, confirmation-gated AI conversations are now available for generated HTML apps with authorized AI access."
+      }
+    ]
   },
   {
     "version": "1.6.65",
-    "summary": "Stream genuine AI tokens into saved apps with cancellation."
+    "summary": "Stream genuine AI tokens into saved apps with cancellation.",
+    "changes": [
+      {
+        "title": "Live AI responses in saved apps",
+        "description": "Generated apps can now receive live provider tokens through HTMLAppNative.ai.stream(), display them as they arrive and cancel with AbortSignal. Streams stay inside the saved app's permitted foreground AI session."
+      },
+      {
+        "title": "AI can ask to use native tools",
+        "description": "Short, in-memory AI conversations can call selected calendars, reminders, health, location and saved-document methods with fresh permission confirmation before sensitive data goes to the provider."
+      },
+      {
+        "title": "Safer cancellation and request limits",
+        "description": "Foreground AI streaming follows the existing per-app permission, request budget, response-size limits and request cancellation, with no promises of background streaming."
+      }
+    ]
   },
   {
     "version": "1.6.64",
-    "summary": "Bounded in-app AI conversations with confirmed native tools."
+    "summary": "Bounded in-app AI conversations with confirmed native tools.",
+    "changes": [
+      {
+        "title": "AI sessions with confirmed native tools",
+        "description": "Saved apps can now create short AI conversations that request selected calendar, reminders, health, battery, location, and private document tools. Every sensitive tool call requires a new user confirmation before private results can reach the AI provider."
+      },
+      {
+        "title": "Private, short-lived AI conversation context",
+        "description": "Each in-app AI session retains its recent messages only in the open WebView. Sessions include explicit clear and cancellation support and do not persist secrets or conversation history."
+      },
+      {
+        "title": "Search locally saved documents",
+        "description": "Generated apps can search their own SQLite documents using indexed token search or the original substring search without sharing data with outside services."
+      }
+    ]
   },
   {
     "version": "1.6.63",
-    "summary": "Add on-device SQLite FTS5 for saved HTML apps."
+    "summary": "Add on-device SQLite FTS5 for saved HTML apps.",
+    "changes": [
+      {
+        "title": "Fast on-device full-text search",
+        "description": "Saved HTML apps can search stored JSON documents with token-ranked SQLite FTS5 using HTMLAppNative.db.searchFullText(). Indexing is local, created on demand, and updates with documents."
+      },
+      {
+        "title": "Files import and look previews improved",
+        "description": "Opening or sharing an HTML document now queues the root Import screen, while Forge's style previews use full-width mobile layouts instead of squeezed side-by-side views."
+      },
+      {
+        "title": "Safer networking and backup files",
+        "description": "Native HTTPS checks nonpublic addresses and ZIP import validates checksums, sizes, and ordinary Deflate archives while preserving cache paths."
+      }
+    ]
   },
   {
     "version": "1.6.62",
-    "summary": "Root-owned HTML imports, responsive style previews, safer HTTPS and ZIP archives."
+    "summary": "Root-owned HTML imports, responsive style previews, safer HTTPS and ZIP archives.",
+    "changes": [
+      {
+        "title": "Files and shared HTML now open Import",
+        "description": "Incoming HTML files open the import destination screen from the app root, including cold launches and files shared from Files. The app also recognizes the .htmk file extension."
+      },
+      {
+        "title": "Readable, full-width Forge previews",
+        "description": "Generated style mockups now use the full screen width with look choices below, correct mobile viewport scaling and responsive layout guidance, reducing tiny or clipped previews."
+      },
+      {
+        "title": "Safer native HTTPS requests",
+        "description": "Native requests now screen DNS answers against private and local addresses and verify connection-address metadata before returning a response, with blocked redirects and stricter host-name checks."
+      },
+      {
+        "title": "More compatible, safer backups",
+        "description": "Backup import now accepts standard Deflate ZIP archives, checks file integrity, rejects duplicate paths, limits archive size and handles ZIP data descriptors. Export preserves nested cache paths correctly."
+      }
+    ]
   },
   {
     "version": "1.6.61",
-    "summary": "Show visible microphone and Whisper retry progress."
+    "summary": "Show visible microphone and Whisper retry progress.",
+    "changes": [
+      {
+        "title": "See microphone and transcription retries",
+        "description": "The floating Forge microphone now displays clear retrying status while it reconnects to the microphone or reuses captured audio to retry Whisper transcription, without blocking your drag gesture."
+      },
+      {
+        "title": "Better-looking popup edits",
+        "description": "Forge detects when a redesign misaligns labels and fields, requests a corrected layout, and respects later fixes that replace the old CSS grid."
+      },
+      {
+        "title": "Your spoken edits stay recoverable",
+        "description": "Whisper automatically retries the original recorded audio, lets you retry the saved recording after a decoding failure, and routes recovered words back to the intended app edit."
+      }
+    ]
   },
   {
     "version": "1.6.60",
-    "summary": "Accept corrected dialog form layouts after CSS overrides."
+    "summary": "Accept corrected dialog form layouts after CSS overrides.",
+    "changes": [
+      {
+        "title": "More reliable popup redesigns",
+        "description": "Forge now recognizes when a corrected layout replaces an older bad grid rule, so valid repairs are accepted without breaking label and input alignment."
+      },
+      {
+        "title": "Retry speech without repeating it",
+        "description": "Whisper keeps the captured audio through multiple automatic transcription retries and provides a Retry using saved audio option if needed. Recovered speech still applies to the original edit or style-feedback action."
+      },
+      {
+        "title": "AI edits catch broken dialog layouts",
+        "description": "Visual changes that split labels from fields or produce no actual source change trigger a corrective patch attempt rather than being reported as finished."
+      }
+    ]
   },
   {
     "version": "1.6.59",
-    "summary": "Keep Whisper retry intent and corrected visual edit metadata."
+    "summary": "Keep Whisper retry intent and corrected visual edit metadata.",
+    "changes": [
+      {
+        "title": "Visual edits respect your forms",
+        "description": "Forge now detects broken multi-column layouts that split labels away from their fields, then retries the visual patch from the original app. It preserves existing data and behavior instead of approving a visually broken change."
+      },
+      {
+        "title": "Voice edits recover without repeating speech",
+        "description": "Whisper keeps your recorded audio through automatic transcription retries, can reload its speech model, and offers Retry using saved audio if decoding still fails. Successful retries return to the original edit or style feedback action."
+      },
+      {
+        "title": "Smarter microphone retries",
+        "description": "Transient microphone startup problems show a retrying status while HTMLApp attempts to start recording again."
+      }
+    ]
   },
   {
     "version": "1.6.58",
-    "summary": "Repair weak popup redesigns and retry Whisper on saved audio."
+    "summary": "Repair weak popup redesigns and retry Whisper on saved audio.",
+    "changes": [
+      {
+        "title": "Cleaner, more reliable AI edits",
+        "description": "Forge now checks visual edits for broken form layouts, duplicate dialog copy, and unchanged output. When a popup redesign misplaces labels and fields, Forge asks the editor to repair the patch instead of accepting the broken result."
+      },
+      {
+        "title": "Whisper retries without making you repeat yourself",
+        "description": "If Whisper cannot decode a recorded voice edit, it retries the same saved audio automatically and can reload its model. A Retry using saved audio action remains available if all attempts fail."
+      },
+      {
+        "title": "Clearer microphone recovery",
+        "description": "Transient microphone-start failures now report that recording is retrying, while the microphone only indicates active capture once recording actually starts."
+      }
+    ]
   },
   {
     "version": "1.6.57",
-    "summary": "Current product improvements and version-bump guard."
+    "summary": "Current product improvements and version-bump guard.",
+    "changes": [
+      {
+        "title": "HTML files now open into Import reliably",
+        "description": "Opening an HTML file from Files or sharing one to HTMLApp now stages the document safely and keeps the import request until the Library is ready, including cold launches and the What's New screen."
+      },
+      {
+        "title": "Simpler Settings",
+        "description": "Everyday settings are grouped around AI & Voice, Library, iCloud, Manage, and Help, while developer and rarely used controls are tucked into Advanced Settings."
+      },
+      {
+        "title": "Watch Apple Speech appear live",
+        "description": "During Forge edits, dragging the floating microphone on-screen now shows the words you are speaking in large live captions while Apple Speech recognizes them."
+      },
+      {
+        "title": "More native media and UI capabilities",
+        "description": "Saved apps can use permission-scoped native audio recording and playback, foreground camera video capture, and the native iOS color picker through the documented bridge."
+      },
+      {
+        "title": "Smarter Forge editing contracts",
+        "description": "Forge now keeps versioned app architecture metadata and uses semantic capability planning to preserve storage, screens, routes, native features, and regression requirements across edits."
+      },
+      {
+        "title": "One native bridge contract",
+        "description": "The native RPC surface now comes from one generated schema that drives Swift registration, argument checks, API documentation, TypeScript definitions, and consistency tests."
+      }
+    ]
   },
   {
     "version": "1.6.56",
-    "summary": "Keep 1.6.56 (64) for build-only compiler fix."
+    "summary": "Keep 1.6.56 (64) for build-only compiler fix.",
+    "changes": [
+      {
+        "title": "Experimental offline app snapshots",
+        "description": "Saved HTML apps now collect eligible external GET resources while you use them and refresh their offline snapshot every third opening. When your device is offline, HTMLApp can use those saved resources and clearly tells you that an experimental offline copy is active."
+      },
+      {
+        "title": "Pick up where you left off",
+        "description": "HTMLApp now checkpoints the live state of saved apps, including the rendered page, scroll positions, typed form values, editable content, local and session storage, canvas pixels, focused controls, and media position. Switching back during the same HTMLApp session restores automatically; after a later cold launch, HTMLApp asks before restoring."
+      },
+      {
+        "title": "Faster app-to-app URL switching",
+        "description": "htmlapp://open links now save the current app state and switch directly to the requested saved app, instead of stopping on the normal app-switch confirmation."
+      },
+      {
+        "title": "More reliable first three AI looks",
+        "description": "Forge again uses the structured Editorial, Workbench, and Playful directions for the first three generated previews, improving consistency while keeping additional style generations freeform."
+      },
+      {
+        "title": "First three previews generate automatically",
+        "description": "Starting a new Forge app now automatically creates the first three style previews so you can compare directions before the full app is built."
+      },
+      {
+        "title": "Build with a subscription AI",
+        "description": "AI & Creation includes a shareable HTMLApp skill file that explains HTMLApp capabilities, native integrations, offline limits, and how an external subscription AI can return complete HTML apps without configuring an API key inside HTMLApp."
+      },
+      {
+        "title": "Smarter hosted HTML importing",
+        "description": "When an imported HTML file depends on root-relative server APIs such as /api/build, HTMLApp now explains why an offline file cannot contain the backend and offers the hosted Website Import path instead of silently treating the API URL like a static asset."
+      },
+      {
+        "title": "Clearer, more reliable dictation",
+        "description": "Offline Whisper recording retries transient microphone start failures automatically. The mic turns red only while recording and grows while held so its state stays visible under your finger."
+      }
+    ]
   },
   {
     "version": "1.6.55",
-    "summary": "Build test compatibility fix; Experimental offline resource snapshots; Live app state continuity."
+    "summary": "Build test compatibility fix; Experimental offline resource snapshots; Live app state continuity.",
+    "changes": [
+      {
+        "title": "Build test compatibility fix",
+        "description": "Updated stale style-preview source assertions to recognize the restored first three layouts and made release tests dynamic."
+      }
+    ]
   },
   {
     "version": "1.6.54",
-    "summary": "Update HTMLApp to 1.6.54 (62) for offline snapshots and live state continuity."
+    "summary": "Update HTMLApp to 1.6.54 (62) for offline snapshots and live state continuity.",
+    "changes": [
+      {
+        "title": "Experimental offline resource snapshots",
+        "description": "Saved apps refresh external GET resources every third opening and collect loaded resources during use. Cached copies activate only while offline and show a warning when used."
+      },
+      {
+        "title": "Live app state continuity",
+        "description": "HTMLApp preserves scroll position, typed controls, web storage and the current rendered HTML while switching apps, with a restore choice after a later cold launch."
+      },
+      {
+        "title": "Instant URL-scheme switching",
+        "description": "htmlapp://open links now checkpoint the current app and switch directly to the requested saved app."
+      }
+    ]
   },
   {
     "version": "1.6.53",
-    "summary": "Update HTMLApp to 1.6.53 (61) for restored style quality and automatic previews."
+    "summary": "Update HTMLApp to 1.6.53 (61) for restored style quality and automatic previews.",
+    "changes": [
+      {
+        "title": "Reliable first three Forge looks",
+        "description": "Restored the structured first-three style system for more consistent app quality, while keeping additional looks freeform."
+      },
+      {
+        "title": "Three previews automatically",
+        "description": "New app generation now always starts by creating the first three style previews automatically."
+      }
+    ]
   },
   {
     "version": "1.6.52",
-    "summary": "Update HTMLApp to 1.6.52 (60) after dynamic release invariant repair."
+    "summary": "Update HTMLApp to 1.6.52 (60) after dynamic release invariant repair.",
+    "changes": [
+      {
+        "title": "Release test fix",
+        "description": "Source invariants now validate the current compiled version dynamically instead of failing after every version bump."
+      }
+    ]
   },
   {
     "version": "1.6.51",
-    "summary": "Update HTMLApp to 1.6.51 (59) after build runner invariant fix."
+    "summary": "Update HTMLApp to 1.6.51 (59) after build runner invariant fix.",
+    "changes": [
+      {
+        "title": "Build workflow compatibility fix",
+        "description": "Updated build source checks for selectable Intel and Apple Silicon macOS runners while retaining the Xcode 26 compatibility requirement."
+      }
+    ]
   },
   {
     "version": "1.6.50",
-    "summary": "Update release metadata to 1.6.50 (58) for selectable build runners."
+    "summary": "Update release metadata to 1.6.50 (58) for selectable build runners.",
+    "changes": [
+      {
+        "title": "Selectable IPA build runner",
+        "description": "The manual GitHub Actions IPA workflow offers Intel macOS 26 by default, Apple Silicon macOS 26, and Intel macOS 15 to work around runner queue delays."
+      }
+    ]
   },
   {
     "version": "1.6.49",
-    "summary": "Bundle downloadable HTMLApp skill and bump release to 1.6.49 (57)."
+    "summary": "Bundle downloadable HTMLApp skill and bump release to 1.6.49 (57).",
+    "changes": [
+      {
+        "title": "Shareable AI app-building skill",
+        "description": "AI & Creation now includes a downloadable skill explaining how a subscription AI assistant can build HTMLApp-compatible apps without an API key."
+      },
+      {
+        "title": "Safer hosted HTML importing",
+        "description": "When an HTML file depends on server-side API routes, HTMLApp explains why offline imports cannot run the server and offers Website Import."
+      },
+      {
+        "title": "Open HTML files in HTMLApp",
+        "description": "HTMLApp remains registered as an HTML document handler for iOS Open In and Files."
+      }
+    ]
   },
   {
     "version": "1.6.48",
@@ -293,191 +1291,829 @@
   },
   {
     "version": "1.6.47",
-    "summary": "Add car display compatibility and flexible AI styles (1.6.47 build 55)."
+    "summary": "Add car display compatibility and flexible AI styles (1.6.47 build 55).",
+    "changes": [
+      {
+        "title": "Car display mode",
+        "description": "A compact app launcher, visible Apps exit, safe display bounds and adaptive HTML runtime for setups that already launch HTMLApp on a car screen. Enable Car display in the Library menu when your mirroring tool reports an iPhone screen. This is compatibility mode, not Apple's native CarPlay templates."
+      },
+      {
+        "title": "More creative looks",
+        "description": "Modern/professional, technical/detailed and kiddy/easy-to-use are broad directions. AI chooses the composition freely. Look choices scroll vertically above the selection controls."
+      }
+    ]
   },
   {
     "version": "1.6.46",
-    "summary": "Whisper startup retry and hold-to-record feedback."
+    "summary": "Whisper startup retry and hold-to-record feedback.",
+    "changes": [
+      {
+        "title": "Reliable Whisper microphone",
+        "description": "Transient microphone startup failures retry automatically while the user keeps holding, without another manual attempt."
+      },
+      {
+        "title": "Clear recording indicator",
+        "description": "The microphone turns red only after recording begins, and enlarges while held to make its state more visible."
+      }
+    ]
   },
   {
     "version": "1.6.45",
-    "summary": "Smarter Forge planning; Optional visual taste memory; HealthKit date ranges."
+    "summary": "Smarter Forge planning; Optional visual taste memory; HealthKit date ranges.",
+    "changes": [
+      {
+        "title": "Smarter Forge planning",
+        "description": "Provider-gated creative sampling and planner-specific reasoning improve design planning without changing reliable coding defaults."
+      },
+      {
+        "title": "Optional visual taste memory",
+        "description": "Learn small style preferences from selected designs and edits when enabled, with a clear settings switch and reset option."
+      },
+      {
+        "title": "HealthKit date ranges",
+        "description": "Generated apps can request permission to inspect bounded HealthKit history with accurate missing-data states."
+      },
+      {
+        "title": "NFC text writing",
+        "description": "User-confirmed writes to compatible NDEF tags now include capacity and writable-status checks."
+      },
+      {
+        "title": "Native document and image tools",
+        "description": "VisionKit scanning, PDF page/text inspection and file-backed Core Image filters add media functions without large WebKit data messages."
+      },
+      {
+        "title": "Bluetooth GATT controls",
+        "description": "Bounded read, confirmed write and foreground notification subscriptions for discovered BLE devices, with app-exit cleanup."
+      },
+      {
+        "title": "Custom haptics",
+        "description": "Generated apps can play bounded Core Haptics patterns on supported devices."
+      },
+      {
+        "title": "On-device AI for saved apps",
+        "description": "Eligible iOS 26 devices can grant permission for short local Foundation Models text and JSON responses without cloud API requests."
+      },
+      {
+        "title": "Gamepads and drawing",
+        "description": "Generated apps can listen to foreground game controller events and open a native PencilKit canvas with sandboxed image output."
+      }
+    ]
   },
   {
     "version": "1.6.44",
-    "summary": "Smarter Forge instructions and voice; Photo bridge build fix; Reliable multi-photo imports."
+    "summary": "Smarter Forge instructions and voice; Photo bridge build fix; Reliable multi-photo imports.",
+    "changes": [
+      {
+        "title": "Smarter Forge instructions and voice",
+        "description": "Reordered stable AI capability instructions for provider prompt caching, added punctuation and app vocabulary to voice dictation, and expanded native bridge argument checks."
+      }
+    ]
   },
   {
     "version": "1.6.43",
-    "summary": "Photo bridge build fix; Reliable multi-photo imports; Reliable bulk photo import."
+    "summary": "Photo bridge build fix; Reliable multi-photo imports; Reliable bulk photo import.",
+    "changes": [
+      {
+        "title": "Photo bridge build fix",
+        "description": "Fixed injected JavaScript syntax in the photo importer and made bridge script tests work without a browser fetch implementation."
+      }
+    ]
   },
   {
     "version": "1.6.42",
-    "summary": "Reliable multi-photo imports; Reliable bulk photo import; Road lookup resilience."
+    "summary": "Reliable multi-photo imports; Reliable bulk photo import; Road lookup resilience.",
+    "changes": [
+      {
+        "title": "Reliable multi-photo imports",
+        "description": "Photo import now transfers originals to generated apps in bounded WebKit chunks and prefers native file representations without unnecessary conversion. Large selections no longer require one enormous bridge response."
+      }
+    ]
   },
   {
     "version": "1.6.41",
-    "summary": "Reliable bulk photo import; Road lookup resilience; Road data diagnostics."
+    "summary": "Reliable bulk photo import; Road lookup resilience; Road data diagnostics.",
+    "changes": [
+      {
+        "title": "Reliable bulk photo import",
+        "description": "Native photo picks now stage files without blocking the UI and load originals on demand, preventing oversized selection callbacks."
+      }
+    ]
   },
   {
     "version": "1.6.40",
-    "summary": "Road lookup resilience; Road data diagnostics; Spotlight indexing."
+    "summary": "Road lookup resilience; Road data diagnostics; Spotlight indexing.",
+    "changes": [
+      {
+        "title": "Road lookup resilience",
+        "description": "Road speed lookups now return an explicit cooling-down status rather than immediate failures on repeated GPS fixes, and favor nearby roads with speed tags."
+      }
+    ]
   },
   {
     "version": "1.6.39",
-    "summary": "Road data diagnostics; Spotlight indexing; Search documents and run Shortcuts actions."
+    "summary": "Road data diagnostics; Spotlight indexing; Search documents and run Shortcuts actions.",
+    "changes": [
+      {
+        "title": "Road data diagnostics",
+        "description": "Improved mapped road lookup failure reporting and reduced throttling after provider outages. Each new source update now increments the release identity."
+      }
+    ]
   },
   {
     "version": "1.6.38",
-    "summary": "Build 45 for opt-in Spotlight search indexing."
+    "summary": "Build 45 for opt-in Spotlight search indexing.",
+    "changes": [
+      {
+        "title": "Spotlight indexing",
+        "description": "Saved apps can request permission to index, remove, and clear their own searchable titles and summaries."
+      }
+    ]
   },
   {
     "version": "1.6.37",
-    "summary": "Build 44 for database search and Shortcuts delivery."
+    "summary": "Build 44 for database search and Shortcuts delivery.",
+    "changes": [
+      {
+        "title": "Search documents and run Shortcuts actions",
+        "description": "Saved apps can search their local documents and consume pending named actions from Siri Shortcuts."
+      }
+    ]
   },
   {
     "version": "1.6.36",
-    "summary": "Portable data and Shortcuts."
+    "summary": "Portable data and Shortcuts.",
+    "changes": [
+      {
+        "title": "Portable app data and Shortcuts",
+        "description": "SQLite document snapshots can be bundled with portable app data, and Shortcuts can request a named saved-app action."
+      }
+    ]
   },
   {
     "version": "1.6.35",
-    "summary": "Added a local SQLite document API."
+    "summary": "Added a local SQLite document API.",
+    "changes": [
+      {
+        "title": "Local document database",
+        "description": "Saved apps can now store, retrieve, list, count, and delete JSON documents in an isolated SQLite database."
+      }
+    ]
   },
   {
     "version": "1.6.34",
-    "summary": "Vision API additions."
+    "summary": "Vision API additions.",
+    "changes": [
+      {
+        "title": "On-device image analysis",
+        "description": "Saved HTML apps can recognize text and barcodes, classify images, and detect face rectangles using Apple Vision."
+      }
+    ]
   },
   {
     "version": "1.6.33",
-    "summary": "On-device language tools; AI in saved apps; Adaptive shake exit."
+    "summary": "On-device language tools; AI in saved apps; Adaptive shake exit.",
+    "changes": [
+      {
+        "title": "On-device language tools",
+        "description": "Saved HTML apps can detect languages, tokenize text, analyze sentiment and extract named entities using Apple NaturalLanguage."
+      }
+    ]
   },
   {
     "version": "1.6.32",
-    "summary": "AI in saved apps; Adaptive shake exit; On-demand native capability research."
+    "summary": "AI in saved apps; Adaptive shake exit; On-demand native capability research.",
+    "changes": [
+      {
+        "title": "AI in saved apps",
+        "description": "Opt-in per-app AI completion and classification with permission checks and request limits. Experimental compact-output preference added."
+      }
+    ]
   },
   {
     "version": "1.6.31",
-    "summary": "Improved app exit transitions and expanded native device APIs."
+    "summary": "Improved app exit transitions and expanded native device APIs.",
+    "changes": [
+      {
+        "title": "Street addresses and road data",
+        "description": "Saved apps can resolve approximate street addresses via Apple geocoding and, with separate consent, request optional OpenStreetMap road speed tags. Unavailable data is never guessed."
+      },
+      {
+        "title": "Offline Forge (experimental)",
+        "description": "Eligible iOS 26 devices can use on-device Apple Intelligence for small app generation and editing after a clear effort-and-battery warning."
+      },
+      {
+        "title": "Safer portable storage",
+        "description": "App data writes now report disk errors instead of falsely succeeding; clearing data produces an explicit iCloud-syncable empty state."
+      },
+      {
+        "title": "App storage inspection (experimental)",
+        "description": "The app permissions screen now offers a developer storage inspector with portable data and SQLite document removal warnings."
+      },
+      {
+        "title": "AI and QA reliability fixes",
+        "description": "Improved provider endpoint normalization, native request timeouts, offscreen touch tests, and missing Health data reporting."
+      },
+      {
+        "title": "Health, NFC and native maps (experimental)",
+        "description": "Saved apps can request read-only daily Health totals, foreground NFC NDEF scans, and a native map modal. Supported devices and signing entitlements are required."
+      },
+      {
+        "title": "Speech recognition API compatibility",
+        "description": "Saved HTML apps can call speech.recognize and speech.stopRecognizing through the existing permission-controlled foreground transcription engine."
+      },
+      {
+        "title": "Generated app API checks",
+        "description": "Runtime verification now reports unsupported native bridge method calls and Web Bluetooth requestDevice usage."
+      },
+      {
+        "title": "Native bridge reliability",
+        "description": "Corrected duplicate Vision dispatch patterns and added source regression checks."
+      },
+      {
+        "title": "Adaptive shake exit",
+        "description": "The exit fade uses the last resting phone orientation sampled every three seconds; the torch flash uses a gentler intensity."
+      }
+    ]
   },
   {
     "version": "1.6.30",
-    "summary": "Added on-demand native capability lookup."
+    "summary": "Added on-demand native capability lookup.",
+    "changes": [
+      {
+        "title": "On-demand native capability research",
+        "description": "Forge can request the complete HTMLApp capability catalog or focused sections such as Bluetooth, widgets, tabs, and device information before generating or editing apps."
+      }
+    ]
   },
   {
     "version": "1.6.29",
-    "summary": "Added motion settings."
+    "summary": "Added motion settings.",
+    "changes": [
+      {
+        "title": "Custom motion settings",
+        "description": "Set the shake time and, in Developer Mode, the fade disappearance angle. Settings displays the selected values."
+      }
+    ]
   },
   {
     "version": "1.6.28",
-    "summary": "Fixed shake gesture completion."
+    "summary": "Fixed shake gesture completion.",
+    "changes": [
+      {
+        "title": "More reliable face-down shake",
+        "description": "Shake progress now accumulates across natural motion impulses instead of requiring uninterrupted acceleration, allowing the exit animation and flashlight cue to trigger."
+      }
+    ]
   },
   {
     "version": "1.6.27",
-    "summary": "Shake exit build validation; Build validation for native tabs; Native tabs stay inside apps."
+    "summary": "Shake exit build validation; Build validation for native tabs; Native tabs stay inside apps.",
+    "changes": [
+      {
+        "title": "Shake exit build validation",
+        "description": "Regression tests now protect the new fade and flashlight exit flow instead of requiring the removed legacy gesture handler."
+      }
+    ]
   },
   {
     "version": "1.6.26",
-    "summary": "Corrected native tab build checks."
+    "summary": "Corrected native tab build checks.",
+    "changes": [
+      {
+        "title": "Build validation for native tabs",
+        "description": "Updated the source regression check to require tab bars to remain inside their HTML app instead of appearing in editing screens."
+      }
+    ]
   },
   {
     "version": "1.6.25",
-    "summary": "Fixed tab containment and shake transitions."
+    "summary": "Fixed tab containment and shake transitions.",
+    "changes": [
+      {
+        "title": "Native tabs stay inside apps",
+        "description": "The real native tab bar no longer mounts onto the global app screen while editing."
+      },
+      {
+        "title": "Shake exit transition improvements",
+        "description": "A dedicated overlay window keeps the black-and-blurred fade visible while returning to the Library."
+      },
+      {
+        "title": "Exit flashlight cue",
+        "description": "The shake-exit flashlight now targets the rear torch for a short pulse after closing an HTML app."
+      }
+    ]
   },
   {
     "version": "1.6.24",
-    "summary": "Added music source switching."
+    "summary": "Added music source switching.",
+    "changes": [
+      {
+        "title": "Two ways to add generation music",
+        "description": "Switch between picking an audio file from Files and downloading audio from a direct HTTPS URL. Your previous audio URL is preserved."
+      },
+      {
+        "title": "Recent HTMLApp improvements",
+        "description": "Includes the updated face-down shake exit, AI generation controls, photo compatibility, and improved app sharing."
+      }
+    ]
   },
   {
     "version": "1.6.23",
-    "summary": "Face-down shake exit; Photo picker compatibility; Choose generation music from Files."
+    "summary": "Face-down shake exit; Photo picker compatibility; Choose generation music from Files.",
+    "changes": [
+      {
+        "title": "Face-down shake exit",
+        "description": "Shake a face-down iPhone to close the running HTML app, with a flashlight cue and a black-and-blurred screen that fades as you rotate it."
+      },
+      {
+        "title": "Photo picker compatibility",
+        "description": "Selected images are easier for both new and older HTML apps to display."
+      },
+      {
+        "title": "Choose generation music from Files",
+        "description": "Pick a local audio track instead of entering a URL, with clearer guidance for background generation."
+      },
+      {
+        "title": "More AI generation controls",
+        "description": "Add three original AI looks, speed up a run with Hurry Up!, undo unsaved edits and approve rare full rewrites."
+      },
+      {
+        "title": "Generation progress in Dynamic Island",
+        "description": "See the active AI phase and progress while a Live Activity is running."
+      },
+      {
+        "title": "Organized app actions",
+        "description": "App menus group everyday actions, sharing and developer tools. Raw code exports use HTML files."
+      }
+    ]
   },
   {
     "version": "1.6.22",
-    "summary": "More dependable generation audio; Flip and shake to close; Up to seven native tabs."
+    "summary": "More dependable generation audio; Flip and shake to close; Up to seven native tabs.",
+    "changes": [
+      {
+        "title": "More dependable generation audio",
+        "description": "Music URL prefetch and safer dictation teardown reduce interruptions. Experimental silent audio is optional; background processing remains best-effort."
+      },
+      {
+        "title": "Flip and shake to close",
+        "description": "An optional face-down shake returns from a saved app to Library."
+      },
+      {
+        "title": "Up to seven native tabs",
+        "description": "Apps can request compact UIKit tabs with badges, JavaScript selection callbacks and animations."
+      },
+      {
+        "title": "Quieter permissions",
+        "description": "Repeated requests are coalesced and abusive prompts are blocked, with permissions shown in a simpler list."
+      }
+    ]
   },
   {
     "version": "1.6.21",
-    "summary": "Privacy tools, widget actions and battery API."
+    "summary": "Privacy tools, widget actions and battery API.",
+    "changes": [
+      {
+        "title": "AI Generation Privacy",
+        "description": "Control whether Forge may use location, date, device, calendar, reminders or public HTTPS research. All permissions default off."
+      },
+      {
+        "title": "Actionable app widgets",
+        "description": "Generated widgets can open specific screens or deliver validated action context through signed links."
+      },
+      {
+        "title": "Battery and thermal APIs",
+        "description": "HTML apps can read charging status, battery percentage and thermal state."
+      },
+      {
+        "title": "Simpler creation screen",
+        "description": "Quick mode controls appear only when Manual policy is selected; debug model and UI polish status labels are hidden."
+      }
+    ]
   },
   {
     "version": "1.6.20",
-    "summary": "Build 27 for generation and workflow improvements."
+    "summary": "Build 27 for generation and workflow improvements.",
+    "changes": [
+      {
+        "title": "Longer background playback",
+        "description": "Generation Music uses primary audio playback and safer background request handoffs when audio is interrupted."
+      },
+      {
+        "title": "Automatic Quick mode",
+        "description": "Choose Manual or Automatic AI speed selection, with the option to override the recommendation."
+      },
+      {
+        "title": "Faster planning and clearer intent",
+        "description": "Forge produces shorter planning briefs and suggests an editable purpose during style selection."
+      },
+      {
+        "title": "Faster opening and setup",
+        "description": "App launching avoids a synchronous Library rewrite, and Home Screen installation now offers additional recovery options."
+      },
+      {
+        "title": "A shorter welcome tour",
+        "description": "Five introduction cards plus optional permissions replace the long setup walkthrough."
+      }
+    ]
   },
   {
     "version": "1.6.19",
-    "summary": "Generation Music; Faster QUICK! creation; Instant style choices."
+    "summary": "Generation Music; Faster QUICK! creation; Instant style choices.",
+    "changes": [
+      {
+        "title": "More original AI looks",
+        "description": "Regenerated looks use genuinely different layout archetypes, not just different colors."
+      },
+      {
+        "title": "JavaScript error assistant",
+        "description": "A warning icon in Forge preview can show runtime errors and offer to ask AI for a fix."
+      }
+    ]
   },
   {
     "version": "1.6.18",
-    "summary": "Generation Music; Faster QUICK! creation; Instant style choices."
+    "summary": "Generation Music; Faster QUICK! creation; Instant style choices.",
+    "changes": [
+      {
+        "title": "Generation Music",
+        "description": "Play your own linked audio during Forge creation and editing, with cached playback, volume and preview controls."
+      },
+      {
+        "title": "Faster QUICK! creation",
+        "description": "QUICK! avoids optional web research and extra specialist icon regeneration."
+      },
+      {
+        "title": "Instant style choices",
+        "description": "Three looks are immediately available while a small AI request can refine their product labels."
+      }
+    ]
   },
   {
     "version": "1.6.17",
-    "summary": "Fix incomplete AI style previews with larger token budgets and model fallback (1.6.17)."
+    "summary": "Fix incomplete AI style previews with larger token budgets and model fallback (1.6.17).",
+    "changes": [
+      {
+        "title": "Complete AI style previews",
+        "description": "Forge gives preview models enough output budget to finish their HTML and retries incomplete specialist results using the main app model."
+      },
+      {
+        "title": "Clearer provider diagnostics",
+        "description": "AI Debug now shows response finish reasons and token usage when the provider includes them, helping identify truncated mockups."
+      }
+    ]
   },
   {
     "version": "1.6.16",
-    "summary": "Improve iOS 16 voice widget routing, Forge mockups, QUICK mode and URL imports (1.6.16)."
+    "summary": "Improve iOS 16 voice widget routing, Forge mockups, QUICK mode and URL imports (1.6.16).",
+    "changes": [
+      {
+        "title": "More reliable Lock Screen voice launch",
+        "description": "Cold-start widget links reopen Forge, begin recording, then switch to hold-to-talk after you tap Stop."
+      },
+      {
+        "title": "More relevant AI style previews",
+        "description": "Forge requests mockups for your exact idea and system light or dark appearance. Offline sketches now show realistic product content."
+      },
+      {
+        "title": "QUICK! generation and optional skips",
+        "description": "Configure a smaller model, switch QUICK! on when creating, and skip optional planning, icon or UI polish stages."
+      },
+      {
+        "title": "Edit HTML from a link",
+        "description": "An htmlapp://import link can download a public HTTPS HTML file into an unsaved Forge AI editing session."
+      },
+      {
+        "title": "Hands-on Forge tutorial",
+        "description": "Practice calculator testing, dragging the mic, typing changes, and saving without using AI credits."
+      }
+    ]
   },
   {
     "version": "1.6.15",
-    "summary": "Route Lock Screen microphone into Forge prompt and simplify What's New (1.6.15)."
+    "summary": "Route Lock Screen microphone into Forge prompt and simplify What's New (1.6.15).",
+    "changes": [
+      {
+        "title": "Lock Screen voice goes straight to Forge",
+        "description": "The Lock Screen microphone opens the regular Generate with AI screen and starts listening. Tap the mic again to stop, or use Generate or Cancel."
+      },
+      {
+        "title": "Voice generation waits for transcription",
+        "description": "If Whisper is selected, Forge finishes transcribing before using your spoken idea."
+      },
+      {
+        "title": "A simpler What's New screen",
+        "description": "One clear Continue to HTMLApp button closes the update notes."
+      }
+    ]
   },
   {
     "version": "1.6.14",
-    "summary": "Build 21 for voice, Whisper, location and mockup improvements."
+    "summary": "Build 21 for voice, Whisper, location and mockup improvements.",
+    "changes": [
+      {
+        "title": "More faithful generated apps",
+        "description": "Forge checks the chosen mockup's layout as well as its colors before presenting the final app."
+      },
+      {
+        "title": "Faster location responses",
+        "description": "Recently obtained accurate locations can be reused instead of waiting for GPS again."
+      },
+      {
+        "title": "Whisper preloading",
+        "description": "When selected, Whisper can load on opening HTMLApp instead of at the end of recording."
+      },
+      {
+        "title": "Optional Forge questions",
+        "description": "Forge can ask a quick design question and continue with its recommended answer after 20 seconds."
+      },
+      {
+        "title": "Voice capture and draft fixes",
+        "description": "Lock Screen Generate Now uses the captured idea, while completed drafts no longer trigger recovery."
+      }
+    ]
   },
   {
     "version": "1.6.13",
-    "summary": "Improved style variety, functional checks and loading guidance."
+    "summary": "Improved style variety, functional checks and loading guidance.",
+    "changes": [
+      {
+        "title": "Three different looks",
+        "description": "Style previews now vary layout, structure and domain-specific content, not just colors."
+      },
+      {
+        "title": "Better working apps",
+        "description": "Forge now audits core workflows and asks the AI for real functionality instead of decorative placeholders."
+      },
+      {
+        "title": "Useful loading states",
+        "description": "Generated apps include clear loading, error, retry and empty states for delayed tasks."
+      }
+    ]
   },
   {
     "version": "1.6.12",
-    "summary": "Opt-in iCloud sync."
+    "summary": "Opt-in iCloud sync.",
+    "changes": [
+      {
+        "title": "iCloud app syncing",
+        "description": "Opt in to mirroring your HTMLApp Library through iCloud Drive from Settings."
+      },
+      {
+        "title": "Optional HTMLApp data syncing",
+        "description": "When iCloud app syncing is enabled, choose whether each app's portable saved data also syncs."
+      }
+    ]
   },
   {
     "version": "1.6.11",
-    "summary": "Status bar, AI settings and widgets."
+    "summary": "Status bar, AI settings and widgets.",
+    "changes": [
+      {
+        "title": "Choose the system status bar",
+        "description": "HTMLApps show the real status bar by default; immersive apps can request to hide it."
+      },
+      {
+        "title": "Simpler AI settings",
+        "description": "Forge always uses maintained built-in instructions instead of editable system prompts."
+      },
+      {
+        "title": "Complete widget sizes",
+        "description": "AI generation and edits now request all three Home Screen or Lock Screen widget sizes when widgets are appropriate."
+      }
+    ]
   },
   {
     "version": "1.6.10",
-    "summary": "Improved native tab mounting and added first-use tips."
+    "summary": "Improved native tab mounting and added first-use tips.",
+    "changes": [
+      {
+        "title": "More reliable native tabs",
+        "description": "The iOS tab controller waits for its HTMLApp window before mounting, with native UIKit tab destinations."
+      },
+      {
+        "title": "Helpful first-time tips",
+        "description": "Short, dismissible hints explain Library, AI generation, gestures, sharing and editing after onboarding."
+      },
+      {
+        "title": "Phone-sized look previews",
+        "description": "Generated style mockups appear inside a larger rounded phone-style preview."
+      },
+      {
+        "title": "Organized app actions",
+        "description": "Long-press actions are grouped into Everyday Usage, Sharing, Developer and Delete."
+      },
+      {
+        "title": "Faster first app opening",
+        "description": "HTMLApp primes its WebKit process while the Library is open."
+      },
+      {
+        "title": "Clearer activity labels",
+        "description": "The AI activity chart now says Creating App instead of App Tests."
+      }
+    ]
   },
   {
     "version": "1.6.9",
-    "summary": "Reliable fast mockups."
+    "summary": "Reliable fast mockups.",
+    "changes": [
+      {
+        "title": "Faster style previews",
+        "description": "Mockups generate in parallel using compact HTML instead of fragile JSON, with shorter first-pass requests."
+      },
+      {
+        "title": "Reliable mockup choices",
+        "description": "Each style retries independently and shows a distinct local preview if the AI provider fails."
+      },
+      {
+        "title": "Discard and close",
+        "description": "Discarding an interrupted generation closes Create with AI instead of leaving the page open."
+      }
+    ]
   },
   {
     "version": "1.6.8",
-    "summary": "Icon, native tabs, installation and Live Activity fixes."
+    "summary": "Icon, native tabs, installation and Live Activity fixes.",
+    "changes": [
+      {
+        "title": "Reliable AI icon rendering",
+        "description": "The icon renderer supports the AI's FILL directives and inherited colors instead of repeatedly falling back to a generic icon."
+      },
+      {
+        "title": "Host-owned iOS tabs",
+        "description": "Native tab navigation now uses a UITabBarController so eligible iOS 26 devices can receive Apple's system tab appearance."
+      },
+      {
+        "title": "No fake phone chrome",
+        "description": "AI generation and style mockups avoid drawing fake status bars, notches and Dynamic Islands."
+      },
+      {
+        "title": "Simpler Home Screen installation",
+        "description": "A dedicated instructions page replaces the Safari-or-export dialog."
+      },
+      {
+        "title": "Generation safety reminder",
+        "description": "The creation dashboard warns you to keep HTMLApp open, and Forge's Live Activity shows a return reminder."
+      },
+      {
+        "title": "Easier generation mini-game",
+        "description": "Larger hit targets, streak bonuses, haptics and restart controls make the arcade easier to play."
+      }
+    ]
   },
   {
     "version": "1.6.7",
-    "summary": "Voice, mockups, native tabs, widgets and Bluetooth."
+    "summary": "Voice, mockups, native tabs, widgets and Bluetooth.",
+    "changes": [
+      {
+        "title": "Whisper for floating microphones",
+        "description": "Mockup feedback and AI edits wait for offline speech transcription before applying changes."
+      },
+      {
+        "title": "Visible mockup choices",
+        "description": "Three larger vertical design selectors stay visible on iPhone and iPad."
+      },
+      {
+        "title": "Reliable voice creation",
+        "description": "Lock Screen voice prompts survive dismissal and avoid duplicate creation jobs."
+      },
+      {
+        "title": "More dependable widgets",
+        "description": "Widgets show cached shared data without waiting on network, and the Lock Screen voice icon stays visible."
+      },
+      {
+        "title": "Native iOS tabs and gestures",
+        "description": "Generated HTMLApps can request host-rendered UIKit tabs with JavaScript navigation events."
+      },
+      {
+        "title": "Bluetooth discovery",
+        "description": "Saved apps can request time-limited nearby BLE scans with permissions; sharing screens explain Wi-Fi and Bluetooth setup."
+      },
+      {
+        "title": "Practice with real Forge screens",
+        "description": "The onboarding calculator uses the real creation and editing interface without making AI requests or saving changes."
+      },
+      {
+        "title": "Simpler AI settings",
+        "description": "Specialist AI choices replace the advanced model-names section; enabled specialists show green status dots."
+      }
+    ]
   },
   {
     "version": "1.6.6",
-    "summary": "Forge and widget improvements."
+    "summary": "Forge and widget improvements.",
+    "changes": [
+      {
+        "title": "Lock Screen voice mockups",
+        "description": "Voice-created apps respect mockup selection; three looks now generate concurrently."
+      },
+      {
+        "title": "Keep the chosen look",
+        "description": "Forge uses selected mockup HTML and CSS tokens as its visual reference, even during later AI edits."
+      },
+      {
+        "title": "Forge progress on Lock Screen",
+        "description": "A red Live Activity warns about background limitations and displays the active AI stage."
+      },
+      {
+        "title": "Prompt widget refresh requests",
+        "description": "Widget publication and app-data changes request targeted WidgetKit reloads."
+      },
+      {
+        "title": "Steadier microphone recording",
+        "description": "The create microphone stays in a fixed location during long presses and changing transcription."
+      },
+      {
+        "title": "Discover more native tools",
+        "description": "Generated apps can query supported native APIs and request flashlight, brightness, or walking-step data with consent."
+      }
+    ]
   },
   {
     "version": "1.6.5",
-    "summary": "Forge reliability fixes."
+    "summary": "Forge reliability fixes.",
+    "changes": [
+      {
+        "title": "Live style sketch previews",
+        "description": "See each sketch appear blurred while the remaining directions generate."
+      },
+      {
+        "title": "Library starts in the Library",
+        "description": "Stale AI edit checkpoints no longer auto-open an existing saved app."
+      },
+      {
+        "title": "Generation completion feedback",
+        "description": "Get a notification away from HTMLApp or three haptics while the app is active."
+      }
+    ]
   },
   {
     "version": "1.6.4",
-    "summary": "Forge background recovery."
+    "summary": "Forge background recovery.",
+    "changes": [
+      {
+        "title": "Recover interrupted AI work",
+        "description": "Review an unsaved generation checkpoint after reopening HTMLApp, including elapsed work time."
+      },
+      {
+        "title": "Continue when switching apps",
+        "description": "Forge requests limited background execution time and preserves work if iOS suspends it."
+      }
+    ]
   },
   {
     "version": "1.6.3",
-    "summary": "Live Activity and voice shortcut updates."
+    "summary": "Live Activity and voice shortcut updates.",
+    "changes": [
+      {
+        "title": "Self-updating Live Activity timers",
+        "description": "Countdown Live Activities can now use native deadline-based timer labels even when HTMLApp is asleep."
+      },
+      {
+        "title": "Voice create from Lock Screen",
+        "description": "A dedicated Lock Screen widget opens a voice-first AI creation screen."
+      }
+    ]
   },
   {
     "version": "1.6.2",
-    "summary": "Offline dictation fallback."
+    "summary": "Offline dictation fallback.",
+    "changes": [
+      {
+        "title": "Whisper offline dictation",
+        "description": "Switch between Apple Speech and local Whisper speech recognition in Settings."
+      },
+      {
+        "title": "Test your microphone",
+        "description": "Try Apple dictation during onboarding and choose Whisper if your words do not appear."
+      }
+    ]
   },
   {
     "version": "1.6.1",
-    "summary": "Restore AI edits; Start a fresh draft; Explain each AI edit."
+    "summary": "Restore AI edits; Start a fresh draft; Explain each AI edit.",
+    "changes": [
+      {
+        "title": "Restore AI edits",
+        "description": "Revisit saved AI edit versions from the Library and restore the HTML you want."
+      },
+      {
+        "title": "Start a fresh draft",
+        "description": "Regenerate an unsaved app from its original prompt."
+      },
+      {
+        "title": "Explain each AI edit",
+        "description": "Forge records a short description of AI changes."
+      },
+      {
+        "title": "SF Symbols in HTML",
+        "description": "Generated apps can search a curated native SF Symbols catalog and render supported symbols."
+      },
+      {
+        "title": "Calculator tutorial",
+        "description": "Practice a simulated AI build, calculator controls, and spoken edit ideas during onboarding."
+      }
+    ]
   },
   {
     "version": "1.6.0",

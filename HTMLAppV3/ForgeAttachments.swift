@@ -89,6 +89,34 @@ enum ForgeAttachmentContext {
 @MainActor final class ForgeAttachmentSelection: ObservableObject {
     @Published var target: ForgeAttachmentTarget?
     @Published var items: [ForgeAttachment] = []
+    @Published var uncheckedSkills: [ForgeAttachment] = []
+    var files: [ForgeAttachment] { items.filter { $0.skillTitle == nil } }
+    var selectedSkills: [ForgeAttachment] { items.filter { $0.skillTitle != nil } }
+    var requestSkills: [ForgeAttachment] {
+        (selectedSkills + uncheckedSkills).sorted {
+            ($0.skillTitle ?? $0.name).localizedStandardCompare($1.skillTitle ?? $1.name) == .orderedAscending
+        }
+    }
+
+    func setSkill(_ skill: ForgeAttachment, selected: Bool) {
+        items.removeAll { $0.id == skill.id }
+        uncheckedSkills.removeAll { $0.id == skill.id }
+        if selected { items.append(skill) }
+        else { uncheckedSkills.append(skill) }
+    }
+
+    func replaceSkills(_ skills: [ForgeAttachment]) {
+        let ids = Set(skills.map(\.id))
+        for previous in selectedSkills where !ids.contains(previous.id) {
+            setSkill(previous, selected: false)
+        }
+        for skill in skills { setSkill(skill, selected: true) }
+    }
+
+    func clear() {
+        items.removeAll()
+        uncheckedSkills.removeAll()
+    }
     @Published var error: String?
     @Published var loading = false
     func open(_ target: ForgeAttachmentTarget) async {
@@ -128,6 +156,8 @@ struct ForgeAttachmentPicker: UIViewControllerRepresentable {
         case .files:
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
             picker.allowsMultipleSelection = true; picker.delegate = context.coordinator; return picker
+        case .skills:
+            return UIViewController() // Presented as SwiftUI by ForgePickerPresentation.
         case .camera:
             let picker = UIImagePickerController(); picker.sourceType = .camera; picker.delegate = context.coordinator; return picker
         }
@@ -182,12 +212,14 @@ struct ForgeAttachmentPicker: UIViewControllerRepresentable {
 private struct ForgePickerPresentation: UIViewControllerRepresentable {
     let target: ForgeAttachmentTarget?
     let maximumCount: Int
+    var initialSkills: [ForgeAttachment] = []
     let finished: ([ForgeAttachment]?, String?) -> Void
 
     func makeUIViewController(context: Context) -> Host { Host() }
     func updateUIViewController(_ host: Host, context: Context) {
         host.request = target
         host.maximumCount = maximumCount
+        host.initialSkills = initialSkills
         host.finished = finished
         host.schedule()
     }
@@ -200,6 +232,7 @@ private struct ForgePickerPresentation: UIViewControllerRepresentable {
     final class Host: UIViewController, UIAdaptivePresentationControllerDelegate {
         var request: ForgeAttachmentTarget?
         var maximumCount = 9
+        var initialSkills: [ForgeAttachment] = []
         var finished: (([ForgeAttachment]?, String?) -> Void)?
         var timer: Timer?
         var picker: UIViewController?
@@ -240,10 +273,19 @@ private struct ForgePickerPresentation: UIViewControllerRepresentable {
                   presenter.transitionCoordinator == nil,
                   !presenter.isBeingPresented, !presenter.isBeingDismissed else { return }
             stopWaiting()
-            let controller = UIHostingController(rootView:
-                ForgeAttachmentPicker(target: target, maximumCount: maximumCount) { [weak self] items, error in
-                    self?.complete(items, error)
-                }.ignoresSafeArea())
+            let controller: UIViewController
+            if target == .skills {
+                controller = UIHostingController(rootView: ForgeSkillPicker(initialSelection: initialSkills) { [weak self] skills in
+                    self?.complete(skills, nil)
+                } cancel: { [weak self] in
+                    self?.complete(nil, nil)
+                })
+            } else {
+                controller = UIHostingController(rootView:
+                    ForgeAttachmentPicker(target: target, maximumCount: maximumCount) { [weak self] items, error in
+                        self?.complete(items, error)
+                    }.ignoresSafeArea())
+            }
             // Keep the recording owner mounted so its disappear cleanup cannot
             // discard deferred Whisper audio while the user chooses a file.
             controller.modalPresentationStyle = .pageSheet
@@ -293,18 +335,24 @@ private struct ForgeAttachmentPresentation: ViewModifier {
     @State private var submission: (prompt: String, items: [ForgeAttachment])?
     func body(content: Content) -> some View {
         content.background {
-            ForgePickerPresentation(target: reviewing ? nil : selection.target, maximumCount: max(1, 9 - selection.items.count)) { items, error in
+            ForgePickerPresentation(target: reviewing ? nil : selection.target, maximumCount: max(1, 9 - selection.files.count),
+                                    initialSkills: selection.selectedSkills) { items, error in
+                let pickedSkills = selection.target == .skills
                 selection.target = nil
                 if let error { selection.error = error }
                 if items == nil && error == nil {
-                    selection.items.removeAll()
+                    selection.clear()
                     dictation.cancel()
                     onCancel()
                 }
-                if let items, !items.isEmpty {
-                    let remaining = max(0, 9 - selection.items.count)
-                    selection.items.append(contentsOf: items.prefix(remaining))
-                    if items.count > remaining { selection.error = "A request can include up to nine attachments. Remove an existing item to make room." }
+                if pickedSkills, let items {
+                    selection.replaceSkills(items)
+                    reviewing = true
+                } else if let items, !items.isEmpty {
+                    let remaining = max(0, 9 - selection.files.count)
+                    let files = items.filter { $0.skillTitle == nil }
+                    selection.items.append(contentsOf: files.prefix(remaining))
+                    if files.count > remaining { selection.error = "A request can include up to nine attachments. Remove an existing item to make room." }
                     reviewing = true
                 }
             }.frame(width: 0, height: 0)
@@ -321,11 +369,11 @@ private struct ForgeAttachmentPresentation: ViewModifier {
                 dictation.cancel()
                 dictation.transcript = prompt
                 submission = (prompt, selection.items)
-                selection.items.removeAll()
+                selection.clear()
                 reviewing = false
             } cancel: {
                 dictation.cancel()
-                selection.items.removeAll()
+                selection.clear()
                 selection.error = nil
                 onCancel()
                 reviewing = false
@@ -369,10 +417,10 @@ private struct ForgeAttachmentReview: View {
                     HStack {
                         Text("Attachments").font(.headline)
                         Spacer()
-                        Text("\(selection.items.count)/9").foregroundStyle(.secondary)
+                        Text("\(selection.files.count)/9").foregroundStyle(.secondary)
                     }
                     LazyVGrid(columns: columns, spacing: 10) {
-                        ForEach(selection.items) { item in
+                        ForEach(selection.files) { item in
                             attachmentCell(item)
                         }
                     }
@@ -514,36 +562,50 @@ struct ForgeAdditionalContext: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Additional context").font(.subheadline.weight(.semibold))
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 64))], spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 4), spacing: 8) {
                 ForEach(ForgeAttachmentTarget.allCases) { target in
                     contextButton(target.rawValue.capitalized, symbol: target.symbol) {
+                        if target == .skills { showingSkills = true; return }
                         openingPicker = true
                         Task { @MainActor in
                             defer { openingPicker = false }
                             if await selection.canOpen(target) { pickerTarget = target }
                         }
                     }
+                    .disabled(target != .skills && selection.files.count >= 9)
                 }
-                contextButton("Skills", symbol: "book.closed") { showingSkills = true }
             }
-            .disabled(selection.items.count >= 9 || openingPicker || pickerTarget != nil)
+            .disabled(openingPicker || pickerTarget != nil)
+            if !selection.requestSkills.isEmpty {
+                Text("Selected skills").font(.subheadline.weight(.semibold)).padding(.top, 6)
+                ForEach(selection.requestSkills) { skill in
+                    let checked = selection.selectedSkills.contains { $0.id == skill.id }
+                    Button {
+                        selection.setSkill(skill, selected: !checked)
+                    } label: {
+                        Label(skill.skillTitle ?? skill.name, systemImage: checked ? "checkmark.square.fill" : "square")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(checked ? .isSelected : [])
+                }
+            }
         }
         .background {
-            ForgePickerPresentation(target: pickerTarget, maximumCount: max(1, 9 - selection.items.count)) { items, error in
+            ForgePickerPresentation(target: pickerTarget, maximumCount: max(1, 9 - selection.files.count)) { items, error in
                 pickerTarget = nil
                 if let error { selection.error = error }
                 if let items {
-                    let remaining = max(0, 9 - selection.items.count)
+                    let remaining = max(0, 9 - selection.files.count)
                     selection.items.append(contentsOf: items.prefix(remaining))
                     if items.count > remaining { selection.error = "A request can include up to nine attachments." }
                 }
             }.frame(width: 0, height: 0)
         }
         .sheet(isPresented: $showingSkills) {
-            ForgeSkillPicker { skill in
-                if selection.items.count < 9, !selection.items.contains(where: { $0.id == skill.id }) {
-                    selection.items.append(skill)
-                }
+            ForgeSkillPicker(initialSelection: selection.selectedSkills) { skills in
+                selection.replaceSkills(skills)
                 showingSkills = false
             } cancel: {
                 showingSkills = false
@@ -555,8 +617,11 @@ struct ForgeAdditionalContext: View {
         Button(action: action) {
             VStack(spacing: 7) {
                 Image(systemName: symbol).font(.title2)
-                Text(title).font(.caption.weight(.semibold))
-            }.frame(maxWidth: .infinity).padding(.vertical, 10)
-        }.modifier(ForgeReviewButtonStyle(kind: .secondary))
+                Text(title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+            }.frame(maxWidth: .infinity).frame(height: 64)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 16))
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
     }
 }
