@@ -15,8 +15,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.26"
-    static let compiledBuild = "131"
+    static let compiledVersion = "1.9.27"
+    static let compiledBuild = "132"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -33,8 +33,8 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "context-targets", title: "Clearer microphone context targets",
-                  description: "The target under the microphone now has an outline. Context buttons use Liquid Glass on iOS 26 and later.",
+            Entry(id: "context-jelly", title: "Jelly motion for context targets",
+                  description: "The outline stretches and slides between context options, then springs back toward the microphone when you drag away.",
                   symbol: "mic.fill", tint: .purple)
         ]
     }

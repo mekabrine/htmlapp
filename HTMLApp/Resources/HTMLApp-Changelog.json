@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.9.27",
+    "summary": "Added a stretching outline for microphone context targets.",
+    "changes": [
+      {
+        "title": "Jelly motion for context targets",
+        "description": "The outline stretches and slides between context options, then springs back toward the microphone when you drag away.",
+        "symbol": "mic.fill",
+        "tint": "purple"
+      }
+    ]
+  },
+  {
     "version": "1.9.26",
     "summary": "Added a microphone target outline and Liquid Glass context buttons.",
     "changes": [
