@@ -1181,65 +1181,67 @@ private struct LibraryCreateMicrophone: View {
 
     var body: some View {
         GeometryReader { proxy in
-            ForgeEditMicrophoneFace(armed: armed, recording: dictation.recording)
-                .scaleEffect(x: stretch.width, y: stretch.height)
-                .offset(x: -24 + translation.width, y: 68 + translation.height)
-                .accessibilityLabel("Drag microphone inward, speak, then release to create an app")
-                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                    .onChanged { value in
-                        guard !awaitingTranscript, transcriptReview == nil, returnTask == nil else { return }
-                        if !touched {
-                            touched = true
-                            HTMLAppOfflineSpeech.shared.preloadIfSelected()
+            ZStack(alignment: .topLeading) {
+                ForgeAttachmentTargets(active: armed, microphoneTranslation: translation)
+                ForgeEditMicrophoneFace(armed: armed, recording: dictation.recording)
+                    .scaleEffect(x: stretch.width, y: stretch.height)
+                    .offset(x: -24 + translation.width, y: 68 + translation.height)
+                    .accessibilityLabel("Drag microphone inward, speak, then release to create an app")
+                    .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                        .onChanged { value in
+                            guard !awaitingTranscript, transcriptReview == nil, returnTask == nil else { return }
+                            if !touched {
+                                touched = true
+                                HTMLAppOfflineSpeech.shared.preloadIfSelected()
+                            }
+                            translation = value.translation
+                            let inside = isInside(translation, size: proxy.size)
+                            if inside && !armed {
+                                armed = true
+                                dictation.transcript = ""
+                                recordingTask = Task { await dictation.start(tapToStop: true) }
+                            } else if !inside && armed {
+                                armed = false
+                                recordingTask?.cancel()
+                                dictation.cancel()
+                            }
                         }
-                        translation = value.translation
-                        let inside = isInside(translation, size: proxy.size)
-                        if inside && !armed {
-                            armed = true
-                            dictation.transcript = ""
-                            recordingTask = Task { await dictation.start(tapToStop: true) }
-                        } else if !inside && armed {
-                            armed = false
+                        .onEnded { value in
+                            guard !awaitingTranscript, returnTask == nil else { return }
+                            if armed, let target = ForgeAttachmentTarget.hit(microphoneTranslation: value.translation, width: proxy.size.width) {
+                                recordingTask?.cancel()
+                                dictation.stop(transcribe: false)
+                                resetPosition()
+                                Task { await attachmentSelection.open(target) }
+                                return
+                            }
+                            touched = false
+                            awaitingTranscript = armed && isInside(value.translation, size: proxy.size)
                             recordingTask?.cancel()
-                            dictation.cancel()
-                        }
-                    }
-                    .onEnded { value in
-                        guard !awaitingTranscript, returnTask == nil else { return }
-                        if armed, let target = ForgeAttachmentTarget.hit(microphoneTranslation: value.translation, width: proxy.size.width) {
-                            recordingTask?.cancel()
-                            dictation.stop(transcribe: false)
-                            resetPosition()
-                            Task { await attachmentSelection.open(target) }
-                            return
-                        }
-                        touched = false
-                        awaitingTranscript = armed && isInside(value.translation, size: proxy.size)
-                        recordingTask?.cancel()
-                        if awaitingTranscript {
-                            dictation.stop()
-                            usedWhisper = dictation.transcribingOffline
-                        } else { dictation.cancel() }
-                        if reduceMotion {
-                            resetPosition()
-                            finishIfReady()
-                            return
-                        }
-                        let horizontal = abs(translation.width) >= abs(translation.height)
-                        withAnimation(.easeOut(duration: 0.07)) {
-                            stretch = horizontal ? CGSize(width: 1.24, height: 0.86)
-                                : CGSize(width: 0.86, height: 1.24)
-                        }
-                        returnTask = Task { @MainActor in
-                            do { try await Task.sleep(nanoseconds: 70_000_000) } catch { return }
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) { resetPosition() }
-                            do { try await Task.sleep(nanoseconds: 90_000_000) } catch { return }
-                            returnTask = nil
-                            finishIfReady()
-                        }
-                    })
+                            if awaitingTranscript {
+                                dictation.stop()
+                                usedWhisper = dictation.transcribingOffline
+                            } else { dictation.cancel() }
+                            if reduceMotion {
+                                resetPosition()
+                                finishIfReady()
+                                return
+                            }
+                            let horizontal = abs(translation.width) >= abs(translation.height)
+                            withAnimation(.easeOut(duration: 0.07)) {
+                                stretch = horizontal ? CGSize(width: 1.24, height: 0.86)
+                                    : CGSize(width: 0.86, height: 1.24)
+                            }
+                            returnTask = Task { @MainActor in
+                                do { try await Task.sleep(nanoseconds: 70_000_000) } catch { return }
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) { resetPosition() }
+                                do { try await Task.sleep(nanoseconds: 90_000_000) } catch { return }
+                                returnTask = nil
+                                finishIfReady()
+                            }
+                        })
+            }
         }
-        .overlay { ForgeAttachmentTargets(active: armed, microphoneTranslation: translation) }
         .forgeAttachments(attachmentSelection, dictation: dictation) { words, items in
             onPrompt(words, items)
         }

@@ -59,40 +59,46 @@ struct ForgeAttachmentTargets: View {
 
     var body: some View {
         GeometryReader { proxy in
-            if active {
-                HStack(spacing: ForgeAttachmentTarget.spacing) {
-                    ForEach(ForgeAttachmentTarget.allCases) { target in
-                        VStack(spacing: 6) {
-                            Image(systemName: target.symbol).font(.system(size: 26, weight: .semibold))
-                            Text(target.rawValue.capitalized).font(.caption)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 88)
-                        .modifier(ForgeContextSurface(cornerRadius: 20))
-
+            let microphone = ForgeAttachmentTarget.microphoneFrame(translation: microphoneTranslation)
+            let targets = ForgeAttachmentTarget.allCases
+            HStack(spacing: ForgeAttachmentTarget.spacing) {
+                ForEach(targets.indices, id: \.self) { index in
+                    let target = targets[index]
+                    VStack(spacing: 6) {
+                        Image(systemName: target.symbol).font(.system(size: 26, weight: .semibold))
+                        Text(target.rawValue.capitalized).font(.caption)
                     }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 88)
+                    .modifier(ForgeContextSurface(cornerRadius: 20))
+                    .modifier(ForgeContextTileFlight(progress: active ? 1 : 0,
+                                                     microphone: microphone,
+                                                     destination: target.frame(in: proxy.size.width),
+                                                     stagger: reduceMotion ? 0 : Double(index) * 0.045))
                 }
-                .padding(.horizontal, ForgeAttachmentTarget.horizontalInset)
-                .padding(.top, 8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .overlay {
-                    let target = ForgeAttachmentTarget.hit(microphoneTranslation: microphoneTranslation,
-                                                           width: proxy.size.width)
-                    let destination = target?.frame(in: proxy.size.width)
-                        ?? ForgeAttachmentTarget.microphoneFrame(translation: microphoneTranslation)
-                    JellyContextOutline(frame: destination, destination: destination, stretches: !reduceMotion)
-                        .stroke(.background, lineWidth: 5)
-                        .overlay {
-                            JellyContextOutline(frame: destination, destination: destination, stretches: !reduceMotion)
-                                .stroke(.primary, lineWidth: 2)
-                        }
-                        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.72),
-                                   value: destination)
-                        .opacity(target == nil ? 0 : 1)
-                        .animation(reduceMotion ? nil : target == nil
-                                   ? .easeOut(duration: 0.23).delay(0.08)
-                                   : .easeOut(duration: 0.12), value: target == nil)
-                }
+            }
+            .animation(reduceMotion ? nil : .spring(response: 0.46, dampingFraction: 0.76),
+                       value: active)
+            .padding(.horizontal, ForgeAttachmentTarget.horizontalInset)
+            .padding(.top, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .overlay {
+                let target = active ? ForgeAttachmentTarget.hit(microphoneTranslation: microphoneTranslation,
+                                                                width: proxy.size.width) : nil
+                let destination = target?.frame(in: proxy.size.width)
+                    ?? ForgeAttachmentTarget.microphoneFrame(translation: microphoneTranslation)
+                JellyContextOutline(frame: destination, destination: destination, stretches: !reduceMotion)
+                    .stroke(.background, lineWidth: 5)
+                    .overlay {
+                        JellyContextOutline(frame: destination, destination: destination, stretches: !reduceMotion)
+                            .stroke(.primary, lineWidth: 2)
+                    }
+                    .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.72),
+                               value: destination)
+                    .opacity(target == nil ? 0 : 1)
+                    .animation(reduceMotion ? nil : target == nil
+                               ? .easeOut(duration: 0.23).delay(0.08)
+                               : .easeOut(duration: 0.12), value: target == nil)
             }
         }
         .allowsHitTesting(false)
@@ -100,6 +106,34 @@ struct ForgeAttachmentTargets: View {
     }
 }
 
+/// Keep tiles mounted so retracting and re-opening mid-drag reverses the same animation.
+private struct ForgeContextTileFlight: AnimatableModifier {
+    var progress: Double
+    let microphone: CGRect
+    let destination: CGRect
+    let stagger: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let phase = CGFloat(max(0, min(1, (progress - stagger) / (1 - stagger))))
+        let springOvershoot = CGFloat(max(0, progress - 1))
+        let dx = destination.isNull ? 0 : destination.midX - microphone.midX
+        let dy = destination.isNull ? 0 : destination.midY - microphone.midY
+        let angle = Angle(radians: atan2(Double(dy), Double(dx)))
+        let stretch = sin(phase * .pi) * 0.32
+        let size = 0.22 + phase * 0.78
+        return content
+            .rotationEffect(.radians(-angle.radians))
+            .scaleEffect(x: size * (1 + stretch), y: size * (1 - stretch * 0.48))
+            .rotationEffect(angle)
+            .offset(x: dx * (phase + springOvershoot - 1), y: dy * (phase + springOvershoot - 1))
+            .opacity(destination.isNull ? 0 : Double(min(1, phase * 4)))
+    }
+}
 
 /// The position springs toward the destination. Its leading edge reaches out
 /// ahead of the rest of the outline, then returns to the settled dimensions.

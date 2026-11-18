@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.9.28",
+    "summary": "Animated the four context tiles in and out of the microphone.",
+    "changes": [
+      {
+        "title": "Context options spring from the microphone",
+        "description": "Camera, Photos, Files, and Skills stretch into place as you drag inward and flow back into the microphone at the screen edge.",
+        "symbol": "mic.fill",
+        "tint": "purple"
+      }
+    ]
+  },
+  {
     "version": "1.9.27",
     "summary": "Added a stretching outline for microphone context targets.",
     "changes": [

@@ -15,8 +15,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.27"
-    static let compiledBuild = "132"
+    static let compiledVersion = "1.9.28"
+    static let compiledBuild = "133"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -33,8 +33,8 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "context-jelly", title: "Jelly motion for context targets",
-                  description: "The outline stretches and slides between context options, then springs back toward the microphone when you drag away.",
+            Entry(id: "context-tile-flight", title: "Context options spring from the microphone",
+                  description: "Camera, Photos, Files, and Skills stretch into place as you drag inward and flow back into the microphone at the screen edge.",
                   symbol: "mic.fill", tint: .purple)
         ]
     }

@@ -155,9 +155,11 @@ struct WebRunner: View {
             .overlay(alignment: .topLeading) {
                 if alwaysShowEditMicrophone && !carDisplay && !carWindow {
                     GeometryReader { proxy in
-                        runnerEditMic(in: proxy.size)
+                        ZStack(alignment: .topLeading) {
+                            ForgeAttachmentTargets(active: micArmed, microphoneTranslation: micDrag)
+                            runnerEditMic(in: proxy.size)
+                        }
                     }
-                    .overlay { ForgeAttachmentTargets(active: micArmed, microphoneTranslation: micDrag) }
                 }
             }
             .overlay(alignment: .top) {
