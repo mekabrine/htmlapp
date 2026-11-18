@@ -157,7 +157,7 @@ struct WebRunner: View {
                     GeometryReader { proxy in
                         runnerEditMic(in: proxy.size)
                     }
-                    .overlay { ForgeAttachmentTargets(active: micArmed) }
+                    .overlay { ForgeAttachmentTargets(active: micArmed, microphoneTranslation: micDrag) }
                 }
             }
             .overlay(alignment: .top) {
@@ -249,8 +249,7 @@ struct WebRunner: View {
                 }
                 .onEnded { value in
                     guard !awaitingEdit, transcriptReview == nil, editorPresentationTask == nil else { return }
-                    let center = CGPoint(x: -24 + value.translation.width + 31.5, y: 68 + value.translation.height + 31.5)
-                    if micArmed, let target = ForgeAttachmentTarget.hit(center, width: size.width) {
+                    if micArmed, let target = ForgeAttachmentTarget.hit(microphoneTranslation: value.translation, width: size.width) {
                         recordingTask?.cancel()
                         editDictation.stop(transcribe: false)
                         returnEditMic(from: value.translation)

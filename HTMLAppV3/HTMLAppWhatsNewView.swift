@@ -15,8 +15,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.25"
-    static let compiledBuild = "130"
+    static let compiledVersion = "1.9.26"
+    static let compiledBuild = "131"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -33,12 +33,9 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "discord-release-notes", title: "What’s New in Discord",
-                  description: "IPA delivery includes the current release notes and a preview image when rendering succeeds.",
-                  symbol: "photo", tint: .purple),
-            Entry(id: "expandable-history", title: "A cleaner release history",
-                  description: "Scan version groups with matching icons, then tap an item to open its description. Only one item is open at a time.",
-                  symbol: "clock.arrow.circlepath", tint: .blue)
+            Entry(id: "context-targets", title: "Clearer microphone context targets",
+                  description: "The target under the microphone now has an outline. Context buttons use Liquid Glass on iOS 26 and later.",
+                  symbol: "mic.fill", tint: .purple)
         ]
     }
 }

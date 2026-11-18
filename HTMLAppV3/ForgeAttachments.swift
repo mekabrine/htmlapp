@@ -619,7 +619,7 @@ struct ForgeAdditionalContext: View {
                 Image(systemName: symbol).font(.title2)
                 Text(title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
             }.frame(maxWidth: .infinity).frame(height: 64)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 16))
+                .modifier(ForgeContextSurface(cornerRadius: 16, interactive: true))
                 .contentShape(Rectangle())
         }.buttonStyle(.plain)
             .foregroundStyle(Color.accentColor)

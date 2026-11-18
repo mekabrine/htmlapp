@@ -1198,7 +1198,7 @@ struct AIGenerationView: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .coordinateSpace(name: "forgeEditSurface")
-            .overlay { ForgeAttachmentTargets(active: microphoneArmed) }
+            .overlay { ForgeAttachmentTargets(active: microphoneArmed, microphoneTranslation: microphoneTranslation) }
             .overlay(alignment: .bottom) {
                 if dictation.canRetryTranscription {
                     Button {
@@ -1587,7 +1587,7 @@ struct AIGenerationView: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
             .coordinateSpace(name: "forgeEditSurface")
             .overlay(alignment: .bottomTrailing) {
-                ForgeAttachmentTargets(active: microphoneArmed)
+                ForgeAttachmentTargets(active: microphoneArmed, microphoneTranslation: microphoneTranslation)
                 if !session.isWorking && !session.streamedHTML.isEmpty && !runtimeErrors.isEmpty {
                     Button {
                         showingRuntimeErrors = true
@@ -1775,8 +1775,7 @@ struct AIGenerationView: View {
                         }
                     }
                     .onEnded { gesture in
-                        let center = CGPoint(x: -24 + gesture.translation.width + 31.5, y: 68 + gesture.translation.height + 31.5)
-                        if microphoneArmed, let target = ForgeAttachmentTarget.hit(center, width: size.width) {
+                        if microphoneArmed, let target = ForgeAttachmentTarget.hit(microphoneTranslation: gesture.translation, width: size.width) {
                             microphoneRecordingTask?.cancel()
                             dictation.stop(transcribe: false)
                             microphoneArmed = false

@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.9.26",
+    "summary": "Added a microphone target outline and Liquid Glass context buttons.",
+    "changes": [
+      {
+        "title": "Clearer microphone context targets",
+        "description": "The target under the microphone now has an outline. Context buttons use Liquid Glass on iOS 26 and later.",
+        "symbol": "mic.fill",
+        "tint": "purple"
+      }
+    ]
+  },
+  {
     "version": "1.9.25",
     "summary": "Added Discord release notes and preview images, plus expandable release history.",
     "changes": [

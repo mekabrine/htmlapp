@@ -1206,8 +1206,7 @@ private struct LibraryCreateMicrophone: View {
                     }
                     .onEnded { value in
                         guard !awaitingTranscript, returnTask == nil else { return }
-                        let center = CGPoint(x: -24 + value.translation.width + 31.5, y: 68 + value.translation.height + 31.5)
-                        if armed, let target = ForgeAttachmentTarget.hit(center, width: proxy.size.width) {
+                        if armed, let target = ForgeAttachmentTarget.hit(microphoneTranslation: value.translation, width: proxy.size.width) {
                             recordingTask?.cancel()
                             dictation.stop(transcribe: false)
                             resetPosition()
@@ -1240,7 +1239,7 @@ private struct LibraryCreateMicrophone: View {
                         }
                     })
         }
-        .overlay { ForgeAttachmentTargets(active: armed) }
+        .overlay { ForgeAttachmentTargets(active: armed, microphoneTranslation: translation) }
         .forgeAttachments(attachmentSelection, dictation: dictation) { words, items in
             onPrompt(words, items)
         }

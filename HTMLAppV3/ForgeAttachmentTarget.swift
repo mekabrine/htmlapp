@@ -16,6 +16,12 @@ enum ForgeAttachmentTarget: String, Identifiable, CaseIterable {
     static let horizontalInset: CGFloat = 16
     static let spacing: CGFloat = 8
 
+    static func hit(microphoneTranslation: CGSize, width: CGFloat) -> Self? {
+        let center = CGPoint(x: -24 + microphoneTranslation.width + 31.5,
+                             y: 68 + microphoneTranslation.height + 31.5)
+        return hit(center, width: width)
+    }
+
     static func hit(_ point: CGPoint, width: CGFloat) -> Self? {
         let tileWidth = (width - 2 * horizontalInset - CGFloat(allCases.count - 1) * spacing) / CGFloat(allCases.count)
         guard tileWidth > 0 else { return nil }
@@ -26,24 +32,54 @@ enum ForgeAttachmentTarget: String, Identifiable, CaseIterable {
     }
 }
 
+struct ForgeContextSurface: ViewModifier {
+    let cornerRadius: CGFloat
+    var interactive = false
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius)
+        if #available(iOS 26.0, *) {
+            content.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        } else {
+            content.background(.regularMaterial, in: shape)
+        }
+    }
+}
+
 struct ForgeAttachmentTargets: View {
     let active: Bool
+    let microphoneTranslation: CGSize
+
     var body: some View {
-        HStack(spacing: ForgeAttachmentTarget.spacing) {
-            ForEach(ForgeAttachmentTarget.allCases) { target in
-                VStack(spacing: 6) {
-                    Image(systemName: target.symbol).font(.system(size: 26, weight: .semibold))
-                    Text(target.rawValue.capitalized).font(.caption)
+        GeometryReader { proxy in
+            if active {
+                let currentTarget = ForgeAttachmentTarget.hit(microphoneTranslation: microphoneTranslation,
+                                                              width: proxy.size.width)
+                HStack(spacing: ForgeAttachmentTarget.spacing) {
+                    ForEach(ForgeAttachmentTarget.allCases) { target in
+                        VStack(spacing: 6) {
+                            Image(systemName: target.symbol).font(.system(size: 26, weight: .semibold))
+                            Text(target.rawValue.capitalized).font(.caption)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 88)
+                        .modifier(ForgeContextSurface(cornerRadius: 20))
+                        .overlay {
+                            if target == currentTarget {
+                                RoundedRectangle(cornerRadius: 20)
+                                    .strokeBorder(.background, lineWidth: 5)
+                                RoundedRectangle(cornerRadius: 20)
+                                    .inset(by: 1)
+                                    .strokeBorder(.primary, lineWidth: 2)
+                            }
+                        }
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 88)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+                .padding(.horizontal, ForgeAttachmentTarget.horizontalInset)
+                .padding(.top, 8)
             }
         }
-        .padding(.horizontal, ForgeAttachmentTarget.horizontalInset)
-        .padding(.top, 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .opacity(active ? 1 : 0)
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
