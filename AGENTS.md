@@ -11,7 +11,7 @@ add automatic triggers. Local checks are permitted.
 For every product update, unless the owner explicitly asks otherwise, increment both the
 marketing version and build number in `project.yml` and synchronize
 `HTMLAppReleaseNotes.compiledVersion` and `compiledBuild`. Replace the What's New
-entries with short, user-facing notes about that update. Archive every title and description from What’s New, plus a one-line summary
+entries with short, user-facing notes about that update. Archive every title, description, symbol and tint from What’s New, plus a one-line summary
 for the new version in `HTMLApp/Resources/HTMLApp-Changelog.json`, newest first.
 
 For a change that only fixes a build, compiler, CI, or packaging error, keep the

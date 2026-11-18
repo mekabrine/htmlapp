@@ -70,15 +70,17 @@ if new_build == old_build:
     )
 
 notes = re.findall(
-    r'Entry\(id:\s*"[^"]+",\s*title:\s*("(?:\\.|[^"\\])*"),\s*description:\s*("(?:\\.|[^"\\])*")',
+    r'Entry\(id:\s*"[^"]+",\s*title:\s*("(?:\\.|[^"\\])*"),\s*description:\s*("(?:\\.|[^"\\])*")'
+    r',\s*symbol:\s*"([^"]+)",\s*tint:\s*\.(\w+)',
     git("show", "HEAD:HTMLAppV3/HTMLAppWhatsNewView.swift"),
 )
-expected_changes = [{"title": json.loads(title), "description": json.loads(description)}
-                    for title, description in notes]
+expected_changes = [{"title": json.loads(title), "description": json.loads(description),
+                     "symbol": symbol, "tint": tint}
+                    for title, description, symbol, tint in notes]
 changelog = json.loads(git("show", "HEAD:HTMLApp/Resources/HTMLApp-Changelog.json"))
 if (not expected_changes or not changelog or changelog[0]["version"] != new_version
         or changelog[0].get("changes") != expected_changes):
-    raise SystemExit("Archive every current What's New title and description in the newest changelog entry.")
+    raise SystemExit("Archive every current What's New title, description, symbol and tint in the newest changelog entry.")
 
 print(
     f"Version-bump policy passed: {old_version} ({old_build}) -> "
