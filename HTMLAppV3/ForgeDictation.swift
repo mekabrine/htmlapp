@@ -22,12 +22,7 @@ final class ForgeDictation: ObservableObject {
     private var offlineMode = false
     private var transcriptionTask: Task<Void, Never>?
 
-    struct MicTestResult {
-        let words: String
-        var succeeded: Bool { words.contains(where: \.isLetter) }
-    }
-
-    @Published var micTestResult: MicTestResult?
+    @Published var micTestSucceeded: Bool?
     @Published private(set) var testingMic = false
     @Published private(set) var finishingAppleSpeech = false
     private var appleReleaseTask: Task<Void, Never>?
@@ -40,15 +35,6 @@ final class ForgeDictation: ObservableObject {
     var offlineCompletion: ((Result<String, Error>) -> Void)?
 
     private func finishOffline(_ result: Result<String, Error>) {
-        if testingMic {
-            discardRetainedAudio()
-            let words = (try? result.get()) ?? ""
-            let outcome = MicTestResult(words: words)
-            micTestResult = outcome
-            testingMic = false
-            status = outcome.succeeded ? "Mic test passed." : "Mic test failed. No words recognized."
-            return
-        }
         let completion = offlineCompletion
         offlineCompletion = nil
         completion?(result)
@@ -109,7 +95,7 @@ final class ForgeDictation: ObservableObject {
     }
 
     func start(tapToStop: Bool = false) async {
-        guard !recording, !requestingPermission, !transcribingOffline, !finishingAppleSpeech else { return }
+        guard !recording, !requestingPermission, !transcribingOffline, !testingMic, !finishingAppleSpeech else { return }
         transcript = ""
         guard microphoneCanStart() else { return }
         discardRetainedAudio()
@@ -385,19 +371,13 @@ final class ForgeDictation: ObservableObject {
                         fileURL: url, resetModel: attempt == 3
                     )
                     guard currentGeneration == generation, !Task.isCancelled else { return }
-                    if !testingMic {
-                        transcript = words
-                        status = "On-device transcription is ready. Review your text."
-                    }
+                    transcript = words
+                    status = "On-device transcription is ready. Review your text."
                     discardRetainedAudio()
                     finishOffline(.success(words))
                     return
                 } catch {
                     guard currentGeneration == generation, !Task.isCancelled else { return }
-                    if testingMic {
-                        finishOffline(.failure(error))
-                        return
-                    }
                     if attempt < 3 {
                         status = "Retrying transcription…"
                         try? await Task.sleep(nanoseconds: 350_000_000)
@@ -414,15 +394,33 @@ final class ForgeDictation: ObservableObject {
     }
 
     func testMicOnRelease() {
-        guard Self.usesAlternative, !transcribingOffline else { return }
-        micTestResult = nil
-        testingMic = true
-        if offlineMode {
-            stop()
-        } else {
-            stop(transcribe: false)
-            finishOffline(.success(""))
+        guard Self.usesAlternative, !transcribingOffline, !testingMic else { return }
+        offlineCompletion = nil
+        micTestSucceeded = nil
+        stop(transcribe: false)
+        guard let url = retainedAudioURL else {
+            reportMicTest(false)
+            return
         }
+
+        let testGeneration = generation
+        testingMic = true
+        status = "Testing microphone…"
+        // A test uses the recording directly and never publishes it through
+        // the normal dictation transcript or completion used by Forge.
+        transcriptionTask = Task { [weak self] in
+            let words = try? await HTMLAppOfflineSpeech.shared.transcribe(fileURL: url)
+            guard let self, !Task.isCancelled, self.generation == testGeneration else { return }
+            self.transcriptionTask = nil
+            self.discardRetainedAudio()
+            self.reportMicTest(words?.contains(where: \.isLetter) == true)
+        }
+    }
+
+    private func reportMicTest(_ succeeded: Bool) {
+        testingMic = false
+        micTestSucceeded = succeeded
+        status = succeeded ? "Mic test passed." : "Mic test failed."
     }
 
     /// Give live Apple Speech input a 150 ms tail, then let recognition finish

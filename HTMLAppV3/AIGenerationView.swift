@@ -530,7 +530,7 @@ struct AIGenerationView: View {
             }
         }
         .onChange(of: dictation.transcribingOffline) { processing in
-            guard !processing, !dictation.testingMic, dictation.micTestResult == nil else { return }
+            guard !processing else { return }
             let words = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
             if words.isEmpty { finishWhisperPrompt(words, send: false) }
             else { transcriptReview = words }
