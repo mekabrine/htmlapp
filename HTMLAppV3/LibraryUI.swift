@@ -1189,7 +1189,8 @@ private struct LibraryCreateMicrophone: View {
                     .accessibilityLabel("Drag microphone inward, speak, then release to create an app")
                     .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
                         .onChanged { value in
-                            guard !awaitingTranscript, transcriptReview == nil, returnTask == nil else { return }
+                            guard !awaitingTranscript, transcriptReview == nil, returnTask == nil,
+                                  !dictation.testingMic, !dictation.finishingAppleSpeech else { return }
                             if !touched {
                                 touched = true
                                 HTMLAppOfflineSpeech.shared.preloadIfSelected()
@@ -1198,29 +1199,46 @@ private struct LibraryCreateMicrophone: View {
                             let inside = isInside(translation, size: proxy.size)
                             if inside && !armed {
                                 armed = true
-                                dictation.transcript = ""
-                                recordingTask = Task { await dictation.start(tapToStop: true) }
+                                if !dictation.appleSpeechActive {
+                                    dictation.transcript = ""
+                                    recordingTask = Task { await dictation.start(tapToStop: true) }
+                                }
                             } else if !inside && armed {
                                 armed = false
-                                recordingTask?.cancel()
-                                dictation.cancel()
+                                if !dictation.appleSpeechActive {
+                                    recordingTask?.cancel()
+                                    dictation.cancel()
+                                }
                             }
                         }
                         .onEnded { value in
                             guard !awaitingTranscript, returnTask == nil else { return }
+                            if armed, ForgeDictation.usesAlternative,
+                               ForgeMicTestTarget.hit(value.translation, in: proxy.size) {
+                                recordingTask?.cancel()
+                                resetPosition()
+                                dictation.testMicOnRelease()
+                                return
+                            }
                             if armed, let target = ForgeAttachmentTarget.hit(microphoneTranslation: value.translation, width: proxy.size.width) {
                                 recordingTask?.cancel()
-                                dictation.stop(transcribe: false)
                                 resetPosition()
-                                Task { await attachmentSelection.open(target) }
+                                dictation.release(transcribe: false) {
+                                    Task { await attachmentSelection.open(target) }
+                                }
                                 return
                             }
                             touched = false
                             awaitingTranscript = armed && isInside(value.translation, size: proxy.size)
                             recordingTask?.cancel()
                             if awaitingTranscript {
-                                dictation.stop()
+                                let finishingLiveSpeech = dictation.appleSpeechActive
+                                dictation.release {
+                                    if finishingLiveSpeech { finishIfReady() }
+                                }
                                 usedWhisper = dictation.transcribingOffline
+                            } else if dictation.appleSpeechActive {
+                                dictation.release { dictation.cancel() }
                             } else { dictation.cancel() }
                             if reduceMotion {
                                 resetPosition()
@@ -1296,7 +1314,7 @@ private struct LibraryCreateMicrophone: View {
     }
 
     private func finishIfReady() {
-        guard awaitingTranscript, returnTask == nil, !dictation.transcribingOffline else { return }
+        guard awaitingTranscript, returnTask == nil, !dictation.transcribingOffline, !dictation.finishingAppleSpeech else { return }
         let words = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         if words.isEmpty && dictation.canRetryTranscription { return }
         awaitingTranscript = false

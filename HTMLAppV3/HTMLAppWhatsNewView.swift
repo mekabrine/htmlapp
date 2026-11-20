@@ -15,8 +15,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.28"
-    static let compiledBuild = "133"
+    static let compiledVersion = "1.9.29"
+    static let compiledBuild = "134"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -33,9 +33,12 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "context-tile-flight", title: "Context options spring from the microphone",
-                  description: "Camera, Photos, Files, and Skills stretch into place as you drag inward and flow back into the microphone at the screen edge.",
-                  symbol: "mic.fill", tint: .purple)
+            Entry(id: "test-mic", title: "Test Alternative dictation",
+                  description: "Speak, then drop the microphone on Test Mic to see whether it recognized any words. Alternative transcribes on device.",
+                  symbol: "waveform", tint: .purple),
+            Entry(id: "apple-tail", title: "Capture the end of a phrase",
+                  description: "Apple Speech keeps listening for 150 milliseconds after you release the microphone.",
+                  symbol: "mic.fill", tint: .blue)
         ]
     }
 }

@@ -52,9 +52,43 @@ struct ForgeContextSurface: ViewModifier {
     }
 }
 
+struct ForgeMicTestTarget: View {
+    let microphoneTranslation: CGSize
+    let size: CGSize
+
+    static func frame(in size: CGSize) -> CGRect {
+        let width = min(124, size.width)
+        return CGRect(x: (size.width - width) / 2, y: max(0, size.height - 100),
+                      width: width, height: 76)
+    }
+
+    static func hit(_ translation: CGSize, in size: CGSize) -> Bool {
+        let microphone = ForgeAttachmentTarget.microphoneFrame(translation: translation)
+        return frame(in: size).contains(CGPoint(x: microphone.midX, y: microphone.midY))
+    }
+
+    var body: some View {
+        let frame = Self.frame(in: size)
+        let highlighted = Self.hit(microphoneTranslation, in: size)
+        VStack(spacing: 6) {
+            Image(systemName: "waveform").font(.title2)
+            Text("Test Mic").font(.caption.weight(.semibold))
+        }
+        .frame(width: frame.width, height: frame.height)
+        .modifier(ForgeContextSurface(cornerRadius: 20))
+        .overlay {
+            if highlighted {
+                RoundedRectangle(cornerRadius: 20).strokeBorder(.primary, lineWidth: 2)
+            }
+        }
+        .position(x: frame.midX, y: frame.midY)
+    }
+}
+
 struct ForgeAttachmentTargets: View {
     let active: Bool
     let microphoneTranslation: CGSize
+    @AppStorage("htmlapp.dictationEngine") private var dictationEngine = "apple"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -82,6 +116,11 @@ struct ForgeAttachmentTargets: View {
             .padding(.horizontal, ForgeAttachmentTarget.horizontalInset)
             .padding(.top, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .overlay {
+                if active && dictationEngine == "whisper" {
+                    ForgeMicTestTarget(microphoneTranslation: microphoneTranslation, size: proxy.size)
+                }
+            }
             .overlay {
                 let target = active ? ForgeAttachmentTarget.hit(microphoneTranslation: microphoneTranslation,
                                                                 width: proxy.size.width) : nil

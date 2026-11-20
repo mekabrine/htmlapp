@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.9.29",
+    "summary": "Replaced NoteTakers with an on-device mic test and added a short Apple Speech recording tail.",
+    "changes": [
+      {
+        "title": "Test Alternative dictation",
+        "description": "Speak, then drop the microphone on Test Mic to see whether it recognized any words. Alternative transcribes on device.",
+        "symbol": "waveform",
+        "tint": "purple"
+      },
+      {
+        "title": "Capture the end of a phrase",
+        "description": "Apple Speech keeps listening for 150 milliseconds after you release the microphone.",
+        "symbol": "mic.fill",
+        "tint": "blue"
+      }
+    ]
+  },
+  {
     "version": "1.9.28",
     "summary": "Animated the four context tiles in and out of the microphone.",
     "changes": [

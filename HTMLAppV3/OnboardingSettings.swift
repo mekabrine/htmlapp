@@ -8,12 +8,12 @@ struct OnboardingView: View {
     @State private var showForgePractice = false
     @State private var showMenuExample = false
     @AppStorage("htmlapp.dictationEngine") private var dictationEngine = "apple"
-    @StateObject private var dictationTest = ForgeDictation(allowsOnlineTranscription: false)
+    @StateObject private var dictationTest = ForgeDictation()
     @State private var dictationTestPressed = false
 
     @State private var demoStage = -1
     @State private var demoEdit = ""
-    @StateObject private var demoDictation = ForgeDictation(allowsOnlineTranscription: false)
+    @StateObject private var demoDictation = ForgeDictation()
     private let numberOfSteps = 6
     private var tutorialStep: Int { [2, 3, 7, 8, 11, 12][min(max(step, 0), 5)] }
 
@@ -288,7 +288,7 @@ struct OnboardingView: View {
                             Task { await dictationTest.start() }
                         } else if !pressing && dictationTestPressed {
                             dictationTestPressed = false
-                            dictationTest.stop()
+                            dictationTest.release()
                         }
                     }, perform: {})
                 Text(dictationTest.status).font(.caption).foregroundStyle(.secondary)
@@ -315,7 +315,7 @@ struct OnboardingView: View {
                     Text("Alternative").tag("whisper")
                 }
                 .pickerStyle(.segmented)
-                Text("Forge can use free online transcription for the first creation or edit recording after launch. This practice recording uses the selected Apple/Alternative engine. Alternative may download an on-device model on first use.")
+                Text("This practice recording uses the selected engine. Alternative may download a model on first use, then transcribes on device.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         case 11:
@@ -438,7 +438,6 @@ struct SettingsView: View {
     @AppStorage("htmlapp.previousOpenedVersion") private var previousOpenedVersion = ""
     @State private var showWhatsNew = false
     @State private var working = false
-    @AppStorage("forge.onlineTranscription") private var onlineTranscription = true
     @AppStorage("htmlapp.dictationEngine") private var dictationEngine = "apple"
 
     private var selectedSortMode: LibrarySortMode {
@@ -483,14 +482,11 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.navigationLink)
                     Text(dictationEngine == "apple"
-                         ? "After Forge's first online attempt, or with online transcription off, see words live while speaking. Saved apps also use this engine. Some devices may use Apple's speech service."
+                         ? "See words as you speak. Some devices may use Apple’s speech service."
                          : "Record first, then transcribe after releasing the microphone. Saved apps use on-device transcription.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Toggle("Online for first Forge transcription", isOn: $onlineTranscription)
-                    Text("Once per app launch, the first creation or edit recording can be sent to NoteTakers for free keyless transcription. Later recordings use your selected Apple/Alternative engine. The online attempt counts even if it fails; retries use on-device transcription. Backgrounding or reopening the recording screen does not reset it. NoteTakers allows 10 requests per day per IP address, which may be shared with other people on your network. Turn this off to skip the online attempt. Practice recordings and saved apps do not use this cloud setting.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    Link("NoteTakers service and limits", destination: URL(string: "https://notetakers.vipresearch.ca/stt_docs.php")!)
+
                 }
 
                 Section("Library") {

@@ -31,7 +31,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private let eventStore = EKEventStore()
     private let speechSynthesizer = AVSpeechSynthesizer()
     private let speechRecognition = HTMLAppSpeechRecognition()
-    private let offlineSpeech = ForgeDictation(allowsOnlineTranscription: false)
+    private let offlineSpeech = ForgeDictation()
     private var offlineSpeechID: String?
     private var offlineSpeechLimit: Task<Void, Never>?
     private let nfcReader = HTMLAppNFCReader()

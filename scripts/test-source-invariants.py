@@ -1013,33 +1013,11 @@ assert 'didReceiveRemoteNotification userInfo:' in pushDelegate and '"htmlapp_re
 assert '- remote-notification' in source("project.yml")
 assert '"permission": "network"' in source("scripts/native-capability-definitions.json")
 
-# Forge cloud dictation must never leak its upload policy into saved apps.
-assert 'ForgeDictation(allowsOnlineTranscription: false)' in native
+# Forge dictation routes Alternative locally and keeps the Apple release tail.
 dictation = source("HTMLAppV3/ForgeDictation.swift")
-transport = source("HTMLAppV3/ForgeTranscriptionTransport.swift")
-assert 'onlineForRecording && ForgeOnlineTranscription.isAvailable' in dictation
-assert 'transcriptionTask?.cancel()' in dictation
-assert 'currentGeneration == generation, !Task.isCancelled' in dictation
-assert 'URLSessionConfiguration.ephemeral' in transport and 'completionHandler(nil)' in transport
-assert 'size <= 25_000_000' in transport and 'request.timeoutInterval = 30' in transport
-assert 'KeychainValueStore' not in source("HTMLAppV3/ForgeOnlineTranscription.swift")
-assert 'apiKey' not in transport and 'forHTTPHeaderField: "Authorization"' not in transport
-assert 'https://notetakers.vipresearch.ca/stt/v1/transcribe' in transport
-assert 'guard result.success else' in transport
-assert 'transcriptionKey' not in source("HTMLAppV3/OnboardingSettings.swift")
+assert "NoteTakers" not in dictation and "ForgeOnlineTranscription" not in dictation
+assert "150_000_000" in dictation and "func endAppleInput()" in dictation
 assert 'Label("Alternative", systemImage: "mic").tag("whisper")' in source("HTMLAppV3/OnboardingSettings.swift")
-
-# The shared allowance lasts for the process, across all creation/edit views.
-online = source("HTMLAppV3/ForgeOnlineTranscription.swift")
-assert '@MainActor\nenum ForgeOnlineTranscription' in online
-assert 'private static var session = ForgeTranscriptionSession()' in online
-assert 'isEnabled && session.canAttemptOnline' in online
-assert online.index('session.claimOnlineAttempt(enabled: isEnabled)') < online.index('return try await ForgeTranscriptionTransport.transcribe')
-assert online.index('try Task.checkCancellation()') < online.index('session.claimOnlineAttempt(enabled: isEnabled)')
-assert 'UserDefaults.standard.set' not in online
-assert 'dictationTest = ForgeDictation(allowsOnlineTranscription: false)' in source("HTMLAppV3/OnboardingSettings.swift")
-assert 'demoDictation = ForgeDictation(allowsOnlineTranscription: false)' in source("HTMLAppV3/OnboardingSettings.swift")
-assert 'guard !ForgeOnlineTranscription.isAvailable' in source("HTMLAppV3/HTMLAppOfflineSpeech.swift")
 
 # Declining or ignoring the initial review cannot launch a redesign.
 forge = source("HTMLAppV3/AIGenerationView.swift")

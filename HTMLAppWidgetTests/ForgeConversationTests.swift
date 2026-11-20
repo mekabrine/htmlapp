@@ -32,4 +32,17 @@ final class ForgeConversationTests: XCTestCase {
             XCTAssertNil(ForgeAttachmentTarget.hit(CGPoint(x: ForgeAttachmentTarget.horizontalInset + tile + 4, y: 52), width: width))
         }
     }
+
+    func testMicTestTargetRecognizesOnlyBottomCenterDrops() {
+        for size in [CGSize(width: 320, height: 568), CGSize(width: 768, height: 1024)] {
+            let target = ForgeMicTestTarget.frame(in: size)
+            XCTAssertEqual(target.midX, size.width / 2)
+            XCTAssertEqual(target.maxY, size.height - 24)
+            let restingMic = ForgeAttachmentTarget.microphoneFrame(translation: .zero)
+            let drop = CGSize(width: target.midX - restingMic.midX, height: target.midY - restingMic.midY)
+            XCTAssertTrue(ForgeMicTestTarget.hit(drop, in: size))
+            XCTAssertFalse(ForgeMicTestTarget.hit(.zero, in: size))
+            XCTAssertFalse(ForgeMicTestTarget.hit(CGSize(width: drop.width, height: drop.height - 90), in: size))
+        }
+    }
 }

@@ -49,7 +49,7 @@ struct LockScreenVoiceCreateView: View {
 
                 Button {
                     if dictation.recording {
-                        dictation.stop()
+                        dictation.release()
                     } else if !dictation.transcribingOffline && !dictation.requestingPermission {
                         startupTask?.cancel()
                         startupTask = Task { await dictation.start(tapToStop: true) }
@@ -66,7 +66,7 @@ struct LockScreenVoiceCreateView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .disabled(dictation.requestingPermission || dictation.transcribingOffline)
+                .disabled(dictation.requestingPermission || dictation.transcribingOffline || dictation.finishingAppleSpeech)
                 .accessibilityLabel(dictation.recording ? "Stop recording" : "Start recording")
 
                 Text(dictation.status)

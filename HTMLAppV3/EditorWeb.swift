@@ -229,7 +229,8 @@ struct WebRunner: View {
             .accessibilityLabel("Drag microphone inward, speak, then release to edit")
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
                 .onChanged { value in
-                    guard !awaitingEdit, transcriptReview == nil, editorPresentationTask == nil else { return }
+                    guard !awaitingEdit, transcriptReview == nil, editorPresentationTask == nil,
+                          !editDictation.testingMic, !editDictation.finishingAppleSpeech else { return }
                     if let returning = micReturnTask {
                         returning.cancel()
                         micReturnTask = nil
@@ -241,21 +242,33 @@ struct WebRunner: View {
                     let inside = isMicInside(micDrag, in: size)
                     if inside && !micArmed {
                         micArmed = true
-                        editDictation.transcript = ""
-                        recordingTask = Task { await editDictation.start(tapToStop: true) }
+                        if !editDictation.appleSpeechActive {
+                            editDictation.transcript = ""
+                            recordingTask = Task { await editDictation.start(tapToStop: true) }
+                        }
                     } else if !inside && micArmed {
                         micArmed = false
-                        recordingTask?.cancel()
-                        editDictation.cancel()
+                        if !editDictation.appleSpeechActive {
+                            recordingTask?.cancel()
+                            editDictation.cancel()
+                        }
                     }
                 }
                 .onEnded { value in
                     guard !awaitingEdit, transcriptReview == nil, editorPresentationTask == nil else { return }
+                    if micArmed, ForgeDictation.usesAlternative,
+                       ForgeMicTestTarget.hit(value.translation, in: size) {
+                        recordingTask?.cancel()
+                        returnEditMic(from: value.translation)
+                        editDictation.testMicOnRelease()
+                        return
+                    }
                     if micArmed, let target = ForgeAttachmentTarget.hit(microphoneTranslation: value.translation, width: size.width) {
                         recordingTask?.cancel()
-                        editDictation.stop(transcribe: false)
                         returnEditMic(from: value.translation)
-                        Task { await attachmentSelection.open(target) }
+                        editDictation.release(transcribe: false) {
+                            Task { await attachmentSelection.open(target) }
+                        }
                         return
                     }
                     let shouldSubmit = micArmed && isMicInside(value.translation, in: size)
@@ -263,8 +276,11 @@ struct WebRunner: View {
                     recordingTask?.cancel()
                     if shouldSubmit {
                         awaitingEdit = true
-                        editDictation.stop()
-                        if !editDictation.transcribingOffline { submitSpokenEdit() }
+                        editDictation.release {
+                            if !editDictation.transcribingOffline { submitSpokenEdit() }
+                        }
+                    } else if editDictation.appleSpeechActive {
+                        editDictation.release { editDictation.cancel() }
                     } else if !awaitingEdit {
                         editDictation.cancel()
                     }

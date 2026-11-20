@@ -12,7 +12,6 @@ final class HTMLAppOfflineSpeech {
     private init() {}
 
     func preloadIfSelected() {
-        guard !ForgeOnlineTranscription.isAvailable else { return }
         guard UserDefaults.standard.string(forKey: "htmlapp.dictationEngine") == "whisper" else { return }
         guard whisper == nil, loadingTask == nil else { return }
         preload()

@@ -382,6 +382,15 @@ private struct ForgeAttachmentPresentation: ViewModifier {
             .presentationDragIndicator(.hidden)
             .interactiveDismissDisabled()
         }
+        .alert(dictation.micTestResult?.succeeded == true ? "Mic test passed" : "Mic test failed",
+               isPresented: Binding(get: { dictation.micTestResult != nil },
+                                    set: { if !$0 { dictation.micTestResult = nil } })) {
+            Button("OK", role: .cancel) { dictation.micTestResult = nil }
+        } message: {
+            if let result = dictation.micTestResult {
+                Text(result.succeeded ? result.words : "No words were recognized. Speak into the mic and try again.")
+            }
+        }
         .alert("Attachment", isPresented: Binding(get: { !reviewing && selection.error != nil }, set: { if !$0 { selection.error = nil } })) {
             Button("OK", role: .cancel) { selection.error = nil }
         } message: { Text(selection.error ?? "") }

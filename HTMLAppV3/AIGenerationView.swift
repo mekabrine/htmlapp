@@ -530,7 +530,7 @@ struct AIGenerationView: View {
             }
         }
         .onChange(of: dictation.transcribingOffline) { processing in
-            guard !processing else { return }
+            guard !processing, !dictation.testingMic, dictation.micTestResult == nil else { return }
             let words = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
             if words.isEmpty { finishWhisperPrompt(words, send: false) }
             else { transcriptReview = words }
@@ -910,16 +910,24 @@ struct AIGenerationView: View {
     }
 
     private func stopPromptRecording() {
+        guard !dictation.finishingAppleSpeech else { return }
         promptMicHeld = false
         microphoneRecordingTask?.cancel()
         microphoneRecordingTask = nil
-        dictation.stop()
-        if !dictation.transcript.isEmpty {
-            prompt = dictationPrefix + (dictationPrefix.isEmpty ? "" : "\n") + dictation.transcript
-            nextRequestFromVoice = true
+        let finishingLiveSpeech = dictation.appleSpeechActive
+        if finishingLiveSpeech { promptDictationAwaitingResult = false }
+        dictation.release {
+            if !dictation.transcript.isEmpty {
+                prompt = dictationPrefix + (dictationPrefix.isEmpty ? "" : "\n") + dictation.transcript
+                nextRequestFromVoice = true
+            }
+            promptDictationActive = false
+            if finishingLiveSpeech && generateAfterVoiceTranscription {
+                generateAfterVoiceTranscription = false
+                submitPromptGeneration()
+            }
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        promptDictationActive = false
     }
 
     /// Returns true if a fully offline action was handled or offered. Never
@@ -984,11 +992,13 @@ struct AIGenerationView: View {
     }
 
     private func submitPromptGeneration() {
+        guard !dictation.testingMic else { return }
+        if !isWidgetVoiceEntry && dictation.finishingAppleSpeech { return }
         if isWidgetVoiceEntry && (promptMicHeld || dictation.recording || dictation.requestingPermission) {
             stopPromptRecording()
         }
         if transcriptReview != nil && !isWidgetVoiceEntry { return }
-        if isWidgetVoiceEntry && (dictation.transcribingOffline || transcriptReview != nil) {
+        if isWidgetVoiceEntry && (dictation.finishingAppleSpeech || dictation.transcribingOffline || transcriptReview != nil) {
             generateAfterVoiceTranscription = true
             return
         }
@@ -1522,8 +1532,13 @@ struct AIGenerationView: View {
                                         if dictationForEdit && !dictation.appleSpeechActive {
                                             pendingInlineVoiceEdit = true
                                         }
-                                        dictation.stop()
-                                        dictationForEdit = false
+                                        let finishingLiveSpeech = dictation.appleSpeechActive
+                                        dictation.release {
+                                            if finishingLiveSpeech && !dictation.transcript.isEmpty {
+                                                changePrompt = dictationPrefix + (dictationPrefix.isEmpty ? "" : "\n") + dictation.transcript
+                                            }
+                                            dictationForEdit = false
+                                        }
                                     }
                                     else {
                                         promptDictationActive = false
@@ -1535,7 +1550,7 @@ struct AIGenerationView: View {
                                     Image(systemName: dictation.recording && dictationForEdit ? "stop.circle.fill" : "mic.fill")
                                 }
                                 .buttonStyle(.bordered)
-                                .disabled(dictation.requestingPermission)
+                                .disabled(dictation.requestingPermission || dictation.finishingAppleSpeech || dictation.testingMic)
                                 .accessibilityLabel(dictation.recording && dictationForEdit ? "Stop edit dictation" : "Dictate edit")
                             }
                             if !demoMode {
@@ -1746,6 +1761,7 @@ struct AIGenerationView: View {
             .gesture(
                 DragGesture(minimumDistance: 3, coordinateSpace: .named("forgeEditSurface"))
                     .onChanged { gesture in
+                        guard !dictation.testingMic, !dictation.finishingAppleSpeech else { return }
                         if microphoneTranslation == .zero { HTMLAppOfflineSpeech.shared.preloadIfSelected() }
                         microphoneTranslation = gesture.translation
                         let x = -24 + gesture.translation.width
@@ -1755,6 +1771,7 @@ struct AIGenerationView: View {
                             microphoneArmed = true
                             if demoMode { practiceStep = max(practiceStep, 3); showingChange = true }
                             HTMLAppFirstUseTips.show("dragMic")
+                            guard !dictation.appleSpeechActive else { return }
                             microphoneCapturing = true
                             promptDictationActive = false
                             dictationForEdit = false
@@ -1765,6 +1782,7 @@ struct AIGenerationView: View {
                             microphoneRecordingTask = Task { await dictation.start() }
                         } else if !inside && microphoneArmed {
                             microphoneArmed = false
+                            guard !dictation.appleSpeechActive else { return }
                             microphoneRecordingTask?.cancel()
                             microphoneRecordingTask = nil
                             dictation.cancel()
@@ -1775,39 +1793,62 @@ struct AIGenerationView: View {
                         }
                     }
                     .onEnded { gesture in
-                        if microphoneArmed, let target = ForgeAttachmentTarget.hit(microphoneTranslation: gesture.translation, width: size.width) {
+                        guard !dictation.testingMic, !dictation.finishingAppleSpeech else { return }
+                        if microphoneArmed, ForgeDictation.usesAlternative,
+                           ForgeMicTestTarget.hit(gesture.translation, in: size) {
                             microphoneRecordingTask?.cancel()
-                            dictation.stop(transcribe: false)
+                            microphoneRecordingTask = nil
                             microphoneArmed = false
                             microphoneTranslation = .zero
                             microphoneCapturing = false
-                            Task { await attachments.open(target) }
+                            dictation.testMicOnRelease()
+                            return
+                        }
+                        if microphoneArmed, let target = ForgeAttachmentTarget.hit(microphoneTranslation: gesture.translation, width: size.width) {
+                            microphoneRecordingTask?.cancel()
+                            microphoneArmed = false
+                            microphoneTranslation = .zero
+                            dictation.release(transcribe: false) {
+                                microphoneCapturing = false
+                                Task { await attachments.open(target) }
+                            }
                             return
                         }
                         let x = -24 + gesture.translation.width
                         let y = 68 + gesture.translation.height
                         let inside = x >= 0 && y >= 0 && x + side <= size.width && y + side <= size.height
                         let wasArmed = microphoneArmed
-                        let spoken = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
                         microphoneArmed = false
                         microphoneTranslation = .zero
                         microphoneRecordingTask?.cancel()
                         microphoneRecordingTask = nil
-                        dictation.stop()
-                        microphoneCapturing = false
-                        dictationForEdit = false
-                        if demoMode && inside && wasArmed {
-                            practiceStep = 3
-                            showingChange = true
-                            microphoneEditNotice = "Nice drag! Now type an edit below and tap Apply Change."
+                        if !inside || !wasArmed {
+                            if dictation.appleSpeechActive {
+                                dictation.release {
+                                    dictation.cancel()
+                                    microphoneCapturing = false
+                                }
+                            } else {
+                                dictation.cancel()
+                                microphoneCapturing = false
+                            }
                             return
                         }
-                        if inside && wasArmed && spoken.isEmpty && dictation.transcribingOffline {
-                            pendingFloatingVoiceFeedback = forStyleFeedback
-                            microphoneEditNotice = "Transcribing your recording…"
-                            return
-                        }
-                        if inside && wasArmed {
+                        dictation.release {
+                            let spoken = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                            microphoneCapturing = false
+                            dictationForEdit = false
+                            if demoMode {
+                                practiceStep = 3
+                                showingChange = true
+                                microphoneEditNotice = "Nice drag! Now type an edit below and tap Apply Change."
+                                return
+                            }
+                            if spoken.isEmpty && dictation.transcribingOffline {
+                                pendingFloatingVoiceFeedback = forStyleFeedback
+                                microphoneEditNotice = "Transcribing your recording…"
+                                return
+                            }
                             if forStyleFeedback {
                                 if !spoken.isEmpty {
                                     styleFeedback = spoken
@@ -2216,6 +2257,7 @@ struct AIGenerationView: View {
     }
 
     private func applyAIChange() {
+        guard !dictation.finishingAppleSpeech, !dictation.testingMic else { return }
         guard transcriptReview == nil else { return }
         if demoMode {
             let words = changePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
