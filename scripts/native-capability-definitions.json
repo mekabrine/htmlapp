@@ -1342,6 +1342,44 @@
       "result": "unknown"
     },
     {
+      "method": "map.nearbyPlaces",
+      "permission": "location",
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "latitude": "number",
+        "longitude": "number",
+        "query": "string"
+      },
+      "required": [
+        "latitude",
+        "longitude",
+        "query"
+      ],
+      "result": "unknown"
+    },
+    {
+      "method": "map.drivingETA",
+      "permission": "location",
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "latitude": "number",
+        "longitude": "number",
+        "destinationLatitude": "number",
+        "destinationLongitude": "number"
+      },
+      "required": [
+        "latitude",
+        "longitude",
+        "destinationLatitude",
+        "destinationLongitude"
+      ],
+      "result": "unknown"
+    },
+    {
       "method": "map.embed",
       "permission": null,
       "minimumIOS": "16.0",

@@ -1985,7 +1985,7 @@ struct AIGenerationView: View {
                 A: first option
                 B: second option
                 DEFAULT: A or B
-                If no question is needed, return only NO_QUESTION. Ask only if a missing requirement substantially changes functionality; make routine design choices yourself. No JSON, Markdown or commentary. Don't ask for personal data.
+                If no question is needed, return only NO_QUESTION. Ask only if a missing requirement substantially changes functionality; make routine design choices yourself. No JSON, Markdown or commentary. Don't ask for personal data or for values that the app can obtain using an available, permission-gated runtime capability.
                 """,
                 messages: [("user", String(idea.prefix(14000)))],
                 timeout: 12, maxTokens: 170, retryOnTransient: false
@@ -2190,6 +2190,7 @@ struct AIGenerationView: View {
                 AIDebugTraceStore.shared.append("WEB RESEARCH", "Skipped because this request can be resolved against HTMLApp's internal device API catalog.")
             }
             guard !Task.isCancelled else { return }
+            if ForgeCurrentPlace.query(in: originalPrompt) != nil { session.phase = "Checking current-place context" }
             let privacyReport = await AIPrivacyToolRunner.research(
                 originalPrompt, config: AISettingsStore.configuration(for: .research))
             guard !Task.isCancelled else { return }
@@ -2288,7 +2289,7 @@ struct AIGenerationView: View {
             startForgeActivity(edit: true)
             generationTask = Task { @MainActor in
                 let question = await ForgeAttachmentContext.$images.withValue(attachments.items) {
-                    await Self.askForgeQuestion(for: "Existing app: \(existingApp?.name ?? "draft"). Requested edit: \(requestedEdit)" + ForgeAttachment.textContext(attachments.items))
+                    await Self.askForgeQuestion(for: "Existing app: \(existingApp?.name ?? "draft"). Current app brief: \(session.refinedBrief.prefix(1500)). Requested edit: \(requestedEdit)" + ForgeAttachment.textContext(attachments.items))
                 }
                 guard !Task.isCancelled else { endForgeActivity(); return }
                 presentForgeQuestion(question, edit: true)
@@ -2350,8 +2351,9 @@ Requested edit:
                 AIDebugTraceStore.shared.append("WEB RESEARCH", "Skipped because this edit does not require public-web research; the internal device API catalog remains available.")
             }
             guard !Task.isCancelled else { return }
+            if ForgeCurrentPlace.query(in: change) != nil { session.phase = "Checking current-place context" }
             let privacyReport = AIHTMLAgent.needsCapabilityResearch(for: change)
-                ? await AIPrivacyToolRunner.research(researchRequest, config: AISettingsStore.configuration(for: .research))
+                ? await AIPrivacyToolRunner.research(change, config: AISettingsStore.configuration(for: .research))
                 : ""
             guard !Task.isCancelled else { return }
             let combinedResearch = [webReport, privacyReport].filter { !$0.isEmpty }.joined(separator: "\n\n")

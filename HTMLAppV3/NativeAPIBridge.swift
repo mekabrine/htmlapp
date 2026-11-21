@@ -2,6 +2,7 @@ import Foundation
 import NaturalLanguage
 import Vision
 import MapKit
+import CoreLocation
 import UIKit
 import WebKit
 import Contacts
@@ -59,6 +60,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
     private var liquidGlassView: UIVisualEffectView?
     private var nativeScene: HTMLAppNativeScene?
     private var embeddedMap: HTMLAppEmbeddedMap?
+    private var activeMapLookups: Set<String> = []
     private var nativeTabBar: HTMLAppNativeTabBar?
     private let bluetoothDiscovery = HTMLAppBluetoothDiscovery()
     private var previousBrightness: CGFloat?
@@ -1862,6 +1864,54 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         case "scene.hide":
             nativeScene?.shutdown(); nativeScene = nil
             resolve(id, value: ["hidden": true])
+        case "map.nearbyPlaces", "map.drivingETA":
+            guard let latitude = args["latitude"] as? Double, let longitude = args["longitude"] as? Double,
+                  CLLocationCoordinate2DIsValid(CLLocationCoordinate2D(latitude: latitude, longitude: longitude)) else {
+                reject(id, code: "invalid_coordinates", message: "Provide valid latitude and longitude.")
+                return
+            }
+            let origin = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            let query = (args["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let destination: CLLocationCoordinate2D?
+            if let lat = args["destinationLatitude"] as? Double, let lon = args["destinationLongitude"] as? Double {
+                destination = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            } else { destination = nil }
+            if method == "map.nearbyPlaces" {
+                guard let query, (2...120).contains(query.count) else {
+                    reject(id, code: "invalid_arguments", message: "Provide a 2–120 character place name or category.")
+                    return
+                }
+            } else {
+                guard let destination, CLLocationCoordinate2DIsValid(destination) else {
+                    reject(id, code: "invalid_coordinates", message: "Provide a valid destination.")
+                    return
+                }
+            }
+            withPermission(.location, id: id) { [weak self] in
+                guard let self else { return }
+                guard UIApplication.shared.applicationState == .active else {
+                    self.reject(id, code: "foreground_required", message: "Open the app to look up places or driving time.")
+                    return
+                }
+                guard self.activeMapLookups.insert(method).inserted else {
+                    self.reject(id, code: "map_lookup_in_progress", message: "Wait for the current Apple Maps lookup to finish.")
+                    return
+                }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    defer { self.activeMapLookups.remove(method) }
+                    do {
+                        if method == "map.nearbyPlaces", let query {
+                            let places = try await HTMLAppPlaceLookup.nearby(query: query, latitude: latitude, longitude: longitude)
+                            self.resolve(id, value: places.map(\.payload))
+                        } else if let destination {
+                            self.resolve(id, value: try await HTMLAppPlaceLookup.drivingETA(from: origin, to: destination))
+                        }
+                    } catch {
+                        self.reject(id, code: "map_lookup_unavailable", message: "Apple Maps could not complete the lookup. Check connectivity and try again.")
+                    }
+                }
+            }
         case "map.embed":
             guard appID != "PREVIEW", let webView else { reject(id, code: "preview_unavailable", message: "Embedded maps require a saved app."); return }
             do {
@@ -4314,6 +4364,10 @@ enum HTMLNativeAPIScript {
           onSelect: callback => { const handler = event => callback(event.detail); window.addEventListener('htmlapp:scene-select', handler); return () => window.removeEventListener('htmlapp:scene-select', handler); }
         },
         map: {
+          nearbyPlaces: (latitude, longitude, query) =>
+            call('map.nearbyPlaces', { latitude, longitude, query }),
+          drivingETA: (latitude, longitude, destinationLatitude, destinationLongitude) =>
+            call('map.drivingETA', { latitude, longitude, destinationLatitude, destinationLongitude }),
           embed: options => call('map.embed', options),
           hide: () => call('map.hide'),
           onSelect: callback => { const handler = event => callback(event.detail); window.addEventListener('htmlapp:map-select', handler); return () => window.removeEventListener('htmlapp:map-select', handler); },

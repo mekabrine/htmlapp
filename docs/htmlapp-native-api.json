@@ -110,8 +110,10 @@
     "location.geocode",
     "location.reverseGeocode",
     "location.roadSpeedLimit",
+    "map.drivingETA",
     "map.embed",
     "map.hide",
+    "map.nearbyPlaces",
     "map.show",
     "midi.destinations",
     "midi.send",
@@ -1423,6 +1425,25 @@
       ],
       "resultType": "unknown"
     },
+    "map.drivingETA": {
+      "minimumIOS": "16.0",
+      "permission": "location",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "latitude": "number",
+        "longitude": "number",
+        "destinationLatitude": "number",
+        "destinationLongitude": "number"
+      },
+      "requiredArguments": [
+        "latitude",
+        "longitude",
+        "destinationLatitude",
+        "destinationLongitude"
+      ],
+      "resultType": "unknown"
+    },
     "map.embed": {
       "minimumIOS": "16.0",
       "permission": null,
@@ -1447,6 +1468,23 @@
       "nativeCancellation": false,
       "arguments": {},
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "map.nearbyPlaces": {
+      "minimumIOS": "16.0",
+      "permission": "location",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "latitude": "number",
+        "longitude": "number",
+        "query": "string"
+      },
+      "requiredArguments": [
+        "latitude",
+        "longitude",
+        "query"
+      ],
       "resultType": "unknown"
     },
     "map.show": {

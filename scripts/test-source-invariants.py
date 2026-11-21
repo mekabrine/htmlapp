@@ -48,12 +48,12 @@ qa = ai.split("private func verifyAndRepair(", 1)[1].split("private func appChec
 clean = qa.index("if initial.blocking.isEmpty")
 plan = qa.index("AIHTMLAgent.planQARepair(")
 repair = qa.index("AIHTMLAgent.applyQARepair(")
-retest = qa.index("let retest = await appCheckFindings(in: repairedHTML, mode: testMode)")
+retest = qa.index("let retest = await appCheckFindings(in: repairedHTML, mode: testMode, request: request)")
 assert clean < plan < repair < retest < qa.index("streamedHTML = repairedHTML")
 assert "if testMode == .skip" in qa and "if testMode == .fast" not in qa, "Fast checks must attempt repair on blocking failures"
 assert qa.index("configuration(for: .planner)") < plan and "config: planner" in qa[plan:repair]
 assert qa.index("configuration(for: .coder)") < repair and "plan: plan, config: coder" in qa[repair:retest]
-assert "appCheckFindings(in: original, mode: testMode)" in qa and "throw AIGenerationError.unresolvedAppChecks(remaining)" in qa
+assert "appCheckFindings(in: original, mode: testMode, request: request)" in qa and "throw AIGenerationError.unresolvedAppChecks(remaining)" in qa
 assert 'issue.hasPrefix("Native navigation:")' in ai, "Blank native tabs must trigger automatic repair"
 assert "qaRepairResponseBytes" in qa
 assert 'HTMLAppPackageTransfer' in core
@@ -86,8 +86,11 @@ assert "Never auto-open an already saved app" in source("HTMLAppV3/LibraryUI.swi
 assert "HTMLAppForgeCompletionFeedback.announce" in source("HTMLAppV3/AIGenerationView.swift"), "Completion feedback must be called"
 assert "No microphone audio was recorded" in source("HTMLAppV3/ForgeDictation.swift"), "Whisper must diagnose empty recordings"
 lock_voice = source("HTMLAppV3/LockScreenVoiceCreateView.swift")
-assert "startFromLockScreen()" in lock_voice and 'shortcutSource: "libraryMic"' in lock_voice
-assert "250_000_000" in source("HTMLAppV3/ForgeDictation.swift"), "Whisper Lock Screen warm-up must capture for a quarter second"
+assert 'shortcutSource: "libraryMic", initialAttachments: generationContext' in lock_voice
+assert "ForgeAdditionalContext(selection: context)" in lock_voice and "generationContext = context.items" in lock_voice
+assert "needsMicTest = ForgeDictation.usesAlternative" in lock_voice
+assert "dictation.testMicOnRelease()" in lock_voice and "startCapture(test: false)" in lock_voice
+assert 'if needsMicTest { return .purple }' in lock_voice
 assert "store.lockScreenVoiceCreatePresented = true" in source("HTMLAppV3/LibraryUI.swift")
 assert "shortcutSource = \"siri\"" in source("HTMLAppV3/LibraryUI.swift"), "Normal creation must not inherit tap-to-stop mode"
 assert "Tap to stop recording." in source("HTMLAppV3/AIGenerationView.swift")
@@ -344,6 +347,12 @@ assert 'httpGet(_ raw:' in privacy and 'PublicWebBrowser.isAllowed(url)' in priv
 assert 'httpShouldSetCookies = false' in privacy and 'completionHandler(nil)' in privacy
 assert 'get_clipboard' not in privacy and 'clipboard' not in privacy_ui.lower()
 assert 'AIPrivacyToolRunner.research(' in forge
+assert 'currentVenueContext(query: query)' in privacy and 'AIPrivacyOptions.location == "precise"' in privacy
+assert 'HTMLAppPlaceLookup.nearby(query: query, latitude: latitude, longitude: longitude)' in privacy
+assert 'Resolve names afresh in the app.' in privacy
+assert '$0.hasPrefix("Current venue:")' in ai and 'HTMLAppNative.map.drivingETA' in ai
+for method in ("map.nearbyPlaces", "map.drivingETA"):
+    assert f"call('{method}'" in native and f'id: "{method}"' in source("HTMLAppV3/DeviceAPICatalog.swift")
 assert 'AIPrivacySettingsView()' in source("HTMLAppV3/AISettingsView.swift")
 
 # Widget actions are resolved against persisted definitions with signed URLs.
@@ -590,6 +599,9 @@ assert "call('location.roadSpeedLimit'" in native
 for method in ("location.reverseGeocode", "location.roadSpeedLimit"):
     assert f'id: "{method}"' in catalog
 assert "CLGeocoder()" in location_lookup
+request_location = permissions_source.split("func requestLocation(callbackID:", 1)[1].split("func requestNotificationPermission", 1)[0]
+assert request_location.index("self.enqueueLocation") < request_location.index("manager.requestWhenInUseAuthorization()")
+assert "manager.requestLocation()" in permissions_source.split("func locationManagerDidChangeAuthorization", 1)[1].split("func locationManager(", 1)[0]
 assert "case roadData" in permissions_source
 assert "OpenStreetMap" in permissions_source
 assert "OpenStreetMap Overpass" in road_lookup

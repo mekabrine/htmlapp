@@ -68,7 +68,7 @@ enum HTMLPermission: String, CaseIterable, Identifiable {
         case .nfc: return "Allows this saved app to initiate foreground NFC tag scans after your approval."
         case .camera: return "Allows this HTML app to capture video."
         case .microphone: return "Allows this HTML app to record audio."
-        case .location: return "Allows this HTML app to request your current position and, when requested, resolve an approximate street address using Apple geocoding."
+        case .location: return "Allows this HTML app to request your current position. When requested, it may send coordinates to Apple for addresses, nearby places or driving estimates."
         case .roadData: return "Allows this saved app to share GPS coordinates with an OpenStreetMap Overpass server to request mapped road and speed-limit tags. Third-party service; requires internet."
         case .motion: return "Allows this HTML app to read motion and walking-step history after iOS permission."
         case .bluetooth: return "Allows this HTML app to discover nearby Bluetooth Low Energy devices when you ask it to scan."
@@ -216,9 +216,11 @@ final class NativePermissionCoordinator: NSObject, CLLocationManagerDelegate {
             let status = manager.authorizationStatus
             switch status {
             case .notDetermined:
+                self.enqueueLocation(callbackID: callbackID, timeoutMS: timeoutMS)
                 manager.requestWhenInUseAuthorization()
             case .authorizedAlways, .authorizedWhenInUse:
-                self.beginLocation(callbackID: callbackID, manager: manager, timeoutMS: timeoutMS)
+                self.enqueueLocation(callbackID: callbackID, timeoutMS: timeoutMS)
+                manager.requestLocation()
             case .denied, .restricted:
                 self.resolveLocationError(callbackID, code: 1, message: "Location access is disabled in iOS Settings.")
             @unknown default:
@@ -259,14 +261,14 @@ final class NativePermissionCoordinator: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    private func beginLocation(callbackID: String, manager: CLLocationManager, timeoutMS: Double?) {
+    private func enqueueLocation(callbackID: String, timeoutMS: Double?) {
         pendingLocationCallbacks.append(callbackID)
-        manager.requestLocation()
 
         let seconds = max(1, min((timeoutMS ?? 15000) / 1000, 60))
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.pendingLocationCallbacks.contains(callbackID) else { return }
             self.pendingLocationCallbacks.removeAll { $0 == callbackID }
+            self.locationTimeouts.removeValue(forKey: callbackID)
             self.resolveLocationError(callbackID, code: 3, message: "The location request timed out.")
         }
         locationTimeouts[callbackID] = work
@@ -276,11 +278,7 @@ final class NativePermissionCoordinator: NSObject, CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
-            let callbacks = pendingLocationCallbacks
-            if callbacks.isEmpty {
-                // A request arrived before the system authorization prompt completed.
-                return
-            }
+            guard !pendingLocationCallbacks.isEmpty else { return }
             manager.requestLocation()
         case .denied, .restricted:
             finishAllLocationErrors(code: 1, message: "Location access is disabled in iOS Settings.")

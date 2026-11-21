@@ -1,5 +1,29 @@
 [
   {
+    "version": "1.9.31",
+    "summary": "Added widget voice context, an Alternative microphone test, and location-aware Forge generation with Apple Maps.",
+    "changes": [
+      {
+        "title": "Add context from the Lock Screen",
+        "description": "Choose camera photos, library photos, files, or skills before sending a voice request to Forge.",
+        "symbol": "paperclip",
+        "tint": "blue"
+      },
+      {
+        "title": "Test Alternative before recording",
+        "description": "On the Lock Screen widget screen, say a few words and tap the purple mic. You’ll see the result, and a separate prompt recording starts right after.",
+        "symbol": "mic.badge.plus",
+        "tint": "purple"
+      },
+      {
+        "title": "Build apps around your current place",
+        "description": "Forge can use Apple Maps for nearby venue candidates and foreground driving estimates. Confirm your destination once and keep the estimate updated as you move.",
+        "symbol": "location.fill",
+        "tint": "green"
+      }
+    ]
+  },
+  {
     "version": "1.9.30",
     "summary": "Forge automatically diagnoses, repairs and retests blocking app-check failures.",
     "changes": [

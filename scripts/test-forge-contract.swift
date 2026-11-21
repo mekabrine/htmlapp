@@ -39,6 +39,14 @@ struct ForgeContractTests {
         let receiptPlan = ForgeCapabilityPlan.infer("scan a receipt")
         precondition(receiptPlan.nativeMethods.contains("documents.scan"))
         precondition(receiptPlan.nativeMethods.contains("vision.recognizeText"))
+        let hotelRequest = "Make an app for the current hotel im at and say how long a drive it would be from my location."
+        precondition(ForgeCurrentPlace.query(in: hotelRequest) == "hotel")
+        precondition(ForgeCurrentPlace.query(in: "Show the name of the restaurant I’m at") == "restaurant")
+        precondition(ForgeCurrentPlace.query(in: "Build an inventory app for my hotel") == nil)
+        let hotelPlan = ForgeCapabilityPlan.infer(hotelRequest)
+        precondition(hotelPlan.nativeMethods.contains("map.nearbyPlaces"))
+        precondition(hotelPlan.nativeMethods.contains("map.drivingETA"))
+        precondition(hotelPlan.permissions.contains("location"))
         let aestheticPlan = ForgeCapabilityPlan.infer("make it cleaner")
         precondition(aestheticPlan.nativeMethods.isEmpty)
         let hosted = ForgeAppManifest.build(

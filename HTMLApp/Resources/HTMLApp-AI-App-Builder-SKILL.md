@@ -1279,6 +1279,13 @@ if (!result.cancelled) console.log(result.value);
 ```
 **Constraints:**
 
+### Current place and live drive estimates
+
+- Treat “the hotel I’m at,” “my current restaurant,” and similar instructions as a request to resolve the venue from device location. Start with a visible Use Current Location button and `navigator.geolocation`. Do not put manual address or coordinate fields first.
+- Call `HTMLAppNative.map.nearbyPlaces(latitude, longitude, "hotel")` (or the relevant name/category). Apple Maps can return several nearby candidates or none. Let the user confirm which named place they mean. Save the confirmed destination in app storage without changing it as the origin moves. Support search or manual entry as a fallback.
+- For driving time, call `HTMLAppNative.map.drivingETA(originLatitude, originLongitude, destinationLatitude, destinationLongitude)`. Display `expectedTravelTimeSeconds` and `distanceMeters` with honest offline and stale states. Use foreground `watchPosition` with movement and time throttling (at least 30 seconds between requests), and stop the watcher when the app leaves the foreground.
+- The saved app has its own Location permission. This is separate from AI Generation Privacy. Never write build-time private coordinates or a detected private venue into generated source.
+
 ### Consent-gated public HTTPS API requests  (`network.request`)
 **API:** `await HTMLAppNative.network.request({url,method?,headers?,body?,signal?})`
 **Use when:** Send text/JSON requests to a public HTTPS API through iOS URLSession when browser CORS prevents legitimate access.

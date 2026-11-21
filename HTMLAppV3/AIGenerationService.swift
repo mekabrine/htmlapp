@@ -136,6 +136,7 @@ final class AIGenerationSession: ObservableObject {
         case "Planning APIs and capabilities": return "Checking which parts should stay local and which need verified device or web capabilities."
         case "Designing the app": return "Choosing the core workflow, data model, and responsive navigation before coding."
         case "Checking device and web APIs": return "Verifying HTMLApp capabilities and external data sources before depending on them."
+        case "Checking current-place context": return "Checking whether permitted device location and Apple Maps can resolve nearby venues."
         case "Checking device capabilities": return "Matching the requested features to HTMLApp's documented native and browser capabilities."
         case "Finding useful public APIs": return "Looking for no-key data sources, then verifying documentation before integration."
         case "Using web research": return "Applying the research evidence to the implementation without extrapolating beyond it."
@@ -1185,22 +1186,33 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
     }
 
     /// Deterministic red flags that the actual requested workflow is missing.
-    /// This cannot prove live APIs work, so these are explicitly advisory,
-    /// never reported as a verified network/location success.
+    /// These source checks can identify missing code paths, but cannot verify
+    /// live network or location results.
     private static func coreWorkflowWarnings(prompt: String, html: String) -> [String] {
         let goal = prompt.lowercased()
         let code = html.lowercased()
         var warnings: [String] = []
+        if ForgeCurrentPlace.query(in: prompt) != nil {
+            if !code.contains("getcurrentposition") && !code.contains("watchposition") {
+                warnings.append("Current venue: use foreground device geolocation so the user does not need to enter their current position.")
+            }
+            if !code.contains("nearbyplaces") {
+                warnings.append("Current venue: resolve the nearby venue with HTMLAppNative.map.nearbyPlaces and confirm a candidate; keep manual search as a fallback.")
+            }
+            if ForgeCurrentPlace.requestsDrivingETA(prompt) && !code.contains("drivingeta") {
+                warnings.append("Current venue: use HTMLAppNative.map.drivingETA from the live position to the confirmed venue.")
+            }
+        }
         let routeIntent = (goal.contains("nearest") || goal.contains("nearby")) &&
             (goal.contains("direction") || goal.contains("route"))
         if routeIntent {
             if !code.contains("getcurrentposition") && !code.contains("watchposition") {
                 warnings.append("Core workflow: no foreground location request was found.")
             }
-            if !code.contains("fetch(") && !code.contains("maps.apple.com") {
+            if !code.contains("fetch(") && !code.contains("maps.apple.com") && !code.contains("nearbyplaces") {
                 warnings.append("Core workflow: no real nearby-search or map handoff data path was found.")
             }
-            if !code.contains("route/v1") && !code.contains("directions") && !code.contains("mapkit") {
+            if !code.contains("route/v1") && !code.contains("directions") && !code.contains("mapkit") && !code.contains("drivingeta") {
                 warnings.append("Core workflow: no driving route or directions implementation was found.")
             }
             if !code.contains("miles") && !code.contains("distance") {
@@ -1291,7 +1303,8 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             return
         }
 
-        let initial = await appCheckFindings(in: original, mode: testMode)
+        let request = editRequest.map { originalPrompt + "\n" + $0 } ?? originalPrompt
+        let initial = await appCheckFindings(in: original, mode: testMode, request: request)
         try Task.checkCancellation()
         AIDebugTraceStore.shared.append("QA CLASSIFICATION",
             "Blocking: \(initial.blocking.count); Advisory: \(initial.advisory.count)\n" +
@@ -1307,7 +1320,6 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         // Keep the candidate separate until it passes the same checks as the original.
         // QUICK changes generation routing, but a confirmed failure still uses both configured roles.
         let iconContext = ForgeEditIconContext(original)
-        let request = editRequest.map { originalPrompt + "\n" + $0 } ?? originalPrompt
         let (planner, coder) = ForgeRunOptions.$quick.withValue(false) {
             (AISettingsStore.configuration(for: .planner), AISettingsStore.configuration(for: .coder))
         }
@@ -1349,7 +1361,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         try Task.checkCancellation()
         if let repairedHTML {
             phase = "Rechecking repaired app"
-            let retest = await appCheckFindings(in: repairedHTML, mode: testMode)
+            let retest = await appCheckFindings(in: repairedHTML, mode: testMode, request: request)
             try Task.checkCancellation()
             // An interrupted WebView check cannot confirm that the original defect was fixed.
             remaining = retest.blocking + retest.advisory.filter {
@@ -1367,12 +1379,14 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         throw AIGenerationError.unresolvedAppChecks(remaining)
     }
 
-    private func appCheckFindings(in html: String, mode: ForgeTestMode) async -> (blocking: [String], advisory: [String]) {
+    private func appCheckFindings(in html: String, mode: ForgeTestMode, request: String) async -> (blocking: [String], advisory: [String]) {
         let structural = HTMLQualityChecks.issues(in: html)
-        let functional = Self.coreWorkflowWarnings(prompt: originalPrompt, html: html)
+        let functional = Self.coreWorkflowWarnings(prompt: request, html: html)
         let runtime = await HTMLRuntimeVerifier.verify(html: html, timeout: mode == .fast ? 3 : 6)
         let blocking = HTMLQualityChecks.blockingIssues(structural) +
-            (mode == .balanced ? functional.filter { $0.hasPrefix("Core workflow:") } : []) +
+            functional.filter {
+                $0.hasPrefix("Current venue:") || (mode == .balanced && $0.hasPrefix("Core workflow:"))
+            } +
             runtime.filter { issue in
                 issue.hasPrefix("JavaScript syntax in inline script") ||
                 issue.hasPrefix("JavaScript did not compile") ||
@@ -2206,7 +2220,7 @@ Resolve ambiguity with ordinary reversible defaults. Do not expose hidden reason
 
     static func needsCapabilityResearch(for prompt: String) -> Bool {
         let lower = prompt.lowercased()
-        return needsWebResearch(for: prompt)
+        return ForgeCurrentPlace.query(in: prompt) != nil || needsWebResearch(for: prompt)
             || deviceCapabilitySignals.contains(where: { containsSignal($0, in: lower) })
     }
 

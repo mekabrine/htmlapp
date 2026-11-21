@@ -15,8 +15,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.30"
-    static let compiledBuild = "135"
+    static let compiledVersion = "1.9.31"
+    static let compiledBuild = "136"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -33,12 +33,15 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "forge-auto-repair", title: "Forge diagnoses and fixes failed checks",
-                  description: "When a blocking check fails, the Prompt Planner pinpoints the cause and the Coding Agent applies a targeted repair. Fast and Balanced both retest the result before accepting it.",
-                  symbol: "wrench.and.screwdriver", tint: .purple),
-            Entry(id: "forge-native-tabs", title: "Prevent blank native tabs",
-                  description: "Forge now accounts for how HTMLApp shows each page when generating and repairing apps with native tabs.",
-                  symbol: "rectangle.stack", tint: .blue)
+            Entry(id: "widget-context", title: "Add context from the Lock Screen",
+                  description: "Choose camera photos, library photos, files, or skills before sending a voice request to Forge.",
+                  symbol: "paperclip", tint: .blue),
+            Entry(id: "widget-mic-test", title: "Test Alternative before recording",
+                  description: "On the Lock Screen widget screen, say a few words and tap the purple mic. You’ll see the result, and a separate prompt recording starts right after.",
+                  symbol: "mic.badge.plus", tint: .purple),
+            Entry(id: "forge-current-place", title: "Build apps around your current place",
+                  description: "Forge can use Apple Maps for nearby venue candidates and foreground driving estimates. Confirm your destination once and keep the estimate updated as you move.",
+                  symbol: "location.fill", tint: .green)
         ]
     }
 }

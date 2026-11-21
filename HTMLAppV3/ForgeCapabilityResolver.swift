@@ -104,6 +104,15 @@ struct ForgeCapabilityPlan {
             methods.append("network.status")
             constraints.append("A satisfied network path does not prove that a particular endpoint is reachable")
         }
+        if ForgeCurrentPlace.query(in: request) != nil {
+            methods.append("map.nearbyPlaces")
+            browsers.append("navigator.geolocation (foreground, permission-gated)")
+            constraints.append("Resolve current venue from fresh GPS and ask the user to confirm the candidate before saving it; typing is a fallback.")
+        }
+        if ForgeCurrentPlace.requestsDrivingETA(request) {
+            methods.append("map.drivingETA")
+            constraints.append("Use Apple Maps for estimated driving time; refresh on movement in the foreground without re-resolving the destination.")
+        }
         if mentions(["location", "gps", "track route", "speedometer", "where am i",
                      "how far", "nearby", "geofence"]) {
             browsers.append("navigator.geolocation (foreground, permission-gated)")
@@ -209,4 +218,34 @@ struct ForgeCapabilityPlan {
     }
 }
 
+/// Identifies requests that use the device's current venue as an input.
+enum ForgeCurrentPlace {
+    static func query(in request: String) -> String? {
+        let text = request.lowercased().replacingOccurrences(of: "’", with: "'")
+        for (category, clues) in [
+            ("hotel", ["hotel", "motel", "resort"]),
+            ("restaurant", ["restaurant", "diner", "bistro"]),
+            ("cafe", ["cafe", "café", "coffee shop"]),
+            ("store", ["store", "supermarket", "grocery store"])
+        ] {
+            for clue in clues {
+                let before = ["this ", "current ", "i'm at a ", "i am at a ", "i'm at the ",
+                              "i am at the ", "staying at a ", "staying at the "]
+                let after = [" i'm at", " im at", " i am at", " i'm staying", " i am staying",
+                             " we're at", " we are at", " i'm in", " i am in"]
+                if before.contains(where: { text.contains($0 + clue) }) ||
+                    after.contains(where: { text.contains(clue + $0) }) {
+                    return category
+                }
+            }
+        }
+        return nil
+    }
 
+    static func requestsDrivingETA(_ request: String) -> Bool {
+        let text = request.lowercased()
+        return ["drive time", "driving time", "driving eta", "drive back", "drive to",
+                "how long a drive", "how long it takes to drive", "how long the drive",
+                "time to drive", "how far of a drive", " eta "].contains(where: text.contains)
+    }
+}
