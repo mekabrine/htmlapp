@@ -181,282 +181,99 @@ struct AIGenerationView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if ForgeBackgroundUpload.shared.isActive {
-                    backgroundForgePendingView
-                } else if existingApp == nil && (exploringStyles || !styleOptions.isEmpty || styleFailure != nil) {
-                    styleSelectionView
-                } else if session.streamedHTML.isEmpty && !session.isWorking && !browserResearch.isBrowsing {
-                    if shortcutSource == "libraryMic" && !libraryPromptRequested {
-                        VStack(spacing: 16) {
-                            if let error = session.errorMessage { Text(error) }
-                            else { ProgressView("Starting your app…") }
-                            Button("Edit prompt") { libraryPromptRequested = true }
-                        }
-                        .padding()
-                    } else { promptView }
-                } else {
-                    studioView
-                }
-            }
-            .confirmationDialog("Save a destination for this app?", isPresented: $choosingVenue, titleVisibility: .visible) {
-                ForEach(venueCandidates.indices, id: \.self) { index in
-                    let place = venueCandidates[index]
-                    Button("Use " + place.name + " · " + String(Int(place.distanceMeters)) + " m") {
-                        confirmedVenue = place
-                        do { try ForgeVenueSeed.save(place, appID: draftVenueID) }
-                        catch { uiPolishNotice = "The destination will be kept for this session. Save the app before closing Forge." }
-                    }
-                }
-                Button("Choose in the app", role: .cancel) { confirmedVenue = nil; ForgeVenueSeed.remove(draftVenueID) }
-            } message: { Text("Pick the place you mean. Its name and coordinates stay on this device.") }
-            .htmlAppFirstUseToasts()
-            .sheet(isPresented: $showingUIReviewChoice) {
-                VStack(spacing: 20) {
-                    Image(systemName: "eye").font(.largeTitle).foregroundStyle(.blue)
-                    Text("Look over the UI one more time?").font(.title2.bold())
-                    Text("Forge can refine spacing, readability and layout while preserving your app's features and chosen style.")
-                        .foregroundStyle(.secondary)
-                    Button("Yes, review the UI") {
-                        uiReviewAccepted = true
-                        showingUIReviewChoice = false
-                    }.buttonStyle(.borderedProminent)
-                    Button("No — continue (\(uiReviewSeconds)s)", role: .cancel) {
-                        showingUIReviewChoice = false
-                    }.buttonStyle(.bordered)
-                    Text("No is selected automatically after five seconds.").font(.footnote)
-                }
-                .padding(24)
-                .presentationDetents([.medium])
-            }
-            .navigationTitle(importedDraft != nil ? "Edit imported HTML" : existingApp == nil ? "Generate" : "Edit with AI")
-            .alert("Full app rewrite required?", isPresented: $rewriteApprovalPending) {
-                Button("Rewrite Entire App", role: .destructive) {
-                    rewriteApproved = true
-                    applyAIChange()
-                }
-                Button("Cancel", role: .cancel) {
-                    rewriteApproved = false
-                }
-            } message: {
-                Text("You asked for a full rewrite. This will replace the current draft. You can undo it afterward.")
-            }
-            .alert(practiceStep >= 5 ? "Practice complete!" : "Practice edit", isPresented: $showPracticeEditNotice) {
-                Button("Continue Practicing", role: .cancel) {}
-            } message: {
-                Text("You practiced Forge without sending an AI request or saving anything to your Library.")
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if !attachments.files.isEmpty {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Menu {
-                            ForEach(attachments.files) { item in
-                                Button("Remove \(item.name)", role: .destructive) { attachments.items.removeAll { $0.id == item.id } }
-                            }
-                        } label: { Label("\(attachments.files.count)", systemImage: "paperclip") }
-                        .disabled(session.isWorking || browserResearch.isBrowsing)
-                    }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showingRequestContext = true } label: { Label("Request Context", systemImage: "list.bullet.rectangle") }
-                        .disabled(session.isWorking || browserResearch.isBrowsing)
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        if demoMode { generationTask?.cancel(); dismiss(); return }
-                        if ForgeBackgroundUpload.shared.isActive || exploringStyles || !styleOptions.isEmpty || styleFailure != nil || session.isWorking || browserResearch.isBrowsing || !session.streamedHTML.isEmpty {
-                            showCancelConfirmation = true
-                        } else {
-                            AIDebugTraceStore.shared.finish(outcome: "Canceled before starting")
-                            microphoneRecordingTask?.cancel()
-                            dictation.cancel()
-                            dismiss()
-                        }
-                    }
-                    .disabled(saving)
-                }
-                if !unsavedEditHistory.isEmpty {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button {
-                            guard !session.isWorking, !saving,
-                                  let previous = unsavedEditHistory.popLast() else { return }
-                            session.acceptExternalHTML(previous)
-                            if !appliedRequests.isEmpty { appliedRequests.removeLast() }
-                            if !appliedSummaries.isEmpty { appliedSummaries.removeLast() }
-                            session.checkpointRequests = appliedRequests
-                            session.checkpointSummaries = appliedSummaries
-                            session.persistCheckpoint()
-                            comparingBefore = false
-                            ForgeConversationLog.append(conversationID, kind: "revert", text: "User reverted 1 unsaved AI edit.")
-                            uiPolishNotice = "Restored an earlier unsaved edit."
-                        } label: { Label("Undo Edit", systemImage: "arrow.uturn.backward") }
-                        .disabled(session.isWorking || saving)
-                    }
-                }
-                if developerMode && (debugTrace.isActive || !debugTrace.history.isEmpty) {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button { showDebug = true } label: { Image(systemName: "ladybug") }
-                            .accessibilityLabel("View AI debug trace")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingOfflineConsent) {
-                HTMLAppOfflineForgeConsentView(isEdit: offlineActionIsEdit) { effort in
-                    runOfflineForge(edit: offlineActionIsEdit, effort: effort)
-                }
-            }
-            .alert("Offline Forge unavailable", isPresented: Binding(
-                get: { offlineUnavailableMessage != nil },
-                set: { if !$0 { offlineUnavailableMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) { offlineUnavailableMessage = nil }
-            } message: {
-                Text(offlineUnavailableMessage ?? "This device cannot use offline Apple Intelligence.")
-            }
-            .sheet(isPresented: $pendingChoiceQuestion, onDismiss: {
-                if !questionAlreadyAsked { return }
-                resolveCreationQuestion(answer: choiceResponse.isEmpty ? "Choose the most practical option" : choiceResponse)
-            }) {
-                NavigationStack {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("One quick question").font(.title2.bold())
-                        Text(questionTitle)
-                            .font(.headline)
-                        Text("Forge chooses a practical default after five seconds without interaction. Locking the device continues with that default.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                        ForEach(questionChoices, id: \.self) { option in
-                            Button {
-                                choiceResponse = option
-                                pendingChoiceQuestion = false
-                            } label: {
-                                HStack { Text(option); Spacer(); Image(systemName: "chevron.right") }
-                                    .padding()
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        TextField("Or describe your preference", text: $customQuestionAnswer, axis: .vertical)
-                            .lineLimit(2...4).textFieldStyle(.roundedBorder)
-                            .focused($questionFieldFocused)
-                            .onChange(of: customQuestionAnswer) { _ in lastQuestionInteraction = Date() }
-                            .onChange(of: questionFieldFocused) { _ in lastQuestionInteraction = Date() }
-                            .onTapGesture { lastQuestionInteraction = Date() }
-                            .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in lastQuestionInteraction = Date() })
-                        Button("Use my answer") {
-                            choiceResponse = customQuestionAnswer.trimmingCharacters(in: .whitespacesAndNewlines)
-                            pendingChoiceQuestion = false
-                        }.buttonStyle(.borderedProminent)
-                            .disabled(customQuestionAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        Spacer()
-                    }
-                    .padding()
-                    .navigationTitle("Forge Question")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Let Forge choose") {
-                                choiceResponse = suggestedAnswer
-                                pendingChoiceQuestion = false
-                            }
-                        }
-                    }
-                }
-                .presentationDetents([.medium, .large])
-            }
-            .sheet(isPresented: $showDebug) {
-                AIDebugTraceView()
-            }
-            .confirmationDialog(
-                existingApp == nil ? "Discard this AI generation?" : "Discard AI edits?",
-                isPresented: $showCancelConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Discard and Close", role: .destructive) {
-                    questionAlreadyAsked = false
-                    pendingChoiceQuestion = false
-                    questionTimer?.cancel()
-                    generationTask?.cancel()
-                    ForgeBackgroundUpload.shared.cancel()
-                    preparedStyleTask?.cancel()
-                    preparedStyleTask = nil
-                    preparedStylePrompt = nil
-                    endForgeActivity()
-                    dictation.stop()
-                    AIDebugTraceStore.shared.finish(outcome: "Discarded")
-                    ForgeConversationLog.append(conversationID, kind: "discard", text: "User discarded the current unsaved AI work.")
-                    clearRequestAttachments()
-                    workTracker.finish(outcome: "Discarded")
-                    session.clearCheckpoint()
-                    ForgeVenueSeed.remove(draftVenueID)
-                    if existingApp == nil { draftWorkID = "draft-\(UUID().uuidString)" }
-                    styleOptions = []
-                    styleFailure = nil
-                    exploringStyles = false
-                    dismiss()
-                }
-                Button("Keep Working", role: .cancel) {}
-            } message: {
-                Text(existingApp == nil ? "The style previews and current AI work will be lost if you close without saving." : "Your saved HTMLApp will not be changed unless you choose Save Changes.")
-            }
-            .alert("Forge couldn’t finish that step", isPresented: Binding(
-                get: { session.errorMessage != nil },
-                set: { if !$0 { session.errorMessage = nil } }
-            )) {
-                Button(retryButtonTitle) {
-                    session.errorMessage = nil
-                    retryLastFailure()
-                }
-                Button("Dismiss", role: .cancel) { session.errorMessage = nil }
-            } message: {
-                Text(session.errorMessage ?? "")
-            }
-            .confirmationDialog("Resume Forge draft?", isPresented: $showDraftRecovery, titleVisibility: .visible) {
-                Button("Continue Generation") { continueRecoveredDraft() }
-                Button("Discard Draft", role: .destructive) {
-                    preparedStyleTask?.cancel()
-                    preparedStyleTask = nil
-                    preparedStylePrompt = nil
-                    ForgeDraftCheckpointStore.clear()
-                    ForgeVenueSeed.remove(draftVenueID)
-                    if existingApp == nil { draftWorkID = "draft-\(UUID().uuidString)" }
-                    recoverableDraft = nil
-                    generationTask?.cancel()
-                    dismiss()
-                }
-                Button("Not Now", role: .cancel) {}
-            } message: {
-                if let draft = recoverableDraft {
-                    Text("Interrupted during \(draft.phase). Generation had run for \(Self.durationText(draft.savedAt.timeIntervalSince(draft.startedAt ?? draft.savedAt))). Continue reuses the saved source when available. An unfinished document may need another coding request.")
-                }
-            }
-            .sheet(isPresented: $showingRequestContext) { requestContextSheet }
-            .sheet(isPresented: $showRunHistory) {
-                NavigationStack {
-                    ScrollView {
-                        VStack(spacing: 16) {
-                            ForgeWorkRing(runs: workTracker.recentRuns,
-                                          active: session.isWorking || browserResearch.isBrowsing)
-                            ForgeRunBreakdown(runs: workTracker.recentRuns)
-                        }
-                        .padding(18)
-                    }
-                    .navigationTitle("AI Work History")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showRunHistory = false }
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: $showDetails) {
-                ForgeDetailsView(
-                    plan: session.refinedBrief,
-                    research: browserResearch.lastReport,
-                    qa: session.verificationReport,
-                    debug: developerMode ? debugTrace.text : ""
-                )
+        dictationPage
+        .onChange(of: session.refinedBrief) { brief in
+            if !brief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                milestones.add(.plan, "App plan ready", bytes: brief.utf8.count, key: "prompt-plan")
             }
         }
+        .onChange(of: browserResearch.completedPages) { pages in
+            for page in pages {
+                milestones.add(.website, "Read \(page.host)", bytes: page.bytes, key: "web-\(page.id)")
+                workTracker.transition(.research)
+                workTracker.updateVolume(page.bytes)
+            }
+        }
+        .onChange(of: browserResearch.status) { status in
+            workTracker.observe(phase: session.phase, isBrowsing: browserResearch.isBrowsing,
+                                browserStatus: status, streamSection: session.streamedSection)
+        }
+        .onChange(of: session.streamedSection) { part in
+            workTracker.observe(phase: session.phase, isBrowsing: browserResearch.isBrowsing,
+                                browserStatus: browserResearch.status, streamSection: part)
+        }
+        .onChange(of: session.sectionByteCounts) { parts in
+            for (key, bytes) in parts {
+                let stage: ForgeWorkSlice.Stage = key == "script" ? .script : (key == "body" ? .body : .css)
+                workTracker.updateVolume(bytes, stage: stage)
+            }
+        }
+        .onChange(of: session.qaRepairResponseBytes) { bytes in
+            workTracker.updateVolume(bytes, stage: .repair)
+        }
+        .onChange(of: session.iconScript) { script in
+            workTracker.updateVolume(script.utf8.count, stage: .icon)
+        }
+        .onChange(of: session.streamedByteCount) { bytes in
+            #if compiler(>=6.2)
+            if #available(iOS 26.0, *) {
+                HTMLAppForgeContinuedProcessing.update(phase: session.phase, streamedBytes: bytes)
+            }
+            #endif
+        }
+        .onChange(of: session.streamedHTML) { html in
+            milestones.inspectHTML(html)
+        }
+        .onChange(of: session.errorMessage) { message in
+            if let message, AIDebugTraceStore.shared.isActive {
+                AIDebugTraceStore.shared.append("ERROR DETAILS",
+                    "Phase: \(session.phase)\nFailure: \(message)\nHTML: \(session.streamedHTML.utf8.count) bytes")
+            }
+        }
+        .onChange(of: session.verificationReport) { report in
+            if !report.isEmpty && AIDebugTraceStore.shared.isActive {
+                AIDebugTraceStore.shared.append("APP QA REPORT", report)
+            }
+        }
+        .onChange(of: session.wantsUIPolish) { needed in
+            if AIDebugTraceStore.shared.isActive {
+                AIDebugTraceStore.shared.append("UI SPECIALIST DECISION", needed ? "Requested" : "Skipped")
+            }
+        }
+        .onChange(of: session.phase) { phase in
+            if phase.localizedCaseInsensitiveContains("overhaul") || phase.localizedCaseInsensitiveContains("polish") { HTMLAppFirstUseTips.show("polish") }
+            #if compiler(>=6.2)
+            if #available(iOS 26.0, *) {
+                HTMLAppForgeContinuedProcessing.update(phase: phase, streamedBytes: session.streamedByteCount)
+            }
+            #endif
+            if let job = forgeActivityJobID {
+                if #available(iOS 16.2, *) {
+                    Task { await HTMLAppForgeActivityService.update(job: job, phase: phase) }
+                }
+            }
+            workTracker.observe(phase: phase, isBrowsing: browserResearch.isBrowsing,
+                                browserStatus: browserResearch.status, streamSection: session.streamedSection)
+            if debugTrace.isActive { AIDebugTraceStore.shared.append("PHASE", phase) }
+            if scenePhase == .background, session.isWorking,
+               !GenerationMusic.shared.isPlaying, !BackgroundKeepAlive.shared.isRunning {
+                handoffForgeToBackgroundURLSession()
+            }
+            if phase == "Generating live preview" {
+                milestones.add(.api, "Capabilities checked", bytes: browserResearch.lastReport.utf8.count, key: "api-phase")
+            }
+            if phase.contains("icon") && (phase.contains("Checking") || phase.contains("Designing")) {
+                milestones.add(.icon, "App icon designed", bytes: session.iconScript.utf8.count, key: "icon")
+            }
+            if phase == "Ready to review" {
+                workTracker.markUsable(repairPassed: session.verificationReport.hasPrefix("Detected:") ? true : nil)
+                milestones.add(.test, "App checks completed", bytes: session.verificationReport.utf8.count, key: "checks")
+            }
+        }
+    }
+
+    private var navigationPage: some View {
+        NavigationStack { reviewAndRecoveryPresentation }
         .forgeAttachments(attachments, dictation: dictation, onCancel: { clearRequestAttachments() }) { words, items in
             attachments.items = items
             changePrompt = words
@@ -590,6 +407,10 @@ struct AIGenerationView: View {
             // the iOS background task still has time to submit it.
             if scenePhase == .background { handoffForgeToBackgroundURLSession() }
         }
+    }
+
+    private var dictationPage: some View {
+        navigationPage
         .onChange(of: prompt) { _ in
             if !session.isWorking && !exploringStyles {
                 if quickModePolicy == "automatic" { autoQuickReason = nil }
@@ -627,93 +448,309 @@ struct AIGenerationView: View {
                 if !value.isEmpty && !promptMicHeld { promptDictationAwaitingResult = false }
             }
         }
-        .onChange(of: session.refinedBrief) { brief in
-            if !brief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                milestones.add(.plan, "App plan ready", bytes: brief.utf8.count, key: "prompt-plan")
+    }
+
+    private var forgeContent: some View {
+        Group {
+            if ForgeBackgroundUpload.shared.isActive {
+                backgroundForgePendingView
+            } else if existingApp == nil && (exploringStyles || !styleOptions.isEmpty || styleFailure != nil) {
+                styleSelectionView
+            } else if session.streamedHTML.isEmpty && !session.isWorking && !browserResearch.isBrowsing {
+                if shortcutSource == "libraryMic" && !libraryPromptRequested {
+                    VStack(spacing: 16) {
+                        if let error = session.errorMessage { Text(error) }
+                        else { ProgressView("Starting your app…") }
+                        Button("Edit prompt") { libraryPromptRequested = true }
+                    }
+                    .padding()
+                } else { promptView }
+            } else {
+                studioView
             }
         }
-        .onChange(of: browserResearch.completedPages) { pages in
-            for page in pages {
-                milestones.add(.website, "Read \(page.host)", bytes: page.bytes, key: "web-\(page.id)")
-                workTracker.transition(.research)
-                workTracker.updateVolume(page.bytes)
+    }
+
+    private var primaryPresentation: some View {
+        forgeContent
+        .confirmationDialog("Save a destination for this app?", isPresented: $choosingVenue, titleVisibility: .visible) {
+            venueChoices
+        } message: {
+            Text("Pick the place you mean. Its name and coordinates stay on this device.")
+        }
+        .htmlAppFirstUseToasts()
+        .sheet(isPresented: $showingUIReviewChoice) {
+            VStack(spacing: 20) {
+                Image(systemName: "eye").font(.largeTitle).foregroundStyle(.blue)
+                Text("Look over the UI one more time?").font(.title2.bold())
+                Text("Forge can refine spacing, readability and layout while preserving your app's features and chosen style.")
+                    .foregroundStyle(.secondary)
+                Button("Yes, review the UI") {
+                    uiReviewAccepted = true
+                    showingUIReviewChoice = false
+                }.buttonStyle(.borderedProminent)
+                Button("No — continue (\(uiReviewSeconds)s)", role: .cancel) {
+                    showingUIReviewChoice = false
+                }.buttonStyle(.bordered)
+                Text("No is selected automatically after five seconds.").font(.footnote)
             }
+            .padding(24)
+            .presentationDetents([.medium])
         }
-        .onChange(of: browserResearch.status) { status in
-            workTracker.observe(phase: session.phase, isBrowsing: browserResearch.isBrowsing,
-                                browserStatus: status, streamSection: session.streamedSection)
-        }
-        .onChange(of: session.streamedSection) { part in
-            workTracker.observe(phase: session.phase, isBrowsing: browserResearch.isBrowsing,
-                                browserStatus: browserResearch.status, streamSection: part)
-        }
-        .onChange(of: session.sectionByteCounts) { parts in
-            for (key, bytes) in parts {
-                let stage: ForgeWorkSlice.Stage = key == "script" ? .script : (key == "body" ? .body : .css)
-                workTracker.updateVolume(bytes, stage: stage)
+        .navigationTitle(importedDraft != nil ? "Edit imported HTML" : existingApp == nil ? "Generate" : "Edit with AI")
+        .alert("Full app rewrite required?", isPresented: $rewriteApprovalPending) {
+            Button("Rewrite Entire App", role: .destructive) {
+                rewriteApproved = true
+                applyAIChange()
             }
-        }
-        .onChange(of: session.qaRepairResponseBytes) { bytes in
-            workTracker.updateVolume(bytes, stage: .repair)
-        }
-        .onChange(of: session.iconScript) { script in
-            workTracker.updateVolume(script.utf8.count, stage: .icon)
-        }
-        .onChange(of: session.streamedByteCount) { bytes in
-            #if compiler(>=6.2)
-            if #available(iOS 26.0, *) {
-                HTMLAppForgeContinuedProcessing.update(phase: session.phase, streamedBytes: bytes)
+            Button("Cancel", role: .cancel) {
+                rewriteApproved = false
             }
-            #endif
+        } message: {
+            Text("You asked for a full rewrite. This will replace the current draft. You can undo it afterward.")
         }
-        .onChange(of: session.streamedHTML) { html in
-            milestones.inspectHTML(html)
+        .alert(practiceStep >= 5 ? "Practice complete!" : "Practice edit", isPresented: $showPracticeEditNotice) {
+            Button("Continue Practicing", role: .cancel) {}
+        } message: {
+            Text("You practiced Forge without sending an AI request or saving anything to your Library.")
         }
-        .onChange(of: session.errorMessage) { message in
-            if let message, AIDebugTraceStore.shared.isActive {
-                AIDebugTraceStore.shared.append("ERROR DETAILS",
-                    "Phase: \(session.phase)\nFailure: \(message)\nHTML: \(session.streamedHTML.utf8.count) bytes")
-            }
-        }
-        .onChange(of: session.verificationReport) { report in
-            if !report.isEmpty && AIDebugTraceStore.shared.isActive {
-                AIDebugTraceStore.shared.append("APP QA REPORT", report)
-            }
-        }
-        .onChange(of: session.wantsUIPolish) { needed in
-            if AIDebugTraceStore.shared.isActive {
-                AIDebugTraceStore.shared.append("UI SPECIALIST DECISION", needed ? "Requested" : "Skipped")
-            }
-        }
-        .onChange(of: session.phase) { phase in
-            if phase.localizedCaseInsensitiveContains("overhaul") || phase.localizedCaseInsensitiveContains("polish") { HTMLAppFirstUseTips.show("polish") }
-            #if compiler(>=6.2)
-            if #available(iOS 26.0, *) {
-                HTMLAppForgeContinuedProcessing.update(phase: phase, streamedBytes: session.streamedByteCount)
-            }
-            #endif
-            if let job = forgeActivityJobID {
-                if #available(iOS 16.2, *) {
-                    Task { await HTMLAppForgeActivityService.update(job: job, phase: phase) }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !attachments.files.isEmpty {
+                ToolbarItem(placement: .confirmationAction) {
+                    Menu {
+                        ForEach(attachments.files) { item in
+                            Button("Remove \(item.name)", role: .destructive) { attachments.items.removeAll { $0.id == item.id } }
+                        }
+                    } label: { Label("\(attachments.files.count)", systemImage: "paperclip") }
+                    .disabled(session.isWorking || browserResearch.isBrowsing)
                 }
             }
-            workTracker.observe(phase: phase, isBrowsing: browserResearch.isBrowsing,
-                                browserStatus: browserResearch.status, streamSection: session.streamedSection)
-            if debugTrace.isActive { AIDebugTraceStore.shared.append("PHASE", phase) }
-            if scenePhase == .background, session.isWorking,
-               !GenerationMusic.shared.isPlaying, !BackgroundKeepAlive.shared.isRunning {
-                handoffForgeToBackgroundURLSession()
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingRequestContext = true } label: { Label("Request Context", systemImage: "list.bullet.rectangle") }
+                    .disabled(session.isWorking || browserResearch.isBrowsing)
             }
-            if phase == "Generating live preview" {
-                milestones.add(.api, "Capabilities checked", bytes: browserResearch.lastReport.utf8.count, key: "api-phase")
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    if demoMode { generationTask?.cancel(); dismiss(); return }
+                    if ForgeBackgroundUpload.shared.isActive || exploringStyles || !styleOptions.isEmpty || styleFailure != nil || session.isWorking || browserResearch.isBrowsing || !session.streamedHTML.isEmpty {
+                        showCancelConfirmation = true
+                    } else {
+                        AIDebugTraceStore.shared.finish(outcome: "Canceled before starting")
+                        microphoneRecordingTask?.cancel()
+                        dictation.cancel()
+                        dismiss()
+                    }
+                }
+                .disabled(saving)
             }
-            if phase.contains("icon") && (phase.contains("Checking") || phase.contains("Designing")) {
-                milestones.add(.icon, "App icon designed", bytes: session.iconScript.utf8.count, key: "icon")
+            if !unsavedEditHistory.isEmpty {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        guard !session.isWorking, !saving,
+                              let previous = unsavedEditHistory.popLast() else { return }
+                        session.acceptExternalHTML(previous)
+                        if !appliedRequests.isEmpty { appliedRequests.removeLast() }
+                        if !appliedSummaries.isEmpty { appliedSummaries.removeLast() }
+                        session.checkpointRequests = appliedRequests
+                        session.checkpointSummaries = appliedSummaries
+                        session.persistCheckpoint()
+                        comparingBefore = false
+                        ForgeConversationLog.append(conversationID, kind: "revert", text: "User reverted 1 unsaved AI edit.")
+                        uiPolishNotice = "Restored an earlier unsaved edit."
+                    } label: { Label("Undo Edit", systemImage: "arrow.uturn.backward") }
+                    .disabled(session.isWorking || saving)
+                }
             }
-            if phase == "Ready to review" {
-                workTracker.markUsable(repairPassed: session.verificationReport.hasPrefix("Detected:") ? true : nil)
-                milestones.add(.test, "App checks completed", bytes: session.verificationReport.utf8.count, key: "checks")
+            if developerMode && (debugTrace.isActive || !debugTrace.history.isEmpty) {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { showDebug = true } label: { Image(systemName: "ladybug") }
+                        .accessibilityLabel("View AI debug trace")
+                }
             }
+        }
+    }
+
+    private var choicePresentation: some View {
+        primaryPresentation
+        .sheet(isPresented: $showingOfflineConsent) {
+            HTMLAppOfflineForgeConsentView(isEdit: offlineActionIsEdit) { effort in
+                runOfflineForge(edit: offlineActionIsEdit, effort: effort)
+            }
+        }
+        .alert("Offline Forge unavailable", isPresented: Binding(
+            get: { offlineUnavailableMessage != nil },
+            set: { if !$0 { offlineUnavailableMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { offlineUnavailableMessage = nil }
+        } message: {
+            Text(offlineUnavailableMessage ?? "This device cannot use offline Apple Intelligence.")
+        }
+        .sheet(isPresented: $pendingChoiceQuestion, onDismiss: {
+            if !questionAlreadyAsked { return }
+            resolveCreationQuestion(answer: choiceResponse.isEmpty ? "Choose the most practical option" : choiceResponse)
+        }) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("One quick question").font(.title2.bold())
+                    Text(questionTitle)
+                        .font(.headline)
+                    Text("Forge chooses a practical default after five seconds without interaction. Locking the device continues with that default.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    ForEach(questionChoices, id: \.self) { option in
+                        Button {
+                            choiceResponse = option
+                            pendingChoiceQuestion = false
+                        } label: {
+                            HStack { Text(option); Spacer(); Image(systemName: "chevron.right") }
+                                .padding()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    TextField("Or describe your preference", text: $customQuestionAnswer, axis: .vertical)
+                        .lineLimit(2...4).textFieldStyle(.roundedBorder)
+                        .focused($questionFieldFocused)
+                        .onChange(of: customQuestionAnswer) { _ in lastQuestionInteraction = Date() }
+                        .onChange(of: questionFieldFocused) { _ in lastQuestionInteraction = Date() }
+                        .onTapGesture { lastQuestionInteraction = Date() }
+                        .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in lastQuestionInteraction = Date() })
+                    Button("Use my answer") {
+                        choiceResponse = customQuestionAnswer.trimmingCharacters(in: .whitespacesAndNewlines)
+                        pendingChoiceQuestion = false
+                    }.buttonStyle(.borderedProminent)
+                        .disabled(customQuestionAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Spacer()
+                }
+                .padding()
+                .navigationTitle("Forge Question")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Let Forge choose") {
+                            choiceResponse = suggestedAnswer
+                            pendingChoiceQuestion = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    private var reviewAndRecoveryPresentation: some View {
+        choicePresentation
+        .sheet(isPresented: $showDebug) {
+            AIDebugTraceView()
+        }
+        .confirmationDialog(
+            existingApp == nil ? "Discard this AI generation?" : "Discard AI edits?",
+            isPresented: $showCancelConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Discard and Close", role: .destructive) {
+                questionAlreadyAsked = false
+                pendingChoiceQuestion = false
+                questionTimer?.cancel()
+                generationTask?.cancel()
+                ForgeBackgroundUpload.shared.cancel()
+                preparedStyleTask?.cancel()
+                preparedStyleTask = nil
+                preparedStylePrompt = nil
+                endForgeActivity()
+                dictation.stop()
+                AIDebugTraceStore.shared.finish(outcome: "Discarded")
+                ForgeConversationLog.append(conversationID, kind: "discard", text: "User discarded the current unsaved AI work.")
+                clearRequestAttachments()
+                workTracker.finish(outcome: "Discarded")
+                session.clearCheckpoint()
+                ForgeVenueSeed.remove(draftVenueID)
+                if existingApp == nil { draftWorkID = "draft-\(UUID().uuidString)" }
+                styleOptions = []
+                styleFailure = nil
+                exploringStyles = false
+                dismiss()
+            }
+            Button("Keep Working", role: .cancel) {}
+        } message: {
+            Text(existingApp == nil ? "The style previews and current AI work will be lost if you close without saving." : "Your saved HTMLApp will not be changed unless you choose Save Changes.")
+        }
+        .alert("Forge couldn’t finish that step", isPresented: Binding(
+            get: { session.errorMessage != nil },
+            set: { if !$0 { session.errorMessage = nil } }
+        )) {
+            Button(retryButtonTitle) {
+                session.errorMessage = nil
+                retryLastFailure()
+            }
+            Button("Dismiss", role: .cancel) { session.errorMessage = nil }
+        } message: {
+            Text(session.errorMessage ?? "")
+        }
+        .confirmationDialog("Resume Forge draft?", isPresented: $showDraftRecovery, titleVisibility: .visible) {
+            Button("Continue Generation") { continueRecoveredDraft() }
+            Button("Discard Draft", role: .destructive) {
+                preparedStyleTask?.cancel()
+                preparedStyleTask = nil
+                preparedStylePrompt = nil
+                ForgeDraftCheckpointStore.clear()
+                ForgeVenueSeed.remove(draftVenueID)
+                if existingApp == nil { draftWorkID = "draft-\(UUID().uuidString)" }
+                recoverableDraft = nil
+                generationTask?.cancel()
+                dismiss()
+            }
+            Button("Not Now", role: .cancel) {}
+        } message: {
+            if let draft = recoverableDraft {
+                Text("Interrupted during \(draft.phase). Generation had run for \(Self.durationText(draft.savedAt.timeIntervalSince(draft.startedAt ?? draft.savedAt))). Continue reuses the saved source when available. An unfinished document may need another coding request.")
+            }
+        }
+        .sheet(isPresented: $showingRequestContext) { requestContextSheet }
+        .sheet(isPresented: $showRunHistory) {
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        ForgeWorkRing(runs: workTracker.recentRuns,
+                                      active: session.isWorking || browserResearch.isBrowsing)
+                        ForgeRunBreakdown(runs: workTracker.recentRuns)
+                    }
+                    .padding(18)
+                }
+                .navigationTitle("AI Work History")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showRunHistory = false }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showDetails) {
+            ForgeDetailsView(
+                plan: session.refinedBrief,
+                research: browserResearch.lastReport,
+                qa: session.verificationReport,
+                debug: developerMode ? debugTrace.text : ""
+            )
+        }
+    }
+
+    @ViewBuilder private var venueChoices: some View {
+        ForEach(venueCandidates.indices, id: \.self) { index in
+            let place = venueCandidates[index]
+            let distance = Int(place.distanceMeters)
+            Button("Use \(place.name) · \(distance) m") { selectVenue(place) }
+        }
+        Button("Choose in the app", role: .cancel) {
+            confirmedVenue = nil
+            ForgeVenueSeed.remove(draftVenueID)
+        }
+    }
+
+    private func selectVenue(_ place: HTMLAppPlaceLookup.Place) {
+        confirmedVenue = place
+        do {
+            try ForgeVenueSeed.save(place, appID: draftVenueID)
+        } catch {
+            uiPolishNotice = "The destination will be kept for this session. Save the app before closing Forge."
         }
     }
 

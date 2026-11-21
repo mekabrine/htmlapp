@@ -49,11 +49,22 @@ enum ForgeConversationLog {
             words.intersection(entry.text.lowercased().split { !$0.isLetter && !$0.isNumber }).count
         }
         let requests = records.filter { ["user", "question", "answer", "style", "preference", "revision", "revert", "discard"].contains($0.kind) || $0.kind == "outcome" }
-        let relevant = requests.map { ($0, score($0)) }.filter { $0.1 > 0 }
-            .sorted { $0.1 == $1.1 ? $0.0.date > $1.0.date : $0.1 > $1.1 }
+        let scored: [(entry: Entry, points: Int)] = requests.map { entry in
+            (entry: entry, points: score(entry))
+        }
+        let matches = scored.filter { $0.points > 0 }
+        let relevant = matches.sorted { left, right in
+            if left.points != right.points { return left.points > right.points }
+            return left.entry.date > right.entry.date
+        }
+        let preferences = requests.filter { $0.kind == "preference" }
+        var candidates = Array(requests.prefix(1))
+        candidates.append(contentsOf: requests.suffix(12))
+        candidates.append(contentsOf: relevant.prefix(6).map { $0.entry })
+        candidates.append(contentsOf: preferences.suffix(4))
         var seen = Set<UUID>()
-        let selected = (Array(requests.prefix(1)) + Array(requests.suffix(12)) + relevant.prefix(6).map { $0.0 } + Array(requests.filter { $0.kind == "preference" }.suffix(4)))
-            .filter { seen.insert($0.id).inserted }.sorted { $0.date < $1.date }
+        let unique = candidates.filter { seen.insert($0.id).inserted }
+        let selected = unique.sorted { $0.date < $1.date }
         let history = selected.map { "\($0.kind): " + String($0.text.prefix(680)) }
         let notes = revisions.suffix(8).map { "Checkpoint: " + String($0.prefix(360)) }
         guard !history.isEmpty || !notes.isEmpty else { return "" }
