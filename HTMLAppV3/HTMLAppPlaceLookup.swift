@@ -59,7 +59,9 @@ enum HTMLAppPlaceLookup {
         defer { deadline.cancel() }
 
         let response = try await directions.calculate()
-        guard let route = response.routes.first else { throw NSError(domain: MKErrorDomain, code: MKError.Code.directionsNotFound.rawValue) }
+        guard let route = response.routes.first else {
+            throw NSError(domain: MKErrorDomain, code: Int(MKError.Code.directionsNotFound.rawValue))
+        }
         let count = route.polyline.pointCount
         let points = route.polyline.points()
         let sampleCount = min(count, 500)
