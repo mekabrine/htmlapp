@@ -256,7 +256,7 @@ struct OnboardingView: View {
             tutorialRow("3", "Try your app", "Tap it in the Library to launch it.", symbol: "play.fill", tint: .blue)
         case 6:
             tutorialRow("1", "Try the preview", "Tap all important controls. Make sure your data remains after reopening.", symbol: "eye", tint: .blue)
-            tutorialRow("2", "Choose testing speed", "Skip runs no tests; Fast checks briefly; Balanced checks and can repair errors.", symbol: "speedometer", tint: .blue)
+            tutorialRow("2", "Choose testing speed", "Fast runs short smoke tests. Balanced checks more thoroughly. Both attempt to repair blocking errors automatically.", symbol: "speedometer", tint: .blue)
             tutorialRow("3", "Fix a problem", "Long-press the app, choose Edit with AI, and say which button is broken.", symbol: "wrench", tint: .blue)
         case 7:
             tutorialRow("1", "Set permissions", "Long-press an app and choose Permissions. Allow only the access it needs.", symbol: "hand.raised", tint: .blue)

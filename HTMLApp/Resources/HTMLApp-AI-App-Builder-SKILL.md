@@ -273,6 +273,7 @@ Use the **declarative manifest** (preferred for new apps). The host builds a rea
 ```
 - IDs: ASCII `[a-zA-Z0-9_-]{1,48}`, unique, matching **exactly one** `data-htmlapp-screen` each; valid SF Symbol names; valid `selected`.
 - With the manifest, **do not also** call `screens.configure` / `tabs.configure`.
+- HTMLApp controls each managed screen's visibility through the `hidden` attribute. Let an unhidden screen render with its normal layout. Avoid rules such as `.screen { display: none }` that require an extra active class. Use `data-htmlapp-go` for navigation and `htmlapp:native-tab-select` with `event.detail.id` only if you need to observe native selection for side effects.
 - Mark any preview-only HTML nav `data-htmlapp-tab-fallback`; it hides after native mount.
 - Existing apps with custom routers: call `screens.configure` once after DOM ready and use `screens.go(id)`, or `tabs.configure` + `tabs.onSelect(id=>route(id))`. Route **every** entry point through one navigation function so the selected tab never desyncs.
 - Single-screen games/immersive apps need no tabs.

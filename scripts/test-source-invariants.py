@@ -44,7 +44,18 @@ assert 'withPermission(.files, id: id)' in native, "Files picker requires per-ap
 assert 'case files' in source("HTMLAppV3/PermissionSystem.swift")
 assert 'includePersonalData: false' in core, "Nearby export must omit personal state"
 assert 'includePersonalData: false' in source("HTMLAppV3/NearbyAppTransfer.swift"), "Nearby import must ignore old personal state"
-assert 'blocking.isEmpty' in ai and 'qaRepairResponseBytes' in ai, "Local clean QA should not send unnecessary repair requests"
+qa = ai.split("private func verifyAndRepair(", 1)[1].split("private func appCheckFindings(", 1)[0]
+clean = qa.index("if initial.blocking.isEmpty")
+plan = qa.index("AIHTMLAgent.planQARepair(")
+repair = qa.index("AIHTMLAgent.applyQARepair(")
+retest = qa.index("let retest = await appCheckFindings(in: repairedHTML, mode: testMode)")
+assert clean < plan < repair < retest < qa.index("streamedHTML = repairedHTML")
+assert "if testMode == .skip" in qa and "if testMode == .fast" not in qa, "Fast checks must attempt repair on blocking failures"
+assert qa.index("configuration(for: .planner)") < plan and "config: planner" in qa[plan:repair]
+assert qa.index("configuration(for: .coder)") < repair and "plan: plan, config: coder" in qa[repair:retest]
+assert "appCheckFindings(in: original, mode: testMode)" in qa and "throw AIGenerationError.unresolvedAppChecks(remaining)" in qa
+assert 'issue.hasPrefix("Native navigation:")' in ai, "Blank native tabs must trigger automatic repair"
+assert "qaRepairResponseBytes" in qa
 assert 'HTMLAppPackageTransfer' in core
 
 assert "library.corrupt-" in core and "libraryBackupURL" in core

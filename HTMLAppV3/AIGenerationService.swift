@@ -41,7 +41,7 @@ enum ForgeTestMode: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .skip: return "Skip tests (fastest)"
-        case .fast: return "Fast checks"
+        case .fast: return "Fast checks + repair"
         case .balanced: return "Balanced checks + repair"
         }
     }
@@ -51,17 +51,18 @@ enum ForgeTestMode: String, CaseIterable, Identifiable {
 }
 
 enum AIGenerationError: LocalizedError {
-    case notConfigured, invalidEndpoint, missingHTML, invalidPatch, missingIcon, brokenJavaScript
-    case provider(String)
+    case notConfigured, invalidEndpoint, missingHTML, invalidPatch, missingIcon
+    case provider(String), unresolvedAppChecks([String])
 
     var errorDescription: String? {
         switch self {
         case .notConfigured: return "Configure an AI API URL and model in Settings first."
         case .invalidEndpoint: return "The configured AI API URL is invalid."
         case .missingHTML: return "The AI response did not contain a complete HTML app."
-        case .brokenJavaScript: return "The generated app contains JavaScript syntax errors. Forge stopped before saving broken buttons. Retry the app checks to repair the script."
         case .invalidPatch: return "The AI returned a patch that could not be applied safely."
         case .missingIcon: return "The AI could not produce a valid, renderable app icon."
+        case .unresolvedAppChecks(let issues):
+            return "Forge could not resolve these app checks. Your draft was kept so you can retry. " + issues.joined(separator: " ")
         case .provider(let message): return message
         }
     }
@@ -151,7 +152,9 @@ final class AIGenerationSession: ObservableObject {
         case "Checking app icon", "Repairing app icon": return "Rendering the icon locally and fixing it if the script is invalid or too detailed."
         case "Running app checks": return "Loading the generated HTML in an isolated offscreen WebView and checking real runtime failures at phone and iPad widths."
         case "Reviewing source (not running device tests)": return "Combining runtime findings with source checks for a focused release review."
-        case "Rechecking repaired app": return "Re-running local and offscreen runtime checks only where the first repair still needs verification."
+        case "Diagnosing failed app checks": return "The Prompt Planner is using the test failures and source to pinpoint what needs to change."
+        case "Repairing confirmed app error": return "The Coding Agent is applying the repair to the affected code."
+        case "Rechecking repaired app": return "Running the same app checks on the repaired draft."
         case "Polishing the interface": return "Refining the visual hierarchy without changing the app’s working product model."
         case "Draft recovered": return "Recovered the latest local Forge draft. Nothing was sent or resumed automatically."
         case "Ready to review": return "The generated source is ready for you to try on-device and review."
@@ -536,7 +539,7 @@ final class AIGenerationSession: ObservableObject {
                     )
                 }
             }
-            try await verifyAndRepair(config: config, omitIcon: preserveIcon)
+            try await verifyAndRepair(config: config)
             try await ensureRuntimeBackend(config: config)
             try Task.checkCancellation()
             phase = "Ready to review"
@@ -772,7 +775,7 @@ Requested edit:
                 AIDebugTraceStore.shared.append("ICON", "Preserved the existing app icon because this edit did not request an icon or identity change.")
             }
             let reviewedEditHTML = streamedHTML
-            try await verifyAndRepair(config: config, omitIcon: true)
+            try await verifyAndRepair(config: config, editRequest: cleanChange)
             try await ensureRuntimeBackend(config: config, request: originalPrompt + "\n" + cleanChange)
             if streamedHTML != reviewedEditHTML {
                 let outcomeIssues = (try? await ForgeEditOutcomeReview.issues(
@@ -1023,7 +1026,7 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
             if !omitIcon && !editingExistingApp {
                 try await ensureValidIcon(config: config)
             }
-            try await verifyAndRepair(config: config, omitIcon: omitIcon || editingExistingApp)
+            try await verifyAndRepair(config: config)
             try await ensureRuntimeBackend(config: config)
             try Task.checkCancellation()
             phase = "Ready to review"
@@ -1181,69 +1184,6 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         return
     }
 
-    private func selfHealBrokenJavaScript(config: AIProviderConfiguration, issues: [String]) async -> Bool {
-        let baseline = streamedHTML
-        let diagnostic = issues.joined(separator: "\n")
-        AIDebugTraceStore.shared.append("SELF HEAL", "Beginning bounded syntax repair. HTML bytes: \(baseline.utf8.count)\n\(diagnostic)")
-        phase = "Repairing unresponsive app controls"
-        // The original remains in memory until a candidate actually passes the
-        // same offscreen JavaScript checks that detected the failure.
-        for attempt in 1...1 {
-            do {
-                let response = try await AIProviderClient.complete(
-                    config: config,
-                    system: """
-                    You are repairing a single-file HTML app that currently contains invalid inline JavaScript.
-                    Return a COMPLETE valid <htmlapp_code>...</htmlapp_code> document, NOT SEARCH/REPLACE patches.
-                    Prioritize valid parsing and functioning event handlers. Preserve the app UI, IDs, storage keys,
-                    native integrations, external endpoints, and existing user data. Change only broken code.
-                    Avoid fragile nested strings or dense minified expressions. No Markdown fences.
-                    """,
-                    messages: [("user", """
-                        ORIGINAL HTML:
-                        <htmlapp_existing>
-                        \(baseline)
-                        </htmlapp_existing>
-
-                        EXACT OFFSCREEN WEBVIEW ERRORS:
-                        \(diagnostic)
-
-                        Repair attempt: \(attempt). Re-check the complete JavaScript syntax before responding.
-                        """)],
-                    timeout: 85,
-                    maxTokens: 12000,
-                    retryOnTransient: false
-                )
-                let candidate = AIHTMLAgent.parse(response).html
-                guard !candidate.trimmed.isEmpty else {
-                    AIDebugTraceStore.shared.append("SELF HEAL", "Attempt \(attempt): no complete HTML returned.")
-                    continue
-                }
-                let structural = HTMLQualityChecks.issues(in: candidate)
-                let runtime = await HTMLRuntimeVerifier.verify(html: candidate)
-                let fatal = HTMLQualityChecks.blockingIssues(structural) +
-                    runtime.filter {
-                        $0.hasPrefix("JavaScript syntax in inline script") ||
-                        $0.hasPrefix("JavaScript did not compile") ||
-                        $0.hasPrefix("Runtime: document body rendered empty") ||
-                        $0.hasPrefix("Runtime tapability:") ||
-                        $0.hasPrefix("uncaught error:")
-                    }
-                if fatal.isEmpty {
-                    streamedHTML = candidate
-                    verificationReport += "\nSelf-heal succeeded: complete HTML was checked in the offscreen runtime."
-                    AIDebugTraceStore.shared.append("SELF HEAL", "Attempt \(attempt): repaired HTML passed local checks.")
-                    return true
-                }
-                AIDebugTraceStore.shared.append("SELF HEAL", "Attempt \(attempt) still had issues: " + (structural + runtime).joined(separator: "\n"))
-            } catch {
-                AIDebugTraceStore.shared.append("SELF HEAL", "Attempt \(attempt) failed: \(error.localizedDescription)")
-            }
-        }
-        streamedHTML = baseline
-        return false
-    }
-
     /// Deterministic red flags that the actual requested workflow is missing.
     /// This cannot prove live APIs work, so these are explicitly advisory,
     /// never reported as a verified network/location success.
@@ -1329,11 +1269,11 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         }
     }
 
-    private func verifyAndRepair(config: AIProviderConfiguration, omitIcon: Bool = false) async throws {
+    private func verifyAndRepair(config: AIProviderConfiguration, editRequest: String? = nil) async throws {
         try Task.checkCancellation()
         streamedHTML = ForgeAttachment.materialize(streamedHTML, items: ForgeAttachmentContext.images)
         try await ensureRuntimeBackend(config: config)
-        phase = "Testing the app"
+        phase = "Running app checks"
         verificationReport = ""
         qaRepairResponseBytes = 0
 
@@ -1342,83 +1282,63 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             streamedHTML = normalized
             AIDebugTraceStore.shared.append("LOCAL AUTOFIX", "Added missing doctype or viewport metadata without using AI.")
         }
-        let structural = HTMLQualityChecks.issues(in: streamedHTML)
-        let functional = Self.coreWorkflowWarnings(prompt: originalPrompt, html: streamedHTML)
-        if !functional.isEmpty {
-            AIDebugTraceStore.shared.append("CORE WORKFLOW AUDIT", functional.joined(separator: "\n"))
-        }
+        let original = streamedHTML
         let testMode = ForgeTestMode.selected
         if testMode == .skip {
-            // Keep inexpensive structural warnings visible, but do not pretend to
-            // have executed JavaScript or checked any live button.
-            verificationReport = "Tests skipped at your request. App behavior and buttons have NOT been verified. " + (structural + functional).joined(separator: " ")
+            let warnings = HTMLQualityChecks.issues(in: original) + Self.coreWorkflowWarnings(prompt: originalPrompt, html: original)
+            verificationReport = "Tests skipped at your request. App behavior and buttons have NOT been verified. " + warnings.joined(separator: " ")
             AIDebugTraceStore.shared.append("QA SKIPPED", verificationReport)
             return
         }
-        let runtime = await HTMLRuntimeVerifier.verify(html: streamedHTML, timeout: testMode == .fast ? 3 : 6)
 
-        // Offline preview intentionally blocks some native/device features.
-        // Warnings about CSS conventions, remote resources, timeouts,
-        // placeholder prose and console noise should not trigger 120-second
-        // remote review requests or a chain of full-source rewrites.
-        // Missing primary user-requested behavior should receive the same
-        // focused repair opportunity as broken JavaScript in balanced QA.
-        let blocking = HTMLQualityChecks.blockingIssues(structural) +
-            (testMode == .balanced ? functional.filter { $0.hasPrefix("Core workflow:") } : []) +
-            runtime.filter { issue in
-                issue.hasPrefix("JavaScript syntax in inline script") ||
-                issue.hasPrefix("JavaScript did not compile") ||
-                issue.hasPrefix("Runtime: document body rendered empty") ||
-                issue.hasPrefix("Runtime: horizontal page overflow") ||
-                issue.hasPrefix("Runtime: unmarked horizontal scroller") ||
-                issue.hasPrefix("Runtime: page zoom allowed") ||
-                issue.hasPrefix("Runtime tapability:") ||
-                issue.hasPrefix("Switch layout:") ||
-                issue.hasPrefix("3D viewer QA:") ||
-                issue.hasPrefix("uncaught error:") ||
-                issue.hasPrefix("Runtime: document became blank") || issue.hasPrefix("Native navigation:")
-            }
-        let advisory = (structural + runtime + functional).filter { !blocking.contains($0) }
+        let initial = await appCheckFindings(in: original, mode: testMode)
+        try Task.checkCancellation()
         AIDebugTraceStore.shared.append("QA CLASSIFICATION",
-            "Blocking: \(blocking.count); Advisory: \(advisory.count)\n" +
-            (blocking + advisory).joined(separator: "\n"))
-        if testMode == .fast {
-            verificationReport = blocking.isEmpty
-                ? "Fast local smoke checks passed (not every button was exercised). " + advisory.joined(separator: " ")
-                : "Fast checks found problems; AI repair skipped to save time: " + blocking.joined(separator: " ")
-            return
-        }
-        if blocking.isEmpty {
-            verificationReport = advisory.isEmpty
-                ? "Local JavaScript, layout and interaction smoke tests passed."
-                : "Core app checks passed. Advisory notes: " + advisory.joined(separator: " ")
+            "Blocking: \(initial.blocking.count); Advisory: \(initial.advisory.count)\n" +
+            (initial.blocking + initial.advisory).joined(separator: "\n"))
+        if initial.blocking.isEmpty {
+            let summary = testMode == .fast
+                ? "Fast local smoke checks passed."
+                : "Local JavaScript, layout and interaction smoke tests passed."
+            verificationReport = ([summary] + initial.advisory).joined(separator: " ")
             return
         }
 
-        // Exactly one focused remote patch request. Do not recursively invoke
-        // the patch applier's separate multi-call recovery chain.
-        phase = "Repairing confirmed app error"
-        let iconContext = ForgeEditIconContext(omitIcon ? streamedHTML : "")
-        let baseline = omitIcon ? iconContext.html : streamedHTML
+        // Keep the candidate separate until it passes the same checks as the original.
+        // QUICK changes generation routing, but a confirmed failure still uses both configured roles.
+        let iconContext = ForgeEditIconContext(original)
+        let request = editRequest.map { originalPrompt + "\n" + $0 } ?? originalPrompt
+        let (planner, coder) = ForgeRunOptions.$quick.withValue(false) {
+            (AISettingsStore.configuration(for: .planner), AISettingsStore.configuration(for: .coder))
+        }
+        var plan = ""
+        phase = "Diagnosing failed app checks"
         do {
-            let response = try await AIHTMLAgent.reviewArtifact(
-                html: baseline,
-                iconScript: omitIcon ? "" : iconScript,
-                originalPrompt: originalPrompt,
-                research: lastResearch,
-                localIssues: blocking,
-                pass: 1,
-                config: AISettingsStore.configuration(for: .verifier)
-            )
+            plan = try await AIHTMLAgent.planQARepair(
+                html: iconContext.html, request: request, issues: initial.blocking, config: planner)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            AIDebugTraceStore.shared.append("QA DIAGNOSIS ERROR", error.localizedDescription)
+        }
+
+        try Task.checkCancellation()
+        phase = "Repairing confirmed app error"
+        var remaining = initial.blocking
+        var repairedHTML: String?
+        do {
+            let response = try await AIHTMLAgent.applyQARepair(
+                html: iconContext.html, request: request, research: lastResearch,
+                issues: initial.blocking, plan: plan, config: coder)
             qaRepairResponseBytes = response.utf8.count
-            let patch = AIHTMLAgent.patch(from: response)
-            let proposed = AIHTMLAgent.parse(response)
-            if !patch.trimmed.isEmpty, let fixed = HTMLPatchApplier.apply(patch, to: baseline) {
-                streamedHTML = iconContext.restoringIcons(in: fixed)
-            } else if !proposed.html.trimmed.isEmpty {
-                streamedHTML = iconContext.restoringIcons(in: proposed.html)
+            let output = AIHTMLAgent.parse(response)
+            let fixed = output.patch.trimmed.isEmpty
+                ? output.html
+                : HTMLPatchApplier.apply(output.patch, to: iconContext.html)
+            if let fixed, !fixed.trimmed.isEmpty, fixed != iconContext.html {
+                repairedHTML = iconContext.restoringIcons(in: fixed)
             } else {
-                AIDebugTraceStore.shared.append("QA PATCH", "Reviewer did not return an applicable patch; retaining existing source.")
+                AIDebugTraceStore.shared.append("QA PATCH", "Coding Agent returned no applicable change.")
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -1427,61 +1347,49 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         }
 
         try Task.checkCancellation()
-        if streamedHTML != baseline {
-            phase = "Retesting changed code"
-            let newStructural = HTMLQualityChecks.issues(in: streamedHTML)
-            let newRuntime = await HTMLRuntimeVerifier.verify(html: streamedHTML)
-            // Re-run the same core user-workflow checks after a repair.
-            // Fixing JavaScript without implementing the requested feature is
-            // not a complete repair.
-            let newFunctional = Self.coreWorkflowWarnings(prompt: originalPrompt, html: streamedHTML)
-            let remaining = HTMLQualityChecks.blockingIssues(newStructural) +
-                newFunctional.filter { $0.hasPrefix("Core workflow:") } +
-                newRuntime.filter {
-                    $0.hasPrefix("JavaScript syntax in inline script") ||
-                    $0.hasPrefix("JavaScript did not compile") ||
-                    $0.hasPrefix("Runtime: document body rendered empty") ||
-                    $0.hasPrefix("Runtime: horizontal page overflow") ||
-                    $0.hasPrefix("Runtime: unmarked horizontal scroller") ||
-                    $0.hasPrefix("Runtime: page zoom allowed") ||
-                    $0.hasPrefix("Runtime tapability:") ||
-                    $0.hasPrefix("uncaught error:") ||
-                    $0.hasPrefix("Runtime: document became blank") || $0.hasPrefix("Native navigation:")
-                }
+        if let repairedHTML {
+            phase = "Rechecking repaired app"
+            let retest = await appCheckFindings(in: repairedHTML, mode: testMode)
+            try Task.checkCancellation()
+            // An interrupted WebView check cannot confirm that the original defect was fixed.
+            remaining = retest.blocking + retest.advisory.filter {
+                $0.hasPrefix("Runtime: offscreen WebView verification timed out") ||
+                $0.hasPrefix("Runtime: WebView was unavailable")
+            }
             if remaining.isEmpty {
-                verificationReport = "Focused repair passed the local checks."
+                streamedHTML = repairedHTML
+                verificationReport = (["Automatic repair passed the local app checks."] + retest.advisory).joined(separator: " ")
+                AIDebugTraceStore.shared.append("QA RETEST", verificationReport)
                 return
             }
             AIDebugTraceStore.shared.append("QA RETEST", remaining.joined(separator: "\n"))
-            if remaining.contains(where: {
-                $0.hasPrefix("JavaScript syntax in inline script") || $0.hasPrefix("JavaScript did not compile")
-            }) {
-                if await selfHealBrokenJavaScript(config: config, issues: remaining) {
-                    let outstandingWorkflows = Self.coreWorkflowWarnings(prompt: originalPrompt, html: streamedHTML)
-                    if !outstandingWorkflows.isEmpty {
-                        verificationReport += " Unresolved core workflows: " + outstandingWorkflows.joined(separator: " ")
-                    }
-                    return
-                }
-                streamedHTML = baseline
-                throw AIGenerationError.brokenJavaScript
-            }
-            verificationReport = "App created, but some QA notes remain after one repair: " +
-                remaining.joined(separator: " ")
-            AIDebugTraceStore.shared.append("QA ADVISORY", verificationReport)
-            return
         }
+        throw AIGenerationError.unresolvedAppChecks(remaining)
+    }
 
-        if blocking.contains(where: {
-            $0.hasPrefix("JavaScript syntax in inline script") || $0.hasPrefix("JavaScript did not compile")
-        }) {
-            if await selfHealBrokenJavaScript(config: config, issues: blocking) { return }
-            throw AIGenerationError.brokenJavaScript
-        }
-        verificationReport = "App created, but QA found issues to review: " +
-            blocking.joined(separator: " ")
-        AIDebugTraceStore.shared.append("QA ADVISORY", verificationReport)
-        return
+    private func appCheckFindings(in html: String, mode: ForgeTestMode) async -> (blocking: [String], advisory: [String]) {
+        let structural = HTMLQualityChecks.issues(in: html)
+        let functional = Self.coreWorkflowWarnings(prompt: originalPrompt, html: html)
+        let runtime = await HTMLRuntimeVerifier.verify(html: html, timeout: mode == .fast ? 3 : 6)
+        let blocking = HTMLQualityChecks.blockingIssues(structural) +
+            (mode == .balanced ? functional.filter { $0.hasPrefix("Core workflow:") } : []) +
+            runtime.filter { issue in
+                issue.hasPrefix("JavaScript syntax in inline script") ||
+                issue.hasPrefix("JavaScript did not compile") ||
+                issue.hasPrefix("Runtime: WebView navigation failed") ||
+                issue.hasPrefix("Runtime: WebView failed to load the generated document") ||
+                issue.hasPrefix("Runtime: document body rendered empty") ||
+                issue.hasPrefix("Runtime: horizontal page overflow") ||
+                issue.hasPrefix("Runtime: unmarked horizontal scroller") ||
+                issue.hasPrefix("Runtime: page zoom allowed") ||
+                issue.hasPrefix("Runtime tapability:") ||
+                issue.hasPrefix("Switch layout:") ||
+                issue.hasPrefix("3D viewer QA:") ||
+                issue.hasPrefix("uncaught error:") ||
+                issue.hasPrefix("Runtime: document became blank") ||
+                issue.hasPrefix("Native navigation:")
+            }
+        return (blocking, (structural + runtime + functional).filter { !blocking.contains($0) })
     }
 
     private func refineGeneratedAssets(_ assets: [AIGeneratedAsset]) async -> [AIGeneratedAsset] {
@@ -2429,7 +2337,7 @@ DEVICE CHROME AND STATUS BAR RULES:
 - Use real SF Symbol names appropriate to each tab. The host validates names against the installed iOS catalog; prefer familiar symbols with broad OS availability. In web fallback navigation use inline SVG or text.\n\nHTMLAPP GESTURES AND REAL NATIVE TAB BARS:
 - Use gestures when appropriate: swipe between cards and views, pinch-to-zoom photos/maps where applicable, long-press for contextual options, pull-to-refresh where data can refresh, drag-to-reorder, and tactile feedback. Provide accessible buttons as equivalent actions and avoid accidental destructive gestures.
 - For EVERY app with 2–7 top-level destinations, use HTMLAppNative.screens.configure (preferred), the declarative navigation manifest, or HTMLAppNative.tabs.configure for an existing custom router to create its real native navigation in the installed app. Never use a CSS tab bar as the primary navigation. Implement a working HTML navigation fallback ONLY for editing/preview or when the native bridge is unavailable; hide that fallback immediately when native tabs configure successfully. On real iOS 26, native tab bars can receive the system's Liquid Glass styling; fake HTML tab bars cannot. Bind every tab ID to a working section. Keep a CSS fallback only if capabilities() says the native API is missing and hide it when native tabs are active.
-- For every NEW app with 2–7 top-level destinations, prefer the declarative native navigation manifest inside <head>: <script type="application/json" id="htmlapp-navigation">{"items":[{"id":"home","title":"Home","symbol":"house"},{"id":"settings","title":"Settings","symbol":"gearshape"}],"selected":"home"}</script>. Create one real <section data-htmlapp-screen="home"> and corresponding section for EVERY tab ID. HTMLApp automatically configures the native UIKit tab bar when DOMContentLoaded fires; do NOT also call screens.configure or tabs.configure when the manifest exists. Add data-htmlapp-go="settings" to in-content navigation, with the same IDs. Preserve existing screen/data IDs when editing. Mark any preview-only HTML navigation with data-htmlapp-tab-fallback; host styling enforces [data-htmlapp-tab-fallback][hidden]{display:none!important} after native mount. A single-screen game or immersive experience does not require tabs.
+- For every NEW app with 2–7 top-level destinations, prefer the declarative native navigation manifest inside <head>: <script type="application/json" id="htmlapp-navigation">{"items":[{"id":"home","title":"Home","symbol":"house"},{"id":"settings","title":"Settings","symbol":"gearshape"}],"selected":"home"}</script>. Create one real <section data-htmlapp-screen="home"> and corresponding section for EVERY tab ID. HTMLApp automatically configures the native UIKit tab bar when DOMContentLoaded fires; do NOT also call screens.configure or tabs.configure when the manifest exists. Let the managed router own screen visibility through hidden; do not independently hide screens with CSS classes or listen to guessed tab events. Add data-htmlapp-go="settings" to in-content navigation, with the same IDs. Preserve existing screen/data IDs when editing. Mark any preview-only HTML navigation with data-htmlapp-tab-fallback; host styling enforces [data-htmlapp-tab-fallback][hidden]{display:none!important} after native mount. A single-screen game or immersive experience does not require tabs.
 - Only for EXISTING apps with custom routing that cannot switch to the declarative manifest, call HTMLAppNative.screens.configure once after DOM ready (and use screens.go) or tabs.configure with a corresponding real onSelect router. Never submit only tab labels/icons without handlers that switch actual screens. If UIKit is unavailable, HTML navigation must still work in browser preview. Do not mix declarative and manual tab configuration.
 - When editing an older HTMLApp that already has fake bottom navigation, and the user requests native iOS appearance, upgrade it to this bridge without changing the app's screens, state or tab destinations.
 - For apps using custom routing instead of managed screens, a saved HTMLApp can ask its native iOS host to display a REAL UIKit tab bar (including Apple's native iOS 26 visual material) by calling:
@@ -2903,45 +2811,68 @@ Icon direction: infer the most distinctive product metaphor yourself. Do not req
 """
     }
 
-    static func reviewArtifact(
-        html: String,
-        iconScript: String,
-        originalPrompt: String,
-        research: String,
-        localIssues: [String],
-        pass: Int,
-        config: AIProviderConfiguration
+    static func planQARepair(
+        html: String, request: String, issues: [String], config: AIProviderConfiguration
     ) async throws -> String {
         let system = """
-You repair a generated single-file HTML app using a focused defect list produced by a local WebKit test.
-Fix ONLY the specified failures, preserving all unrelated working controls and storage keys.
-Return a minimal unique SEARCH/REPLACE patch under <htmlapp_patch>...</htmlapp_patch>.
-If the source cannot be patched safely, return a complete <htmlapp_code>...</htmlapp_code>.
-Avoid rewriting for visual taste; do not claim other tests have run.
+Diagnose confirmed failures in a generated HTMLApp using the supplied source and local WebKit test results.
+For each distinct root cause, name the specific selectors, handlers or identifiers involved, describe the
+smallest required changes, and state what the rerun should verify. Group symptoms that share a cause.
+For managed native navigation, HTMLApp toggles the hidden property on data-htmlapp-screen elements and
+dispatches htmlapp:native-tab-select with detail.id. CSS that independently hides an unhidden screen
+must be corrected so the router owns visibility. Keep tab IDs and existing screen contents.
+Preserve working features and data. Use only the source and test evidence. Return a short repair plan in
+<repair_plan>...</repair_plan>. Do not return a patch or replacement HTML.
 """
         let user = """
-REVIEW PASS: \(pass)
+APP REQUEST:
+\(request)
 
-ORIGINAL PROMPT:
-\(originalPrompt)
+CONFIRMED FAILURES:
+\(issues.joined(separator: "\n"))
 
-LOCAL STATIC / OFFSCREEN RUNTIME EVIDENCE:
-\(localIssues.isEmpty ? "No local or offscreen runtime warnings." : localIssues.joined(separator: "\n"))
-
-CAPABILITY / API EVIDENCE:
-\(research.isEmpty ? "No additional research evidence was supplied." : research)
-
-HTML:
+SOURCE:
 <htmlapp_existing>
 \(html)
 </htmlapp_existing>
-
-ICON:
-<icon_script_existing>
-\(iconScript)
-</icon_script_existing>
 """
-        return try await AIProviderClient.complete(config: config, system: system, messages: [("user", user)], timeout: 65, maxTokens: 4500, retryOnTransient: false)
+        let response = try await AIProviderClient.complete(
+            config: config, system: system, messages: [("user", user)],
+            timeout: 25, maxTokens: 850, retryOnTransient: false)
+        return value("repair_plan", in: response)
+    }
+
+    static func applyQARepair(
+        html: String, request: String, research: String, issues: [String], plan: String,
+        config: AIProviderConfiguration
+    ) async throws -> String {
+        let system = """
+You are HTMLApp's Coding Agent. Apply the smallest code changes that resolve the confirmed app-check failures.
+Verify the diagnosis against the source. If the diagnosis is unavailable, use the test failures directly.
+Preserve the app's UI, working controls, IDs, storage keys, bundled files and native integrations.
+Return exact, unique SEARCH/REPLACE blocks under <htmlapp_patch>...</htmlapp_patch>.
+If a patch cannot express the change, return a complete <htmlapp_code>...</htmlapp_code> document.
+"""
+        let user = """
+APP REQUEST:
+\(request)
+
+CONFIRMED FAILURES:
+\(issues.joined(separator: "\n"))
+
+REPAIR PLAN:
+\(plan.isEmpty ? "No planner diagnosis available. Use the confirmed failures above." : plan)
+
+CAPABILITY / API EVIDENCE:
+\(research)
+
+SOURCE:
+<htmlapp_existing>
+\(html)
+</htmlapp_existing>
+"""
+        return try await AIProviderClient.complete(config: config, system: system, messages: [("user", user)],
+                                                  timeout: 65, maxTokens: 4500, retryOnTransient: false)
     }
 
     static func review(html: String, originalPrompt: String, research: String, localIssues: [String], config: AIProviderConfiguration) async throws -> String {

@@ -15,8 +15,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.29"
-    static let compiledBuild = "134"
+    static let compiledVersion = "1.9.30"
+    static let compiledBuild = "135"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -33,12 +33,12 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "test-mic", title: "Test Alternative dictation",
-                  description: "Speak, then drop the microphone on Test Mic to see whether it recognized any words. Alternative transcribes on device.",
-                  symbol: "waveform", tint: .purple),
-            Entry(id: "apple-tail", title: "Capture the end of a phrase",
-                  description: "Apple Speech keeps listening for 150 milliseconds after you release the microphone.",
-                  symbol: "mic.fill", tint: .blue)
+            Entry(id: "forge-auto-repair", title: "Forge diagnoses and fixes failed checks",
+                  description: "When a blocking check fails, the Prompt Planner pinpoints the cause and the Coding Agent applies a targeted repair. Fast and Balanced both retest the result before accepting it.",
+                  symbol: "wrench.and.screwdriver", tint: .purple),
+            Entry(id: "forge-native-tabs", title: "Prevent blank native tabs",
+                  description: "Forge now accounts for how HTMLApp shows each page when generating and repairing apps with native tabs.",
+                  symbol: "rectangle.stack", tint: .blue)
         ]
     }
 }

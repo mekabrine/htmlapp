@@ -659,7 +659,7 @@ struct AIGenerationView: View {
     private var retryButtonTitle: String {
         if lastFailedChange != nil { return "Retry Edit" }
         if let failed = session.failedPhase,
-           failed.contains("icon") || failed.contains("app checks") || failed.contains("Reviewing") || failed.contains("Rechecking") {
+           failed.contains("icon") || failed.contains("app checks") || failed == "Repairing confirmed app error" || failed.contains("Reviewing") || failed.contains("Rechecking") {
             return "Retry Checks"
         }
         return "Retry"
@@ -772,7 +772,7 @@ struct AIGenerationView: View {
                             Text(mode.label).tag(mode.rawValue)
                         }
                     }
-                    Text("Skip: no runtime checks. Fast: short on-device smoke tests without AI repair. Balanced: test and attempt one focused AI repair. None guarantees every button works.")
+                    Text("Fast runs short smoke tests. Balanced allows longer checks and also looks for missing core features. Both automatically attempt a repair when a check finds a blocking problem. Skip bypasses runtime checks.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -2591,7 +2591,7 @@ Requested edit:
 
         if !session.streamedHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let failed = session.failedPhase,
-           failed.contains("icon") || failed.contains("app checks") || failed.contains("Reviewing") || failed.contains("Rechecking") {
+           failed.contains("icon") || failed.contains("app checks") || failed == "Repairing confirmed app error" || failed.contains("Reviewing") || failed.contains("Rechecking") {
             generationTask = Task { await session.verifyCurrent() }
             return
         }

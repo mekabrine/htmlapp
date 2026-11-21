@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.9.30",
+    "summary": "Forge automatically diagnoses, repairs and retests blocking app-check failures.",
+    "changes": [
+      {
+        "title": "Forge diagnoses and fixes failed checks",
+        "description": "When a blocking check fails, the Prompt Planner pinpoints the cause and the Coding Agent applies a targeted repair. Fast and Balanced both retest the result before accepting it.",
+        "symbol": "wrench.and.screwdriver",
+        "tint": "purple"
+      },
+      {
+        "title": "Prevent blank native tabs",
+        "description": "Forge now accounts for how HTMLApp shows each page when generating and repairing apps with native tabs.",
+        "symbol": "rectangle.stack",
+        "tint": "blue"
+      }
+    ]
+  },
+  {
     "version": "1.9.29",
     "summary": "Replaced NoteTakers with an on-device mic test and added a short Apple Speech recording tail.",
     "changes": [
