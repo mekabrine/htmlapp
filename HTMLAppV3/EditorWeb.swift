@@ -107,6 +107,9 @@ struct WebRunner: View {
     @State private var awaitingEdit = false
     @State private var transcriptReview: String?
     @State private var spokenEdit = ""
+    @State private var reportDraft = ""
+    @State private var runnerErrors: [String] = []
+    @StateObject private var runnerContext = ForgeScreenContext()
     @State private var spokenAttachments: [ForgeAttachment] = []
     @State private var recordingTask: Task<Void, Never>?
     @StateObject private var attachmentSelection = ForgeAttachmentSelection()
@@ -149,7 +152,28 @@ struct WebRunner: View {
                         .background(.bar)
                     }
             } else {
-                HTMLWebView(html: liveHTML, appID: app.id, restoresSession: true).ignoresSafeArea()
+                HTMLWebView(html: liveHTML, appID: app.id, restoresSession: true, screenContext: runnerContext,
+                            onJavaScriptError: { error in
+                                if runnerErrors.count < 6, !runnerErrors.contains(error) { runnerErrors.append(error) }
+                            })
+                    .ignoresSafeArea()
+                    .overlay(alignment: .topTrailing) {
+                        if alwaysShowEditMicrophone {
+                            Menu {
+                                Button("Report this screen to Forge") {
+                                    Task {
+                                        let details = await runnerContext.report()
+                                        reportDraft = "Investigate this screen: " + details +
+                                            (runnerErrors.isEmpty ? "" : "\nErrors: " + runnerErrors.joined(separator: "\n"))
+                                        showingVoiceEditor = true
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                                    .font(.title3).padding(10).background(.regularMaterial, in: Circle())
+                            }.padding(12).accessibilityLabel("Forge screen tools")
+                        }
+                    }
             }
         }
             .overlay(alignment: .topLeading) {
@@ -199,9 +223,9 @@ struct WebRunner: View {
                 editorPresentationTask?.cancel()
                 editDictation.cancel()
             }
-            .sheet(isPresented: $showingVoiceEditor, onDismiss: { spokenAttachments.removeAll() }) {
+            .sheet(isPresented: $showingVoiceEditor, onDismiss: { spokenAttachments.removeAll(); reportDraft = "" }) {
                 AIGenerationView(existingApp: store.apps.first(where: { $0.id == app.id }) ?? app,
-                                 initialEdit: spokenEdit, initialAttachments: spokenAttachments)
+                                 initialEdit: reportDraft.isEmpty ? spokenEdit : "", initialAttachments: spokenAttachments, initialReport: reportDraft)
                     .environmentObject(store)
             }
             .forgeAttachments(attachmentSelection, dictation: editDictation) { words, items in
@@ -392,12 +416,19 @@ struct HTMLWebView: UIViewRepresentable {
     let html: String
     let appID: String
     var restoresSession = false
+    var isolatedPreview = false
+    var screenContext: ForgeScreenContext? = nil
     var onJavaScriptError: ((String) -> Void)? = nil
 
-    func makeCoordinator() -> Coordinator { Coordinator(appID: appID, restoresSession: restoresSession, onJavaScriptError: onJavaScriptError) }
+    func makeCoordinator() -> Coordinator {
+        let coordinator = Coordinator(appID: appID, restoresSession: restoresSession, onJavaScriptError: onJavaScriptError)
+        coordinator.screenContext = screenContext
+        return coordinator
+    }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        if isolatedPreview { configuration.websiteDataStore = .nonPersistent() }
         let resources = HTMLAppResourceScheme(root: SourceCache.shared.baseURL(appID: appID))
         configuration.setURLSchemeHandler(resources, forURLScheme: HTMLAppResourceScheme.scheme)
         configuration.processPool = HTMLAppWebWarmup.pool
@@ -494,6 +525,23 @@ struct HTMLWebView: UIViewRepresentable {
             controller.add(context.coordinator, name: "htmlappState")
             controller.add(context.coordinator, name: "htmlappOfflineCache")
         }
+        if screenContext != nil {
+            controller.add(context.coordinator, name: "htmlappForgeSelection")
+            controller.addUserScript(WKUserScript(source: ForgeScreenContext.script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        if isolatedPreview {
+            controller.addUserScript(WKUserScript(source: """
+            (() => {
+              const data = new Map(), storage = window.HTMLAppNative?.appStorage;
+              if (!storage) return;
+              storage.get = async key => data.has(key) ? structuredClone(data.get(key)) : null;
+              storage.set = async (key, value) => { data.set(key, structuredClone(value)); return {stored:true}; };
+              storage.remove = async key => { data.delete(key); return {removed:true}; };
+              storage.all = async () => Object.fromEntries(data);
+              storage.clear = async () => { data.clear(); return {cleared:true}; };
+            })();
+            """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         if onJavaScriptError != nil {
             controller.add(context.coordinator, name: "htmlappRuntimeError")
             controller.addUserScript(WKUserScript(source: """
@@ -519,6 +567,7 @@ struct HTMLWebView: UIViewRepresentable {
         HTMLAppWebWarmup.release()
         let initialDocument = context.coordinator.initialDocument(originalHTML: html)
         context.coordinator.attach(webView, initialHTML: html)
+        screenContext?.webView = webView
         webView.uiDelegate = context.coordinator
         webView.navigationDelegate = context.coordinator
         webView.scrollView.contentInsetAdjustmentBehavior = .never
@@ -559,6 +608,7 @@ struct HTMLWebView: UIViewRepresentable {
         controller.removeScriptMessageHandler(forName: "htmlappState")
         controller.removeScriptMessageHandler(forName: "htmlappOfflineCache")
         controller.removeScriptMessageHandler(forName: "htmlappRuntimeError")
+        controller.removeScriptMessageHandler(forName: "htmlappForgeSelection")
         coordinator.shutdown()
         uiView.stopLoading()
         // After returning to the Library, warm the next WebContent process.
@@ -574,6 +624,7 @@ struct HTMLWebView: UIViewRepresentable {
         }
 
         let appID: String
+        weak var screenContext: ForgeScreenContext?
         var onJavaScriptError: ((String) -> Void)?
         var lastHTML = ""
         private weak var webView: WKWebView?
@@ -786,6 +837,10 @@ struct HTMLWebView: UIViewRepresentable {
                 default:
                     return
                 }
+            }
+            if message.name == "htmlappForgeSelection", let selection = body["selection"] as? String {
+                screenContext?.accept(selection)
+                return
             }
             switch message.name {
             case "htmlappState":

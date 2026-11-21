@@ -290,11 +290,87 @@ function testViewport() {
   assert.ok(elements.__htmlappViewportGuard.textContent.includes('overflow-x:clip'));
 }
 
+async function testForgeDrivingScenario() {
+  const verifier = fs.readFileSync(path.join(root, 'HTMLAppV3/HTMLRuntimeVerifier.swift'), 'utf8');
+  const extract = name => verifier.split('let ' + name + ' = #"""')[1].split('"""#')[0];
+  async function run(useMovingDestination) {
+    const api = { secureStorage: { get: async () => ({}) }, map: {} };
+    const window = { HTMLAppNative: api };
+    const navigator = {};
+    const context = vm.createContext({ window, navigator, setTimeout, queueMicrotask });
+    vm.runInContext(extract('driveFixtures'), context);
+    const status = { innerText: '', dataset: {}, getClientRects: () => [1] };
+    let origin, destination;
+    async function refresh() {
+      try {
+        const estimate = await api.map.drivingETA(origin.latitude, origin.longitude,
+          useMovingDestination ? origin.latitude : destination.latitude, destination.longitude);
+        status.innerText = estimate.expectedTravelTimeSeconds / 60 + ' min';
+      } catch {
+        status.innerText = 'Unavailable';
+        status.dataset.state = 'unavailable';
+      }
+    }
+    const start = {
+      async click() {
+        destination = JSON.parse((await api.secureStorage.get('forge.confirmedVenue')).value);
+        navigator.geolocation.watchPosition(position => {
+          origin = position.coords;
+          refresh();
+        }, () => {
+          status.innerText = 'Denied';
+          status.dataset.state = 'denied';
+        });
+      }
+    };
+    const controls = { '[data-forge-drive-start]': start,
+      '[data-forge-drive-refresh]': { click: refresh }, '[data-forge-drive-status]': status };
+    context.document = { querySelector: selector => controls[selector] };
+    return await vm.runInContext('(async () => {' + extract('driveScenario') + '})()', context);
+  }
+  assert.equal(await run(false), '');
+  assert.match(await run(true), /confirmed destination fixed/);
+}
+
+function testForgeScreenSelection() {
+  const source = fs.readFileSync(path.join(root, 'HTMLAppV3/ForgeScreenContext.swift'), 'utf8');
+  const script = source.split('let script = #"""')[1].split('"""#')[0];
+  let click, selection;
+  class Element {
+    localName = 'input';
+    id = 'answer';
+    style = {};
+    value = 'private typed text';
+    getAttribute() { return null; }
+    closest(selector) { return selector.includes('input') ? this : null; }
+  }
+  const input = new Element();
+  const window = { webkit: { messageHandlers: { htmlappForgeSelection: {
+    postMessage(payload) { selection = payload.selection; }
+  } } } };
+  vm.runInNewContext(script, {
+    window, Element, getComputedStyle: () => ({ fontSize: '16px' }),
+    document: { addEventListener(_, callback) { click = callback; }, querySelector: () => null }
+  });
+  const event = { target: input, preventDefault() {}, stopImmediatePropagation() {} };
+  click(event);
+  assert.match(window.__forgeScreenContext.report(), /Last control: input id=answer/);
+  window.__forgeScreenContext.pick(true);
+  click(event);
+  assert.match(selection, /input id=answer/);
+  assert.doesNotMatch(selection + window.__forgeScreenContext.report(), /private typed text/);
+  assert.equal(input.style.outline, '3px solid #a855f7');
+  window.__forgeScreenContext.clear();
+  assert.equal(input.style.outline, undefined);
+}
+
 (async () => {
   await testNativeRPC();
   await testAISessionTools();
   await testAIStreaming();
   testViewport();
+  await testForgeDrivingScenario();
+  testForgeScreenSelection();
   console.log('Native bridge and app viewport JS tests passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 

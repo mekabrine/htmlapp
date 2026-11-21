@@ -140,7 +140,7 @@ struct LibraryView: View {
         .sheet(item: $editHistoryApp) { app in
             NavigationStack {
                 List {
-                    NavigationLink("App Conversation") { ForgeConversationLogView(appID: app.id) }
+                    NavigationLink("What Forge Remembers") { ForgeConversationLogView(appID: app.id) }
                     let history = store.editHistory(for: app)
                     if history.isEmpty {
                         Text("No AI edit checkpoints yet. Earlier versions appear after you save an AI edit.")
@@ -151,6 +151,16 @@ struct LibraryView: View {
                             Text(checkpoint.note).font(.headline)
                             Text(checkpoint.created.formatted(date: .abbreviated, time: .shortened))
                                 .font(.caption).foregroundStyle(.secondary)
+                            if checkpoint.requests?.isEmpty == false || checkpoint.verification?.isEmpty == false {
+                                DisclosureGroup("Requests and checks") {
+                                    ForEach(Array((checkpoint.requests ?? []).enumerated()), id: \.offset) { _, request in
+                                        Text(request).textSelection(.enabled)
+                                    }
+                                    if let verification = checkpoint.verification, !verification.isEmpty {
+                                        Text(verification).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
                             Button("Restore this version") {
                                 Task {
                                     await store.restoreAIEdit(app, checkpointID: checkpoint.id)

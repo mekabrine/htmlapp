@@ -576,10 +576,10 @@ final class AppStore: ObservableObject {
             isFavorite: false, folderName: nil, folderID: destination,
             websiteSourceURL: nil, websiteFingerprint: nil
         )
-        pendingInsertionFolderID = nil
         apps.insert(app, at: 0)
+        guard save() else { apps.removeAll { $0.id == app.id }; return }
+        pendingInsertionFolderID = nil
         HTMLAppRuntimeBackend.importPublicLink(app.html, localID: app.id)
-        save()
         if let backendTemplate { HTMLAppBackendProvisioning.enqueue(app, template: backendTemplate) }
         Task(priority: .utility) { await SourceCache.shared.refresh(app: app, force: false) }
     }
@@ -705,6 +705,10 @@ final class AppStore: ObservableObject {
         var html: String
         var summary: String
         var note: String
+        var requests: [String]? = nil
+        var verification: String? = nil
+        var priorActiveRevisions: [UUID]? = nil
+        var activeRevisionsAfter: [UUID]? = nil
     }
 
     private func editHistoryURL(for id: String) -> URL {
@@ -719,14 +723,18 @@ final class AppStore: ObservableObject {
         return records
     }
 
-    func updateFromAI(_ app: SavedHTMLApp, html: String, summary: String, note: String) async {
+    func updateFromAI(_ app: SavedHTMLApp, html: String, summary: String, note: String, requests: [String] = [], verification: String = "") async {
         guard let current = apps.first(where: { $0.id == app.id }), current.html != html else {
             await update(app, html: html, summary: summary)
             return
         }
         var history = editHistory(for: app)
-        history.append(AIEditCheckpoint(id: UUID(), created: Date(), html: current.html,
-                                        summary: current.summary, note: note))
+        let active = history.last?.activeRevisionsAfter ?? []
+        let id = UUID()
+        let checkpoint = AIEditCheckpoint(id: id, created: Date(), html: current.html,
+            summary: current.summary, note: note, requests: requests, verification: verification,
+            priorActiveRevisions: active, activeRevisionsAfter: active + [id])
+        history.append(checkpoint)
         let url = editHistoryURL(for: app.id)
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
@@ -737,7 +745,11 @@ final class AppStore: ObservableObject {
             errorMessage = "Could not save the previous edit version. The AI edit was not applied."
             return
         }
-        await update(app, html: html, summary: summary)
+        guard await update(app, html: html, summary: summary) else {
+            try? JSONEncoder().encode(Array(history.dropLast())).write(to: url, options: .atomic)
+            return
+        }
+        ForgeConversationLog.append(app.id, kind: "revision", text: note)
     }
 
     func restoreAIEdit(_ app: SavedHTMLApp, checkpointID: UUID) async {
@@ -745,7 +757,9 @@ final class AppStore: ObservableObject {
         var history = editHistory(for: app)
         guard let chosen = history.first(where: { $0.id == checkpointID }) else { return }
         history.append(AIEditCheckpoint(id: UUID(), created: Date(), html: current.html,
-                                        summary: current.summary, note: "Before restore"))
+                                        summary: current.summary, note: "Before restore",
+                                        priorActiveRevisions: history.last?.activeRevisionsAfter,
+                                        activeRevisionsAfter: chosen.priorActiveRevisions ?? []))
         let url = editHistoryURL(for: app.id)
         do {
             try JSONEncoder().encode(history).write(to: url, options: .atomic)
@@ -753,10 +767,14 @@ final class AppStore: ObservableObject {
             errorMessage = "Could not preserve current version; restore canceled."
             return
         }
-        await update(current, html: chosen.html, summary: chosen.summary)
+        guard await update(current, html: chosen.html, summary: chosen.summary) else {
+            try? JSONEncoder().encode(Array(history.dropLast())).write(to: url, options: .atomic)
+            return
+        }
         let position = history.firstIndex(where: { $0.id == checkpointID }) ?? history.count
         let count = history.dropFirst(position).filter { $0.note != "Before restore" }.count
         ForgeConversationLog.append(app.id, kind: "revert", text: "User reverted \(max(1, count)) saved edit(s) by restoring checkpoint \(chosen.created.formatted()).")
+        ForgeSemanticAppModelStore.save(for: app.id, html: chosen.html, purpose: chosen.summary)
         notice = "Restored earlier HTML version."
     }
 
@@ -767,18 +785,22 @@ final class AppStore: ObservableObject {
         catch { errorMessage = "Could not clear old AI edit history." }
     }
 
-    func update(_ app: SavedHTMLApp, html: String, summary: String) async {
-        guard let index = apps.firstIndex(where: { $0.id == app.id }) else { return }
+    @discardableResult
+    func update(_ app: SavedHTMLApp, html: String, summary: String) async -> Bool {
         let name = HTMLTools.title(in: html) ?? app.name
+        let icon = await HTMLAppIconTools.savedIcon(html: html, name: name)
+        guard let index = apps.firstIndex(where: { $0.id == app.id }) else { return false }
+        let previous = apps[index]
         apps[index].name = name
         apps[index].summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         apps[index].html = html
-        HTMLAppRuntimeStateStore.remove(appID: app.id)
-        apps[index].favicon = await HTMLAppIconTools.savedIcon(html: html, name: name)
+        apps[index].favicon = icon
         apps[index].updatedAt = Date()
-        save()
+        guard save() else { apps[index] = previous; return false }
+        HTMLAppRuntimeStateStore.remove(appID: app.id)
         let updated = apps[index]
         Task(priority: .utility) { await SourceCache.shared.refresh(app: updated, force: false) }
+        return true
     }
 
     func updateWebsiteSource(_ app: SavedHTMLApp, urlString: String) async throws {
@@ -1126,6 +1148,7 @@ final class AppStore: ObservableObject {
 
     func delete(_ app: SavedHTMLApp) {
         _ = HTMLAppBackgroundLocation.disable(appID: app.id)
+        ForgeVenueSeed.remove(app.id)
         HTMLAppBackendProvisioning.cancel(app.id)
         HTMLAppBackendDeletionQueue.enqueue(app.id)
         HTMLAppICloudPreferences.markDeleted(app.id)
@@ -1739,10 +1762,11 @@ final class AppStore: ObservableObject {
         save()
     }
 
-    private func save() {
+    @discardableResult
+    private func save() -> Bool {
         guard !libraryLoadBlocked else {
             errorMessage = "Library changes weren't saved because recovery is required. Your existing files remain untouched."
-            return
+            return false
         }
         do {
             let encoder = JSONEncoder()
@@ -1757,8 +1781,10 @@ final class AppStore: ObservableObject {
             try result.write(to: libraryURL, options: .atomic)
             refreshLaunchCache()
             requestICloudSync()
+            return true
         } catch {
             errorMessage = "The library couldn't be saved. Existing data and its backup were kept."
+            return false
         }
     }
 

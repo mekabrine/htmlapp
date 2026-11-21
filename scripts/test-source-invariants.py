@@ -48,12 +48,12 @@ qa = ai.split("private func verifyAndRepair(", 1)[1].split("private func appChec
 clean = qa.index("if initial.blocking.isEmpty")
 plan = qa.index("AIHTMLAgent.planQARepair(")
 repair = qa.index("AIHTMLAgent.applyQARepair(")
-retest = qa.index("let retest = await appCheckFindings(in: repairedHTML, mode: testMode, request: request)")
+retest = qa.index("let retest = await appCheckFindings(in: repairedHTML, mode: testMode, request: request, legacyFixture: legacyFixture, previousWorkflows: previousWorkflows)")
 assert clean < plan < repair < retest < qa.index("streamedHTML = repairedHTML")
-assert "if testMode == .skip" in qa and "if testMode == .fast" not in qa, "Fast checks must attempt repair on blocking failures"
+assert "if testMode == .skip" in qa and "testMode = .balanced" in qa, "Only Skip bypasses blocking checks"
 assert qa.index("configuration(for: .planner)") < plan and "config: planner" in qa[plan:repair]
 assert qa.index("configuration(for: .coder)") < repair and "plan: plan, config: coder" in qa[repair:retest]
-assert "appCheckFindings(in: original, mode: testMode, request: request)" in qa and "throw AIGenerationError.unresolvedAppChecks(remaining)" in qa
+assert "appCheckFindings(in: original, mode: testMode, request: request, legacyFixture: legacyFixture, previousWorkflows: previousWorkflows)" in qa and "throw AIGenerationError.unresolvedAppChecks(remaining)" in qa
 assert 'issue.hasPrefix("Native navigation:")' in ai, "Blank native tabs must trigger automatic repair"
 assert "qaRepairResponseBytes" in qa
 assert 'HTMLAppPackageTransfer' in core
@@ -347,9 +347,9 @@ assert 'httpGet(_ raw:' in privacy and 'PublicWebBrowser.isAllowed(url)' in priv
 assert 'httpShouldSetCookies = false' in privacy and 'completionHandler(nil)' in privacy
 assert 'get_clipboard' not in privacy and 'clipboard' not in privacy_ui.lower()
 assert 'AIPrivacyToolRunner.research(' in forge
-assert 'currentVenueContext(query: query)' in privacy and 'AIPrivacyOptions.location == "precise"' in privacy
+assert 'currentVenueContext(query: query, onPlaces: onPlaces)' in privacy and 'AIPrivacyOptions.location == "precise"' in privacy
 assert 'HTMLAppPlaceLookup.nearby(query: query, latitude: latitude, longitude: longitude)' in privacy
-assert 'Resolve names afresh in the app.' in privacy
+assert 'Use the confirmed device-only destination when present.' in privacy
 assert '$0.hasPrefix("Current venue:")' in ai and 'HTMLAppNative.map.drivingETA' in ai
 for method in ("map.nearbyPlaces", "map.drivingETA"):
     assert f"call('{method}'" in native and f'id: "{method}"' in source("HTMLAppV3/DeviceAPICatalog.swift")

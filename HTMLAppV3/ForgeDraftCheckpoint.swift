@@ -13,6 +13,13 @@ struct ForgeDraftCheckpoint: Codable, Equatable {
     var existingAppID: String?
     var streamedByteCount: Int
     var backendRequired: Bool? = nil
+    var verification: String? = nil
+    var editSummary: String? = nil
+    var appliedRequests: [String]? = nil
+    var appliedSummaries: [String]? = nil
+    var sourceReadyForChecks: Bool? = nil
+    var pendingEdit: String? = nil
+    var blockingQA: Bool? = nil
 }
 
 enum ForgeDraftCheckpointStore {

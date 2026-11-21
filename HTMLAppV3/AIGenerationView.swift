@@ -99,7 +99,43 @@ struct AIGenerationView: View {
     @State private var questionForEdit = false
     @State private var questionedEdit = ""
     @State private var generationRequestLogged = false
+    @State private var lastStyleRequest = ""
+    @State private var venueCandidates: [HTMLAppPlaceLookup.Place] = []
+    @State private var confirmedVenue: HTMLAppPlaceLookup.Place?
+    @State private var choosingVenue = false
+    @State private var appliedRequests: [String] = []
+    @State private var appliedSummaries: [String] = []
+    @State private var showingRequestContext = false
+    @State private var includeHistory = true
+    @State private var includeCheckpoints = true
+    @State private var includePrivacyContext = true
+    @State private var comparingBefore = false
+    @State private var measuredRequest = ""
+    @State private var measuredRequestGroup = UUID()
+
+    private func requestGroup(for kind: String, text: String) -> UUID {
+        let key = kind + "\n" + text
+        if measuredRequest != key {
+            measuredRequest = key
+            measuredRequestGroup = UUID()
+        }
+        return measuredRequestGroup
+    }
+    @StateObject private var screenContext = ForgeScreenContext()
+
+    private func appMemory(_ request: String) -> String {
+        guard includeHistory || includeCheckpoints else { return "" }
+        let history = (includeCheckpoints ? existingApp.map { store.editHistory(for: $0) } : nil) ?? []
+        let active = Set(history.last?.activeRevisionsAfter ?? [])
+        let revisions = history.map { record in
+            let status = active.contains(record.id) ? "Applied in current revision" :
+                (record.requests == nil ? "Historical checkpoint" : "Outside current revision")
+            return status + " — " + record.note
+        }
+        return ForgeConversationLog.context(conversationID, request: request, revisions: revisions, includeLog: includeHistory)
+    }
     private var conversationID: String { existingApp?.id ?? draftWorkID }
+    private var draftVenueID: String { "forge-draft-" + conversationID }
     @State private var choiceResponse = ""
     @State private var questionTimer: Task<Void, Never>?
     @State private var questionAlreadyAsked = false
@@ -126,11 +162,13 @@ struct AIGenerationView: View {
     private var isWidgetVoiceEntry: Bool { shortcutSource == "widgetMic" && existingApp == nil }
 
     private let initialEdit: String
+    private let initialReport: String
 
     init(existingApp: SavedHTMLApp? = nil, initialPrompt: String = "",
          shortcutGenerationNonce: Int = 0, shortcutSource: String = "siri",
-         importedDraft: RemoteHTMLImportDraft? = nil, demoMode: Bool = false, initialEdit: String = "", initialAttachments: [ForgeAttachment] = []) {
+         importedDraft: RemoteHTMLImportDraft? = nil, demoMode: Bool = false, initialEdit: String = "", initialAttachments: [ForgeAttachment] = [], initialReport: String = "") {
         self.initialEdit = initialEdit
+        self.initialReport = initialReport
         let attachmentSelection = ForgeAttachmentSelection()
         attachmentSelection.items = initialAttachments
         _attachments = StateObject(wrappedValue: attachmentSelection)
@@ -162,6 +200,17 @@ struct AIGenerationView: View {
                     studioView
                 }
             }
+            .confirmationDialog("Save a destination for this app?", isPresented: $choosingVenue, titleVisibility: .visible) {
+                ForEach(venueCandidates.indices, id: \.self) { index in
+                    let place = venueCandidates[index]
+                    Button("Use " + place.name + " · " + String(Int(place.distanceMeters)) + " m") {
+                        confirmedVenue = place
+                        do { try ForgeVenueSeed.save(place, appID: draftVenueID) }
+                        catch { uiPolishNotice = "The destination will be kept for this session. Save the app before closing Forge." }
+                    }
+                }
+                Button("Choose in the app", role: .cancel) { confirmedVenue = nil; ForgeVenueSeed.remove(draftVenueID) }
+            } message: { Text("Pick the place you mean. Its name and coordinates stay on this device.") }
             .htmlAppFirstUseToasts()
             .sheet(isPresented: $showingUIReviewChoice) {
                 VStack(spacing: 20) {
@@ -210,6 +259,10 @@ struct AIGenerationView: View {
                         .disabled(session.isWorking || browserResearch.isBrowsing)
                     }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showingRequestContext = true } label: { Label("Request Context", systemImage: "list.bullet.rectangle") }
+                        .disabled(session.isWorking || browserResearch.isBrowsing)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         if demoMode { generationTask?.cancel(); dismiss(); return }
@@ -230,6 +283,12 @@ struct AIGenerationView: View {
                             guard !session.isWorking, !saving,
                                   let previous = unsavedEditHistory.popLast() else { return }
                             session.acceptExternalHTML(previous)
+                            if !appliedRequests.isEmpty { appliedRequests.removeLast() }
+                            if !appliedSummaries.isEmpty { appliedSummaries.removeLast() }
+                            session.checkpointRequests = appliedRequests
+                            session.checkpointSummaries = appliedSummaries
+                            session.persistCheckpoint()
+                            comparingBefore = false
                             ForgeConversationLog.append(conversationID, kind: "revert", text: "User reverted 1 unsaved AI edit.")
                             uiPolishNotice = "Restored an earlier unsaved edit."
                         } label: { Label("Undo Edit", systemImage: "arrow.uturn.backward") }
@@ -328,6 +387,8 @@ struct AIGenerationView: View {
                     clearRequestAttachments()
                     workTracker.finish(outcome: "Discarded")
                     session.clearCheckpoint()
+                    ForgeVenueSeed.remove(draftVenueID)
+                    if existingApp == nil { draftWorkID = "draft-\(UUID().uuidString)" }
                     styleOptions = []
                     styleFailure = nil
                     exploringStyles = false
@@ -356,6 +417,8 @@ struct AIGenerationView: View {
                     preparedStyleTask = nil
                     preparedStylePrompt = nil
                     ForgeDraftCheckpointStore.clear()
+                    ForgeVenueSeed.remove(draftVenueID)
+                    if existingApp == nil { draftWorkID = "draft-\(UUID().uuidString)" }
                     recoverableDraft = nil
                     generationTask?.cancel()
                     dismiss()
@@ -363,9 +426,10 @@ struct AIGenerationView: View {
                 Button("Not Now", role: .cancel) {}
             } message: {
                 if let draft = recoverableDraft {
-                    Text("Interrupted during \(draft.phase). Generation had run for \(Self.durationText(draft.savedAt.timeIntervalSince(draft.startedAt ?? draft.savedAt))). Continue will restore the checkpoint and restart the interrupted AI request using your original prompt; the provider may charge again.")
+                    Text("Interrupted during \(draft.phase). Generation had run for \(Self.durationText(draft.savedAt.timeIntervalSince(draft.startedAt ?? draft.savedAt))). Continue reuses the saved source when available. An unfinished document may need another coding request.")
                 }
             }
+            .sheet(isPresented: $showingRequestContext) { requestContextSheet }
             .sheet(isPresented: $showRunHistory) {
                 NavigationStack {
                     ScrollView {
@@ -425,6 +489,10 @@ struct AIGenerationView: View {
                 didLoadExisting = true
                 session.load(existing: existingApp)
                 selectedStyle = ForgeStyleReferenceStore.load(for: existingApp.id)
+                if !initialReport.isEmpty {
+                    changePrompt = initialReport
+                    showingChange = true
+                }
                 if !initialEdit.isEmpty {
                     changePrompt = initialEdit
                     showingChange = true
@@ -643,8 +711,68 @@ struct AIGenerationView: View {
                 milestones.add(.icon, "App icon designed", bytes: session.iconScript.utf8.count, key: "icon")
             }
             if phase == "Ready to review" {
+                workTracker.markUsable(repairPassed: session.verificationReport.hasPrefix("Detected:") ? true : nil)
                 milestones.add(.test, "App checks completed", bytes: session.verificationReport.utf8.count, key: "checks")
             }
+        }
+    }
+
+    @ViewBuilder private var screenEditingTools: some View {
+        HStack {
+            Button(screenContext.picking ? "Cancel Selection" : "Select Element") { screenContext.toggleSelection() }
+            if !unsavedEditHistory.isEmpty {
+                Button(comparingBefore ? "Show After" : "Show Before") {
+                    screenContext.clear()
+                    comparingBefore.toggle()
+                }
+            }
+            Button("Report Screen") {
+                Task {
+                    let report = await screenContext.report()
+                    changePrompt = "Investigate this screen: " + report +
+                        (runtimeErrors.isEmpty ? "" : "\nPreview errors: " + runtimeErrors.prefix(5).joined(separator: "\n"))
+                    showingChange = true
+                }
+            }
+        }.font(.caption).buttonStyle(.bordered)
+        if screenContext.picking { Text("Tap the part of the app you want to edit.").font(.caption) }
+        if !screenContext.selection.isEmpty {
+            Label(screenContext.selection, systemImage: "scope").font(.caption).lineLimit(1)
+        }
+    }
+
+    private var requestContextSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Model context") {
+                    Toggle("App request history", isOn: $includeHistory)
+                    Toggle("Revision summaries", isOn: $includeCheckpoints)
+                    Toggle("Allowed device context", isOn: $includePrivacyContext)
+                    Text("Device tools still follow AI Generation Privacy. The destination you confirm stays on your device.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    let memory = appMemory(changePrompt.isEmpty ? prompt : changePrompt)
+                    if !memory.isEmpty { DisclosureGroup("Preview history sent to Forge") { Text(memory).textSelection(.enabled) } }
+                }
+                Section("Files and skills") {
+                    ForEach(attachments.items) { item in
+                        HStack {
+                            Text(item.name)
+                            Spacer()
+                            Button("Remove", role: .destructive) { attachments.items.removeAll { $0.id == item.id } }
+                                .buttonStyle(.borderless)
+                        }
+                    }
+                    if attachments.items.isEmpty { Text("No files or skills selected").foregroundStyle(.secondary) }
+                }
+                if !screenContext.selection.isEmpty {
+                    Section("Selected element") {
+                        Text(screenContext.selection)
+                        Button("Remove selection", role: .destructive) { screenContext.clear() }
+                    }
+                }
+            }
+            .navigationTitle("Request Context")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showingRequestContext = false } } }
         }
     }
 
@@ -658,8 +786,10 @@ struct AIGenerationView: View {
 
     private var retryButtonTitle: String {
         if lastFailedChange != nil { return "Retry Edit" }
+        if session.draftHasBlockingQA { return "Retry Checks" }
         if let failed = session.failedPhase,
-           failed.contains("icon") || failed.contains("app checks") || failed == "Repairing confirmed app error" || failed.contains("Reviewing") || failed.contains("Rechecking") {
+           (failed.contains("icon") || failed.contains("app checks") || failed == "Repairing confirmed app error" ||
+            failed.contains("Reviewing") || failed.contains("Rechecking")) {
             return "Retry Checks"
         }
         return "Retry"
@@ -967,19 +1097,24 @@ struct AIGenerationView: View {
             }
             do {
                 let result = try await HTMLAppOfflineForge.generate(
-                    request: text + ForgeAttachment.textContext(attachments.items) + ForgeConversationLog.context(conversationID), existingHTML: edit ? ForgeEditIconContext(originalHTML).html : nil, effort: effort
+                    request: text + ForgeAttachment.textContext(attachments.items) + appMemory(text), existingHTML: edit ? ForgeEditIconContext(originalHTML).html : nil, effort: effort
                 ) { phase in session.phase = phase }
                 try Task.checkCancellation()
                 // Only publish an edited app after the entire document passes
                 // local validation. Never replace the original on failure.
                 if edit {
                     unsavedEditHistory.append(originalHTML)
+                    appliedRequests.append(text)
                     session.lastEditSummary = "Offline Apple Intelligence edit"
+                    appliedSummaries.append(session.lastEditSummary)
+                    session.checkpointRequests = appliedRequests
+                    session.checkpointSummaries = appliedSummaries
                     changePrompt = ""
                     showingChange = true
                 }
                 session.acceptExternalHTML(edit ? ForgeEditIconContext(originalHTML).restoringIcons(in: result) : result)
                 session.phase = "Ready to review — offline"
+                session.persistCheckpoint()
                 session.errorMessage = nil
             } catch is CancellationError {
                 session.phase = "Offline generation cancelled"
@@ -1321,7 +1456,13 @@ struct AIGenerationView: View {
         styleFailure = nil
         styleFeedbackNotice = nil
         exploringStyles = true
+        if idea != lastStyleRequest {
+            lastStyleRequest = idea
+            ForgeConversationLog.append(conversationID, kind: "user", text: idea + attachments.items.map { "\nAttachment: \($0.name)" }.joined())
+            generationRequestLogged = true
+        }
         let feedback = styleFeedback
+        if !feedback.isEmpty { ForgeConversationLog.append(conversationID, kind: "style", text: feedback) }
         let regenerationRound = styleRegenerationRound
         let audioRun = startStyleAudio()
         generationTask = Task {
@@ -1485,17 +1626,22 @@ struct AIGenerationView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     HTMLWebView(
-                        html: session.streamedHTML.isEmpty ? loadingHTML : session.streamedHTML,
-                        appID: existingApp?.id ?? "PREVIEW",
+                        html: comparingBefore ? (unsavedEditHistory.last ?? session.streamedHTML)
+                            : (session.streamedHTML.isEmpty ? loadingHTML : session.streamedHTML),
+                        appID: "PREVIEW",
+                        isolatedPreview: true,
+                        screenContext: screenContext,
                         onJavaScriptError: { error in
                             if !runtimeErrors.contains(error) && runtimeErrors.count < 30 { runtimeErrors.append(error) }
                         }
                     )
+                    .id(comparingBefore)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
                 if !session.isWorking && !browserResearch.isBrowsing && !session.streamedHTML.isEmpty {
                     VStack(spacing: 10) {
+                        screenEditingTools
                         if let microphoneEditNotice {
                             Text(microphoneEditNotice).font(.caption)
                                 .foregroundStyle(.secondary)
@@ -2117,10 +2263,13 @@ struct AIGenerationView: View {
         }
         dictation.stop()
         runtimeErrors = []
+        confirmedVenue = nil
+        venueCandidates = []
+        ForgeVenueSeed.remove(draftVenueID)
         AIPrivacyToolRunner.resetLocationTracking()
         startForgeActivity(edit: false)
         milestones.reset()
-        workTracker.begin(kind: "New app", appKey: existingApp?.id ?? draftWorkID)
+        workTracker.begin(kind: "New app", appKey: existingApp?.id ?? draftWorkID, requestGroup: requestGroup(for: "New app", text: prompt))
         workTracker.updateVolume(prompt.utf8.count)
         milestones.add(.plan, "Reading your request", bytes: prompt.utf8.count, key: "initial")
         lastFailedChange = nil
@@ -2149,10 +2298,16 @@ struct AIGenerationView: View {
                 generationRequestLogged = false
                 let outcome = Task.isCancelled ? (ForgeBackgroundUpload.shared.isActive ? "Continuing in background" : "Stopped") :
                     (session.errorMessage == nil ? "Completed" : "Failed")
+                if session.phase == "Ready to review" {
+                    workTracker.markUsable(repairPassed: session.verificationReport.hasPrefix("Detected:") ? true : nil)
+                } else if session.errorMessage != nil, session.failedPhase?.localizedCaseInsensitiveContains("repair") == true {
+                    workTracker.markRepairFailed()
+                }
                 workTracker.finish(outcome: outcome)
                 if activeAttachmentJob == attachmentJob && !ForgeBackgroundUpload.shared.isActive && (Task.isCancelled || (session.errorMessage == nil && !session.streamedHTML.isEmpty)) { clearRequestAttachments() }
                 let technical = session.errorMessage ?? (session.lastEditSummary.isEmpty ? "Generated HTML/CSS/JavaScript (\(session.streamedHTML.utf8.count) bytes). \(session.description)" : session.lastEditSummary)
                 ForgeConversationLog.append(conversationID, kind: "assistant", text: outcome + ": " + String(technical.prefix(900)))
+                ForgeConversationLog.append(conversationID, kind: "outcome", text: outcome == "Completed" ? "Preview produced. Save or discard determines whether this changes the app." : outcome)
                 endForgeActivity(onlyIf: activityJob)
                 if backgroundTaskID != .invalid {
                     UIApplication.shared.endBackgroundTask(backgroundTaskID)
@@ -2191,12 +2346,12 @@ struct AIGenerationView: View {
             }
             guard !Task.isCancelled else { return }
             if ForgeCurrentPlace.query(in: originalPrompt) != nil { session.phase = "Checking current-place context" }
-            let privacyReport = await AIPrivacyToolRunner.research(
-                originalPrompt, config: AISettingsStore.configuration(for: .research))
+            let privacyReport = includePrivacyContext ? await AIPrivacyToolRunner.research(
+                originalPrompt, config: AISettingsStore.configuration(for: .research), onPlaces: offerPlaces) : ""
             guard !Task.isCancelled else { return }
             let combinedResearch = [webReport, privacyReport].filter { !$0.isEmpty }.joined(separator: "\n\n")
             await session.generate(
-                prompt: designBrief + ForgeConversationLog.context(conversationID),
+                prompt: designBrief + appMemory(originalPrompt),
                 originalUserPrompt: originalPrompt,
                 researchReport: combinedResearch,
                 preplanned: preplanned,
@@ -2289,7 +2444,7 @@ struct AIGenerationView: View {
             startForgeActivity(edit: true)
             generationTask = Task { @MainActor in
                 let question = await ForgeAttachmentContext.$images.withValue(attachments.items) {
-                    await Self.askForgeQuestion(for: "Existing app: \(existingApp?.name ?? "draft"). Current app brief: \(session.refinedBrief.prefix(1500)). Requested edit: \(requestedEdit)" + ForgeAttachment.textContext(attachments.items))
+                    await Self.askForgeQuestion(for: "Existing app: \(existingApp?.name ?? "draft"). Current app brief: \(session.refinedBrief.prefix(1500)). Requested edit: \(requestedEdit)" + ForgeAttachment.textContext(attachments.items) + appMemory(requestedEdit))
                 }
                 guard !Task.isCancelled else { endForgeActivity(); return }
                 presentForgeQuestion(question, edit: true)
@@ -2301,15 +2456,18 @@ struct AIGenerationView: View {
             return
         }
         runtimeErrors = []
-        if !session.streamedHTML.isEmpty {
-            unsavedEditHistory.append(session.streamedHTML)
-        }
         startForgeActivity(edit: true)
         milestones.reset()
-        workTracker.begin(kind: "AI edit", appKey: existingApp?.id ?? draftWorkID)
+        workTracker.begin(kind: "AI edit", appKey: existingApp?.id ?? draftWorkID, requestGroup: requestGroup(for: "AI edit", text: requestedEdit))
         workTracker.updateVolume(changePrompt.utf8.count)
         milestones.add(.plan, "Preparing your edit", bytes: changePrompt.utf8.count, key: "edit")
         let change = changePrompt
+        let previousHTML = session.streamedHTML
+        session.pendingCheckpointEdit = change
+        let selectedElement = comparingBefore ? "" : screenContext.selection
+        let isFullRewrite = rewriteApproved
+        comparingBefore = false
+        screenContext.clear()
         ForgeAttachment.persist(attachments.items, key: conversationID)
         if !(questionForEdit && questionResolved && questionedEdit == requestedEdit) {
             ForgeConversationLog.append(conversationID, kind: "user", text: change + attachments.items.map { "\nAttachment: \($0.name)" }.joined())
@@ -2326,10 +2484,16 @@ struct AIGenerationView: View {
             defer {
                 let outcome = Task.isCancelled ? (ForgeBackgroundUpload.shared.isActive ? "Continuing in background" : "Stopped") :
                     (session.errorMessage == nil ? "Completed" : "Failed")
-                workTracker.finish(outcome: outcome)
+                if session.phase == "Ready to review" {
+                    workTracker.markUsable(repairPassed: session.verificationReport.hasPrefix("Detected:") ? true : nil)
+                } else if session.errorMessage != nil, session.failedPhase?.localizedCaseInsensitiveContains("repair") == true {
+                    workTracker.markRepairFailed()
+                }
+                workTracker.finish(outcome: outcome, complexEdit: isFullRewrite || session.lastEditWasComplex)
                 if activeAttachmentJob == attachmentJob && !ForgeBackgroundUpload.shared.isActive && (Task.isCancelled || (session.errorMessage == nil && !session.streamedHTML.isEmpty)) { clearRequestAttachments() }
                 let technical = session.errorMessage ?? (session.lastEditSummary.isEmpty ? "Edited HTML/CSS/JavaScript (\(session.streamedHTML.utf8.count) bytes)." : session.lastEditSummary)
                 ForgeConversationLog.append(conversationID, kind: "assistant", text: outcome + ": " + String(technical.prefix(900)))
+                ForgeConversationLog.append(conversationID, kind: "outcome", text: outcome == "Completed" ? "Preview produced. Save or discard determines whether this changes the app." : outcome)
                 endForgeActivity(onlyIf: activityJob)
                 AIDebugTraceStore.shared.finish(outcome: outcome + (session.errorMessage.map { ": " + $0 } ?? ""))
             }
@@ -2352,11 +2516,13 @@ Requested edit:
             }
             guard !Task.isCancelled else { return }
             if ForgeCurrentPlace.query(in: change) != nil { session.phase = "Checking current-place context" }
-            let privacyReport = AIHTMLAgent.needsCapabilityResearch(for: change)
-                ? await AIPrivacyToolRunner.research(change, config: AISettingsStore.configuration(for: .research))
+            let privacyReport = includePrivacyContext && AIHTMLAgent.needsCapabilityResearch(for: change)
+                ? await AIPrivacyToolRunner.research(change, config: AISettingsStore.configuration(for: .research), onPlaces: offerPlaces)
                 : ""
             guard !Task.isCancelled else { return }
             let combinedResearch = [webReport, privacyReport].filter { !$0.isEmpty }.joined(separator: "\n\n")
+            let memory = appMemory(change)
+            let targetContext = selectedElement.isEmpty ? "" : "\nSelected element: " + selectedElement
             if rewriteApproved {
                 let oldHTML = ForgeEditIconContext(session.streamedHTML)
                 let fullBrief = """
@@ -2369,6 +2535,8 @@ Requested edit:
 
                 Mandatory changes:
                 \(change)
+                \(memory)
+                \(targetContext)
                 """
                 await session.generate(prompt: fullBrief, originalUserPrompt: change,
                                        researchReport: combinedResearch, preserveIcon: true, attachments: attachments.items)
@@ -2377,7 +2545,8 @@ Requested edit:
                 }
                 rewriteApproved = false
             } else {
-                await session.revise(change: change + ForgeConversationLog.context(conversationID), researchReport: combinedResearch,
+                await session.revise(change: change, researchReport: combinedResearch,
+                                     historyContext: memory + targetContext,
                                      styleInstruction: selectedStyle?.buildInstruction, attachments: attachments.items)
             }
             guard session.errorMessage == nil else {
@@ -2388,7 +2557,18 @@ Requested edit:
                 }
                 return
             }
+            guard !Task.isCancelled else { return }
+            session.pendingCheckpointEdit = nil
+            if session.streamedHTML != previousHTML {
+                unsavedEditHistory.append(previousHTML)
+                appliedRequests.append(change)
+                appliedSummaries.append(session.lastEditSummary.isEmpty ? "Updated your app." : session.lastEditSummary)
+                session.checkpointRequests = appliedRequests
+                session.checkpointSummaries = appliedSummaries
+            }
+            session.persistCheckpoint()
             lastFailedChange = nil
+            measuredRequest = ""
             ForgeTasteMemory.recordEditPreference(change)
             changePrompt = ""
             showingChange = true
@@ -2419,6 +2599,7 @@ Requested edit:
         session.isWorking = false
         session.phase = "Ready to review"
         guard uiReviewAccepted, scenePhase == .active, !Task.isCancelled else { return }
+        ForgeConversationLog.append(conversationID, kind: "user", text: "Run another UI review and preserve the working functionality.")
         await runOptionalUIPolish(originalPrompt: originalPrompt)
     }
 
@@ -2475,7 +2656,18 @@ Requested edit:
         }
     }
 
+    private func offerPlaces(_ places: [HTMLAppPlaceLookup.Place]) {
+        guard !Task.isCancelled, !places.isEmpty, scenePhase == .active else { return }
+        if ForgeVenueSeed.load(draftVenueID) != nil { return }
+        venueCandidates = places
+        choosingVenue = true
+    }
+
     private func saveGeneratedApp() {
+        guard !session.draftHasBlockingQA else {
+            session.errorMessage = "This draft has a blocking check. Retry the app checks before saving."
+            return
+        }
         if AIPrivacyToolRunner.generatedHTMLContainsPrivateLocation(session.streamedHTML) {
             changePrompt = "Remove hard-coded device coordinates. Read location only at runtime with user permission and preserve the chosen design."
             showingChange = true
@@ -2517,25 +2709,29 @@ Requested edit:
             }
             let backendTemplate = HTMLAppBackendProvisioning.template(in: html)
             if let existingApp {
-                await store.updateFromAI(existingApp, html: html, summary: session.description.isEmpty ? existingApp.summary : session.description, note: session.lastEditSummary.isEmpty ? "AI changed this app." : session.lastEditSummary)
+                await store.updateFromAI(existingApp, html: html, summary: session.description.isEmpty ? existingApp.summary : session.description, note: appliedSummaries.isEmpty ? (session.lastEditSummary.isEmpty ? "AI changed this app." : session.lastEditSummary)
+                        : appliedSummaries.joined(separator: "\n"),
+                    requests: appliedRequests, verification: session.verificationReport)
                 if store.apps.first(where: { $0.id == existingApp.id })?.html == html {
                     if let backendTemplate { HTMLAppBackendProvisioning.enqueue(existingApp, template: backendTemplate) }
                     ForgeSemanticAppModelStore.save(for: existingApp.id, html: html,
                         purpose: session.description.isEmpty ? existingApp.summary : session.description,
                         editNote: session.lastEditSummary)
                 }
-                if let icon = session.renderedIconData {
-                    store.setGeneratedIcon(icon, for: existingApp)
+                guard store.apps.contains(where: { $0.id == existingApp.id && $0.html == html }) else {
+                    session.errorMessage = store.errorMessage ?? "Could not save the edit. Your draft is available to retry."
+                    saving = false
+                    return
                 }
+                if let icon = session.renderedIconData { store.setGeneratedIcon(icon, for: existingApp) }
                 if let selectedStyle {
                     ForgeStyleReferenceStore.save(selectedStyle, for: existingApp.id)
                     ForgeTasteMemory.recordStyle(selectedStyle.visualTokenDeclarations)
                 }
                 store.notice = "Saved AI changes to \(existingApp.name)."
             } else {
-                let beforeIDs = Set(store.apps.map(\.id))
                 await store.add(html: html, summary: session.description, backendTemplate: backendTemplate, runtimeID: runtimeCreationID)
-                if let added = store.apps.first(where: { !beforeIDs.contains($0.id) }) {
+                if let added = store.apps.first(where: { $0.id == runtimeCreationID }) {
                     ForgeSemanticAppModelStore.save(for: added.id, html: html, purpose: session.description)
                     workTracker.associateDraft(with: added.id)
                     ForgeConversationLog.associate(draftWorkID, with: added.id)
@@ -2545,8 +2741,20 @@ Requested edit:
                     }
                 }
             }
+            let savedID = existingApp?.id ?? runtimeCreationID
+            guard store.apps.contains(where: { $0.id == savedID && $0.html == html }) else {
+                saving = false
+                session.errorMessage = store.errorMessage ?? "Could not save the app. Your draft is available to retry."
+                return
+            }
+            if let confirmedVenue {
+                do { try ForgeVenueSeed.save(confirmedVenue, appID: savedID) }
+                catch { store.notice = "App saved. The destination could not be saved on this device. Choose it in the app." }
+            }
+            workTracker.markLatestKept()
             AIDebugTraceStore.shared.finish(outcome: "Saved")
             clearRequestAttachments()
+            ForgeVenueSeed.remove(draftVenueID)
             if existingApp == nil { draftWorkID = "draft-\(UUID().uuidString)" }
             session.clearCheckpoint()
             runtimeCreationID = UUID().uuidString
@@ -2591,9 +2799,15 @@ Requested edit:
             return
         }
 
+        if session.draftHasBlockingQA {
+            generationTask = Task { await session.verifyCurrent() }
+            return
+        }
+
         if !session.streamedHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let failed = session.failedPhase,
-           failed.contains("icon") || failed.contains("app checks") || failed == "Repairing confirmed app error" || failed.contains("Reviewing") || failed.contains("Rechecking") {
+           (failed.contains("icon") || failed.contains("app checks") || failed == "Repairing confirmed app error" ||
+            failed.contains("Reviewing") || failed.contains("Rechecking")) {
             generationTask = Task { await session.verifyCurrent() }
             return
         }
@@ -2603,8 +2817,7 @@ Requested edit:
 
     private static func isRecoverable(_ draft: ForgeDraftCheckpoint) -> Bool {
         let phase = draft.phase.lowercased()
-        if phase.contains("ready to review") || phase.contains("saved") ||
-            phase.contains("completed") || phase.contains("ready for ai edits") {
+        if phase == "saved" || phase.contains("ready for ai edits") {
             ForgeDraftCheckpointStore.clear()
             return false
         }
@@ -2622,8 +2835,16 @@ Requested edit:
     private func continueRecoveredDraft() {
         guard let draft = recoverableDraft else { return }
         resumeRecoveredDraft()
-        if draft.phase == "Background result received" {
-            generationTask = Task { await session.verifyCurrent() }
+        if draft.phase.hasPrefix("Ready to review"), !draft.html.isEmpty {
+            session.phase = draft.phase
+            recordRecoveredEdit(draft.pendingEdit)
+            return
+        }
+        if draft.phase == "Background result received" || draft.sourceReadyForChecks == true {
+            generationTask = Task {
+                await session.verifyCurrent()
+                if session.phase == "Ready to review" { recordRecoveredEdit(draft.pendingEdit) }
+            }
             return
         }
         if draft.existingAppID == nil {
@@ -2634,14 +2855,27 @@ Requested edit:
             prompt = draft.originalPrompt
             generateApp()
         } else {
-            // Keep the unsaved edited source and let the user submit an edit.
+            changePrompt = draft.pendingEdit ?? ""
             showingChange = true
         }
+    }
+
+    private func recordRecoveredEdit(_ request: String?) {
+        guard let request else { return }
+        appliedRequests.append(request)
+        appliedSummaries.append(session.lastEditSummary.isEmpty ? "Recovered AI edit" : session.lastEditSummary)
+        session.checkpointRequests = appliedRequests
+        session.checkpointSummaries = appliedSummaries
+        session.pendingCheckpointEdit = nil
+        session.persistCheckpoint()
     }
 
     private func resumeRecoveredDraft() {
         guard let draft = recoverableDraft else { return }
         session.restore(checkpoint: draft, existingIcon: existingApp?.favicon)
+        appliedRequests = draft.appliedRequests ?? []
+        appliedSummaries = draft.appliedSummaries ?? []
+        confirmedVenue = ForgeVenueSeed.load(draftVenueID)
         if existingApp == nil { prompt = draft.originalPrompt }
         recoverableDraft = nil
         uiPolishNotice = "Recovered the local draft. AI work was not restarted automatically."
@@ -2651,7 +2885,7 @@ Requested edit:
     /// URLSession. Start one complete file-backed request when the app
     /// actually backgrounds, then preserve its result for foreground QA.
     private func handoffForgeToBackgroundURLSession() {
-        guard !demoMode, session.isWorking, !ForgeBackgroundUpload.shared.isActive else { return }
+        guard !demoMode, session.isWorking, !session.sourceReadyForChecks, !ForgeBackgroundUpload.shared.isActive else { return }
         let config = ForgeRunOptions.$quick.withValue(quickMode && !AISettingsStore.quickModel.isEmpty) {
             AISettingsStore.configuration
         }
@@ -2678,7 +2912,7 @@ Requested edit:
         session.persistCheckpoint()
         let started = ForgeAttachmentContext.$images.withValue(attachments.items) {
             ForgeBackgroundUpload.shared.start(config: config, system: system,
-                messages: [("user", message + ForgeAttachment.textContext(attachments.items) + ForgeConversationLog.context(conversationID))], edit: isEdit)
+                messages: [("user", message + ForgeAttachment.textContext(attachments.items) + appMemory(message))], edit: isEdit)
         }
         guard started else { return }
         let previous = generationTask
@@ -2706,7 +2940,8 @@ Requested edit:
         session.streamedHTML = ForgeAttachment.materialize(session.streamedHTML, items: attachments.items)
         generationTask = Task {
             await session.verifyCurrent()
-            if session.errorMessage == nil {
+            if session.phase == "Ready to review" {
+                recordRecoveredEdit(session.pendingCheckpointEdit)
                 clearRequestAttachments()
                 if existingApp == nil && unsavedEditHistory.isEmpty && !Task.isCancelled {
                     await offerInitialUIReview(originalPrompt: session.refinedBrief)

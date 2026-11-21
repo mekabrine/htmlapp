@@ -1284,7 +1284,13 @@ if (!result.cancelled) console.log(result.value);
 - Treat “the hotel I’m at,” “my current restaurant,” and similar instructions as a request to resolve the venue from device location. Start with a visible Use Current Location button and `navigator.geolocation`. Do not put manual address or coordinate fields first.
 - Call `HTMLAppNative.map.nearbyPlaces(latitude, longitude, "hotel")` (or the relevant name/category). Apple Maps can return several nearby candidates or none. Let the user confirm which named place they mean. Save the confirmed destination in app storage without changing it as the origin moves. Support search or manual entry as a fallback.
 - For driving time, call `HTMLAppNative.map.drivingETA(originLatitude, originLongitude, destinationLatitude, destinationLongitude)`. Display `expectedTravelTimeSeconds` and `distanceMeters` with honest offline and stale states. Use foreground `watchPosition` with movement and time throttling (at least 30 seconds between requests), and stop the watcher when the app leaves the foreground.
+- Before another search, read the confirmed destination through `HTMLAppNative.secureStorage.get("forge.confirmedVenue")`. Parse the returned `value` as a JSON string with `name`, `latitude`, and `longitude`. Use the same device-only storage key for user-confirmed changes.
+- For drive-estimate apps add `data-forge-drive-start`, `data-forge-drive-refresh`, and `data-forge-drive-status` to the live controls and status. Show returned minutes and set the status element's `data-state` to `denied` or `unavailable` on the respective failures. A manual refresh requests a fresh position immediately.
 - The saved app has its own Location permission. This is separate from AI Generation Privacy. Never write build-time private coordinates or a detected private venue into generated source.
+
+### Regression fixtures
+
+Use inert JSON scripts only for repeatable checks with synthetic data. An `htmlapp-workflow-qa` array can identify up to three checks using `name`, `tap` (a visible control selector), and `visible` (an initially hidden result selector). An `htmlapp-storage-qa` object can hold `localStorage` or `appStorage` dictionaries of raw JSON-string values, plus `selector` and `expectedText` for the app's rendered sample. Keep existing fixture behavior working across unrelated changes. The installed app must never seed its live UI or storage from a QA fixture.
 
 ### Consent-gated public HTTPS API requests  (`network.request`)
 **API:** `await HTMLAppNative.network.request({url,method?,headers?,body?,signal?})`

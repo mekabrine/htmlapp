@@ -1,3 +1,4 @@
+import Security
 import CoreLocation
 import MapKit
 
@@ -58,5 +59,43 @@ enum HTMLAppPlaceLookup {
         defer { deadline.cancel() }
         let eta = try await directions.calculateETA()
         return ["distanceMeters": eta.distance, "expectedTravelTimeSeconds": eta.expectedTravelTime]
+    }
+}
+
+/// A device-only keychain item in the same per-app namespace as secureStorage.
+@MainActor
+enum ForgeVenueSeed {
+    static func save(_ place: HTMLAppPlaceLookup.Place, appID: String) throws {
+        let data = try JSONSerialization.data(withJSONObject: place.payload)
+        let key = query(appID)
+        let attributes: [String: Any] = [kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
+        var status = SecItemUpdate(key as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            status = SecItemAdd(key.merging(attributes) { _, new in new } as CFDictionary, nil)
+        }
+        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+    }
+
+    static func load(_ appID: String) -> HTMLAppPlaceLookup.Place? {
+        var request = query(appID)
+        request[kSecReturnData as String] = true
+        request[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(request as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let name = payload["name"] as? String, let latitude = payload["latitude"] as? Double,
+              let longitude = payload["longitude"] as? Double,
+              let distance = payload["distanceMeters"] as? Double else { return nil }
+        return HTMLAppPlaceLookup.Place(name: name, latitude: latitude, longitude: longitude, distanceMeters: distance)
+    }
+
+    static func remove(_ appID: String) { SecItemDelete(query(appID) as CFDictionary) }
+
+    private static func query(_ appID: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: "com.mekabrine.htmlapp.native." + appID,
+         kSecAttrAccount as String: "forge.confirmedVenue"]
     }
 }

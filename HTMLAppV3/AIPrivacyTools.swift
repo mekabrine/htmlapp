@@ -226,7 +226,7 @@ final class AIPrivacyToolRunner: NSObject, CLLocationManagerDelegate {
         return String(output.prefix(200_000))
     }
 
-    private func currentVenueContext(query: String) async -> String {
+    private func currentVenueContext(query: String, onPlaces: (([HTMLAppPlaceLookup.Place]) -> Void)?) async -> String {
         let guidance = """
         CURRENT-VENUE REQUEST (category: \(query)). The user means the venue at their device position.
         Build a primary Use Current Location action. Use foreground navigator.geolocation and
@@ -234,7 +234,8 @@ final class AIPrivacyToolRunner: NSObject, CLLocationManagerDelegate {
         Let the user confirm a nearby match before treating it as their current venue; use manual search
         only as a fallback. When used as a destination, persist the confirmed venue locally and keep it
         fixed as the live origin moves. For driving time, call HTMLAppNative.map.drivingETA with fresh
-        origin coordinates and the saved destination. Never hard-code the user's location or venue.
+        origin coordinates and the saved destination. Read the confirmed destination from device-only secure storage under forge.confirmedVenue before requesting
+        another nearby search. Never hard-code the user's location or venue.
         """
         guard AIPrivacyOptions.location == "precise" else {
             return guidance + "\nBuild-time venue lookup requires Precise in AI Generation Privacy. The saved app has its own permission."
@@ -251,7 +252,8 @@ final class AIPrivacyToolRunner: NSObject, CLLocationManagerDelegate {
             let candidates = try await HTMLAppPlaceLookup.nearby(query: query, latitude: latitude, longitude: longitude)
             guard !Task.isCancelled, AIPrivacyOptions.location == "precise" else { return guidance }
             AIDebugTraceStore.shared.append("AI PRIVACY TOOL", "Apple Maps current venue lookup finished with \(candidates.count) nearby candidates.")
-            return guidance + "\nApple Maps returned \(candidates.count) nearby candidates during generation. Resolve names afresh in the app."
+            onPlaces?(candidates)
+            return guidance + "\nApple Maps returned \(candidates.count) nearby candidates during generation. Use the confirmed device-only destination when present."
         } catch {
             AIDebugTraceStore.shared.append("AI PRIVACY TOOL", "Apple Maps current venue lookup was unavailable.")
             return guidance + "\nApple Maps was unavailable during generation. Keep runtime lookup, timeout and retry."
@@ -260,9 +262,9 @@ final class AIPrivacyToolRunner: NSObject, CLLocationManagerDelegate {
 
     /// Independent provider-compatible JSON tool loop. It runs before Forge
     /// coding/editing, with six steps and a strict twenty-second overall budget.
-    static func research(_ prompt: String, config: AIProviderConfiguration) async -> String {
+    static func research(_ prompt: String, config: AIProviderConfiguration, onPlaces: (([HTMLAppPlaceLookup.Place]) -> Void)? = nil) async -> String {
         if let query = ForgeCurrentPlace.query(in: prompt) {
-            return await AIPrivacyToolRunner().currentVenueContext(query: query)
+            return await AIPrivacyToolRunner().currentVenueContext(query: query, onPlaces: onPlaces)
         }
         guard AIPrivacyOptions.anyEnabled else { return "" }
         let tool = AIPrivacyToolRunner()

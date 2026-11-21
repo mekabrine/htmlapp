@@ -61,6 +61,11 @@ struct ForgeWorkRun: Codable, Identifiable {
     var endedAt: Date?
     var outcome: String
     var slices: [ForgeWorkSlice]
+    var usableAt: Date? = nil
+    var kept: Bool? = nil
+    var repairPassed: Bool? = nil
+    var requestGroup: UUID? = nil
+    var complexEdit: Bool? = nil
 
     var duration: TimeInterval { max(0, (endedAt ?? Date()).timeIntervalSince(startedAt)) }
 }
@@ -95,13 +100,13 @@ final class ForgeWorkTracker: ObservableObject {
         self.appKey = appKey
     }
 
-    func begin(kind: String, appKey: String) {
+    func begin(kind: String, appKey: String, requestGroup: UUID? = nil) {
         if current != nil { finish(outcome: "Interrupted") }
         self.appKey = appKey
         current = ForgeWorkRun(appKey: appKey, kind: kind, startedAt: Date(),
                                endedAt: nil, outcome: "Running",
                                slices: [ForgeWorkSlice(stage: .prompt, startedAt: Date(),
-                                                       endedAt: nil, sourceBytes: 0)])
+                                                       endedAt: nil, sourceBytes: 0)], requestGroup: requestGroup)
         persist(force: true)
     }
 
@@ -162,14 +167,35 @@ final class ForgeWorkTracker: ObservableObject {
         transition(stage)
     }
 
-    func finish(outcome: String) {
+    func finish(outcome: String, complexEdit: Bool? = nil) {
         guard var run = current else { return }
         let now = Date()
         run.endedAt = now
         run.outcome = outcome
+        run.complexEdit = complexEdit
         if !run.slices.isEmpty { run.slices[run.slices.count - 1].endedAt = now }
         history.append(run)
         current = nil
+        trimAndWrite()
+    }
+
+    func markUsable(repairPassed: Bool?) {
+        guard var run = current else { return }
+        if run.usableAt == nil { run.usableAt = Date() }
+        if let repairPassed { run.repairPassed = repairPassed }
+        current = run
+        persist(force: true)
+    }
+
+    func markRepairFailed() {
+        guard var run = current else { return }
+        run.repairPassed = false
+        current = run
+    }
+
+    func markLatestKept() {
+        guard let index = history.lastIndex(where: { $0.appKey == appKey && $0.usableAt != nil }) else { return }
+        history[index].kept = true
         trimAndWrite()
     }
 
@@ -275,6 +301,11 @@ struct ForgeRunBreakdown: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            ForEach(["New app", "Focused edit", "Complex edit"], id: \.self) { kind in
+                if let summary = qualitySummary(kind) {
+                    Text(summary).font(.caption).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
             ForEach(runs.reversed()) { run in
                 VStack(alignment: .leading, spacing: 5) {
                     HStack {
@@ -316,5 +347,21 @@ struct ForgeRunBreakdown: View {
             Text("Token counts use an approximation (~4 bytes per token), not provider usage. Optional USD figures use your supplied output rate and EXCLUDE input tokens, reasoning tokens, cached tokens, image costs and provider charges; never treat them as a bill. Timings are measured by HTMLApp.")
                 .font(.caption2).foregroundStyle(.secondary)
         }
+    }
+
+    private func qualitySummary(_ kind: String) -> String? {
+        let group = runs.filter { run in
+            guard run.endedAt != nil else { return false }
+            if kind == "New app" { return run.kind == kind }
+            return run.kind == "AI edit" && run.complexEdit == (kind == "Complex edit")
+        }
+        guard !group.isEmpty else { return nil }
+        let usable = group.filter { $0.usableAt != nil }
+        let durations = usable.compactMap { run in run.usableAt.map { $0.timeIntervalSince(run.startedAt) } }
+        let time = durations.isEmpty ? "no usable previews measured" : "\(Int(durations.reduce(0, +) / Double(durations.count)))s mean to preview"
+        let first = Dictionary(grouping: usable.filter { $0.requestGroup != nil }) { $0.requestGroup }
+            .values.compactMap { $0.min(by: { $0.startedAt < $1.startedAt }) }
+        let repairs = group.compactMap(\.repairPassed)
+        return "\(kind): \(time) · \(first.filter { $0.kept == true }.count) of \(first.count) first previews kept · \(repairs.filter { $0 }.count) of \(repairs.count) repairs passed"
     }
 }

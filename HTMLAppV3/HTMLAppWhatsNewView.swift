@@ -41,7 +41,28 @@ enum HTMLAppReleaseNotes {
                   symbol: "mic.badge.plus", tint: .purple),
             Entry(id: "forge-current-place", title: "Build apps around your current place",
                   description: "Forge can use Apple Maps for nearby venue candidates and foreground driving estimates. Confirm your destination once and keep the estimate updated as you move.",
-                  symbol: "location.fill", tint: .green)
+                  symbol: "location.fill", tint: .green),
+            Entry(id: "forge-memory", title: "Forge remembers each app",
+                  description: "Forge uses relevant past requests, style feedback and revision summaries. Review, exclude or pin context in What Forge Remembers.",
+                  symbol: "clock.arrow.circlepath", tint: .purple),
+            Entry(id: "forge-revisions", title: "Know what changed and what stayed",
+                  description: "Edit History shows the requests and checks for saved changes. Restoring an earlier version updates which revisions Forge considers active.",
+                  symbol: "arrow.uturn.backward", tint: .blue),
+            Entry(id: "forge-screen-target", title: "Point Forge at the right screen",
+                  description: "Select an element before asking for a change, or send a screen report with its last control and recent errors. Review files, skills and history in Request Context.",
+                  symbol: "scope", tint: .purple),
+            Entry(id: "forge-preview-compare", title: "Try both versions before saving",
+                  description: "Switch between the previous and edited previews. Preview data is separate from your saved app.",
+                  symbol: "rectangle.on.rectangle", tint: .blue),
+            Entry(id: "forge-driving-destination", title: "Keep your confirmed destination",
+                  description: "Choose a nearby venue during generation and the saved app can use it after you leave. Forge checks movement, driving estimates, denied location and route failures.",
+                  symbol: "mappin.circle.fill", tint: .green),
+            Entry(id: "forge-workflow-tests", title: "Check existing features after an edit",
+                  description: "Forge gives complex edits more verification, checks sample records and tests declared workflows. Repair notes explain what changed and whether the retest passed.",
+                  symbol: "checkmark.shield", tint: .green),
+            Entry(id: "forge-resume", title: "Recover work after an interruption",
+                  description: "Reopen a completed draft or rerun checks on saved source when a build is interrupted. Work History shows preview time, saved results and repair outcomes.",
+                  symbol: "arrow.clockwise.circle", tint: .orange)
         ]
     }
 }

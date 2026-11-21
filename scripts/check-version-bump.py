@@ -3,6 +3,7 @@
 
 Use [build-fix] in the commit subject only when a commit exclusively fixes a
 build/CI/compiler/package failure and intentionally should not trigger What's New.
+Use [no-version-bump] only for an owner-requested same-version update with release notes.
 """
 
 from pathlib import Path
@@ -17,6 +18,7 @@ RELEASE = ROOT / "HTMLAppV3" / "HTMLAppWhatsNewView.swift"
 PRODUCT_PREFIXES = ("HTMLAppV3/", "HTMLAppShared/", "HTMLAppWidgets/", "HTMLApp/")
 PRODUCT_FILES = {"project.yml"}
 EXEMPT_SUBJECT_MARKER = "[build-fix]"
+SAME_VERSION_MARKER = "[no-version-bump]"
 
 
 def git(*args: str) -> str:
@@ -57,13 +59,16 @@ if EXEMPT_SUBJECT_MARKER in subject.lower():
 old_version, old_build = identity(parent)
 new_version, new_build = identity("HEAD")
 
-if new_version == old_version:
+same_version = SAME_VERSION_MARKER in subject.lower()
+if same_version and (new_version, new_build) != (old_version, old_build):
+    raise SystemExit("A same-version update must keep both the version and build unchanged.")
+if not same_version and new_version == old_version:
     raise SystemExit(
         f"Product source changed but compiledVersion stayed {new_version}. "
         f"Bump the release version and add What's New notes, or use "
         f"{EXEMPT_SUBJECT_MARKER} only for a build-error-only fix."
     )
-if new_build == old_build:
+if not same_version and new_build == old_build:
     raise SystemExit(
         f"Product source changed but compiledBuild stayed {new_build}. "
         "Increment the build identity with the release version."
@@ -81,6 +86,12 @@ changelog = json.loads(git("show", "HEAD:HTMLApp/Resources/HTMLApp-Changelog.jso
 if (not expected_changes or not changelog or changelog[0]["version"] != new_version
         or changelog[0].get("changes") != expected_changes):
     raise SystemExit("Archive every current What's New title, description, symbol and tint in the newest changelog entry.")
+
+if same_version:
+    if git("show", "HEAD:HTMLAppV3/HTMLAppWhatsNewView.swift") == git("show", f"{parent}:HTMLAppV3/HTMLAppWhatsNewView.swift"):
+        raise SystemExit("A same-version product update must refresh What's New.")
+    print(f"Same-version update verified: {new_version} ({new_build}).")
+    sys.exit(0)
 
 print(
     f"Version-bump policy passed: {old_version} ({old_build}) -> "

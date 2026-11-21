@@ -2,15 +2,52 @@ import Foundation
 import WebKit
 import UIKit
 
+struct ForgeLegacyStorageFixture: Decodable {
+    let localStorage: [String: String]?
+    let appStorage: [String: String]?
+    let selector: String
+    let expectedText: String
+}
+
+struct ForgeWorkflowFixture: Decodable {
+    let name: String
+    let tap: String
+    let visible: String
+}
+
 @MainActor
 enum HTMLRuntimeVerifier {
-    static func verify(html: String, timeout: TimeInterval = 6) async -> [String] {
+    static func verify(html: String, timeout: TimeInterval = 6, testDriving: Bool = false, legacyFixture: ForgeLegacyStorageFixture? = nil, workflows: [ForgeWorkflowFixture] = []) async -> [String] {
         guard !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return ["Runtime: generated HTML was empty."]
         }
         let staticWarnings = HTMLAppBridgeLint.warnings(in: html)
-        let session = HTMLRuntimeCheckSession(html: html)
-        return staticWarnings + (await session.run(timeout: timeout))
+        let session = HTMLRuntimeCheckSession(html: html, testDriving: testDriving, legacyFixture: legacyFixture, workflows: workflows)
+        return staticWarnings + (await session.run(timeout: timeout + (testDriving ? 5 : 0) + (legacyFixture == nil ? 0 : 2) + Double(workflows.count)))
+    }
+
+    static func legacyStorageFixture(_ html: String) -> ForgeLegacyStorageFixture? {
+        guard let fixture = decodeFixture(ForgeLegacyStorageFixture.self, id: "htmlapp-storage-qa", in: html),
+              (1...200).contains(fixture.selector.count), (1...200).contains(fixture.expectedText.count),
+              !(fixture.localStorage ?? [:]).isEmpty || !(fixture.appStorage ?? [:]).isEmpty else { return nil }
+        return fixture
+    }
+
+    static func workflowFixtures(_ html: String) -> [ForgeWorkflowFixture] {
+        let fixtures = decodeFixture([ForgeWorkflowFixture].self, id: "htmlapp-workflow-qa", in: html) ?? []
+        return Array(fixtures.filter {
+            (1...80).contains($0.name.count) && (1...200).contains($0.tap.count) && (1...200).contains($0.visible.count)
+        }.prefix(3))
+    }
+
+    private static func decodeFixture<T: Decodable>(_ type: T.Type, id: String, in html: String) -> T? {
+        let pattern = #"<script\b(?=[^>]*\bid\s*=\s*["']"# + id +
+            #"["'])(?=[^>]*\btype\s*=\s*["']application/json["'])[^>]*>([\s\S]*?)</script\s*>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+              let range = Range(match.range(at: 1), in: html),
+              html[range].utf8.count <= 24_000 else { return nil }
+        return try? JSONDecoder().decode(type, from: Data(html[range].utf8))
     }
 }
 
@@ -26,7 +63,15 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
     private var mockSystemControls = HTMLAppSystemControlDocument()
     private var mockDocuments: [String: [String: [String: Any]]] = [:]
 
-    init(html: String) {
+    private let testDriving: Bool
+    private let legacyFixture: ForgeLegacyStorageFixture?
+    private let workflows: [ForgeWorkflowFixture]
+
+    init(html: String, testDriving: Bool, legacyFixture: ForgeLegacyStorageFixture?, workflows: [ForgeWorkflowFixture]) {
+        self.testDriving = testDriving
+        self.legacyFixture = legacyFixture
+        self.workflows = workflows
+        self.mockAppStorage = legacyFixture?.appStorage ?? [:]
         self.html = html
         super.init()
     }
@@ -91,6 +136,16 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             forMainFrameOnly: true
         ))
 
+        if let values = legacyFixture?.localStorage,
+           let data = try? JSONSerialization.data(withJSONObject: values),
+           let json = String(data: data, encoding: .utf8) {
+            controller.addUserScript(WKUserScript(
+                source: "try { for (const [key,value] of Object.entries(\(json))) localStorage.setItem(key,value); } catch (_) {}",
+                injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        if testDriving {
+            controller.addUserScript(WKUserScript(source: Self.driveFixtures, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         for name in Self.messageHandlerNames {
             controller.add(self, name: name)
         }
@@ -371,6 +426,41 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
         }
         if let canvas = (try? await evaluate(Self.canvasProbe, in: webView)) as? [String] {
             canvas.forEach(appendIssue)
+        }
+        if testDriving {
+            do {
+                let result = try await webView.callAsyncJavaScript(Self.driveScenario, arguments: [:], in: nil, in: .page)
+                if let issue = result as? String, !issue.isEmpty { appendIssue("Current venue: " + issue) }
+            } catch { appendIssue("Current venue: driving scenario could not execute.") }
+        }
+        if let fixture = legacyFixture {
+            let script = """
+            for (let pass = 0; pass < 20; pass++) {
+              const element = document.querySelector(selector);
+              if (element?.getClientRects().length && element.innerText.includes(expected)) return true;
+              await new Promise(resolve => setTimeout(resolve, 40));
+            }
+            return false;
+            """
+            let result = try? await webView.callAsyncJavaScript(script,
+                arguments: ["selector": fixture.selector, "expected": fixture.expectedText], in: nil, in: .page)
+            if (result as? Bool) != true { appendIssue("Legacy storage: the sample record did not appear after startup.") }
+        }
+        for workflow in workflows {
+            let script = """
+            const visible = el => el?.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible';
+            const control = document.querySelector(tap);
+            if (!visible(control) || control.disabled || visible(document.querySelector(expected))) return false;
+            control.click();
+            for (let attempt = 0; attempt < 14; attempt++) {
+              if (visible(document.querySelector(expected))) return true;
+              await new Promise(resolve => setTimeout(resolve, 40));
+            }
+            return false;
+            """
+            let result = try? await webView.callAsyncJavaScript(script,
+                arguments: ["tap": workflow.tap, "expected": workflow.visible], in: nil, in: .page)
+            if (result as? Bool) != true { appendIssue("Workflow regression: " + workflow.name + " did not reveal its expected result.") }
         }
         let phone = await snapshot(webView, width: 390, height: 844)
         if let phone {
@@ -760,6 +850,48 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
         "htmlappNative",
         "htmlappNetwork"
     ]
+
+    private static let driveFixtures = #"""
+    (() => {
+      const state = window.__forgeDriveQA = { denied:true, offline:false, moved:false, calls:[], watches:new Map() };
+      const position = () => ({coords:{latitude:state.moved ? 42 : 40,longitude:-75,accuracy:5},timestamp:Date.now()});
+      const emit = (ok,fail) => queueMicrotask(() => state.denied ? fail?.({code:1,message:'Location denied'}) : ok(position()));
+      let next = 0;
+      Object.defineProperty(navigator,'geolocation',{configurable:true,value:{
+        getCurrentPosition:emit,watchPosition(ok,fail){ const id=++next; if(!state.denied) state.watches.set(id,ok); emit(ok,fail); return id; },
+        clearWatch(id){state.watches.delete(id);}
+      }});
+      state.move = () => { state.moved=true; for(const ok of state.watches.values()) ok(position()); };
+      const api=window.HTMLAppNative;
+      const get=api.secureStorage.get;
+      api.secureStorage.get=async key=>key==='forge.confirmedVenue'
+        ? {value:JSON.stringify({name:'QA destination',latitude:41,longitude:-74})} : get(key);
+      api.map.drivingETA=async (lat,lon,dlat,dlon)=>{
+        state.calls.push([lat,lon,dlat,dlon]);
+        if(state.offline) throw Error('Route unavailable');
+        return {expectedTravelTimeSeconds:state.moved?1320:660,distanceMeters:state.moved?18000:9000};
+      };
+    })();
+    """#
+
+    private static let driveScenario = #"""
+    const s=window.__forgeDriveQA, start=document.querySelector('[data-forge-drive-start]'),
+      refresh=document.querySelector('[data-forge-drive-refresh]'), output=document.querySelector('[data-forge-drive-status]');
+    if(!s || !start || !refresh || !output) return 'Expose the start, refresh and visible status controls for the drive workflow.';
+    const wait=async(fn)=>{for(let i=0;i<18;i++){if(fn())return true;await new Promise(r=>setTimeout(r,35));}return false;};
+    const visible=()=>output.getClientRects().length>0 && output.innerText.trim().length>0;
+    start.click();
+    if(!await wait(()=>visible() && output.dataset.state==='denied')) return 'Show a visible denied-location state and allow a retry.';
+    s.denied=false; start.click();
+    if(!await wait(()=>visible() && /\b11\b/.test(output.innerText))) return 'Render the first returned driving estimate in minutes using the saved destination.';
+    s.move(); refresh.click();
+    if(!await wait(()=>visible() && /\b22\b/.test(output.innerText))) return 'Refresh the displayed ETA from the changed origin.';
+    if(!s.calls.some(c=>c[0]===40 && c[1]===-75) || !s.calls.some(c=>c[0]===42 && c[1]===-75) ||
+       s.calls.some(c=>c[2]!==41 || c[3]!==-74)) return 'Keep the confirmed destination fixed when the origin changes.';
+    s.offline=true; const previous=s.calls.length; refresh.click();
+    if(!await wait(()=>s.calls.length>previous && visible() && output.dataset.state==='unavailable')) return 'Display the route lookup failure or mark the previous estimate stale.';
+    return '';
+    """#
 
     private static let diagnosticsScript = #"""
     (() => {

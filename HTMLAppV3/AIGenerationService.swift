@@ -112,6 +112,12 @@ final class AIGenerationSession: ObservableObject {
     private(set) var originalPrompt = ""
     private var generationStartedAt = Date()
     private var lastResearch = ""
+    var checkpointRequests: [String] = []
+    var checkpointSummaries: [String] = []
+    var pendingCheckpointEdit: String?
+    private(set) var sourceReadyForChecks = false
+    private(set) var lastEditWasComplex = false
+    private(set) var draftHasBlockingQA = false
     private var editingExistingApp = false
     private var checkpointExistingAppID: String?
     var runtimeBackendRequired = false
@@ -240,6 +246,8 @@ final class AIGenerationSession: ObservableObject {
 
     func load(existing app: SavedHTMLApp) {
         editingExistingApp = true
+        checkpointRequests = []
+        checkpointSummaries = []
         iconRefreshAllowed = false
         checkpointExistingAppID = app.id
         originalPrompt = "Maintain and improve the existing HTML app named \(app.name). Preserve its current purpose and working behavior unless the user explicitly asks to change them."
@@ -306,6 +314,8 @@ final class AIGenerationSession: ObservableObject {
             editingExistingApp = false
             checkpointExistingAppID = nil
         }
+        sourceReadyForChecks = false
+        draftHasBlockingQA = false
         iconRefreshAllowed = !preserveIcon
         defer { if preserveIcon { iconScript = savedIconScript } }
         originalPrompt = originalUserPrompt ?? prompt
@@ -520,6 +530,8 @@ final class AIGenerationSession: ObservableObject {
             }
             let finalAssets = await refineGeneratedAssets(final.assetScripts)
             await installGeneratedAssets(finalAssets)
+            sourceReadyForChecks = true
+            persistCheckpoint()
             var speculativeIconAccepted = false
             if iconScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                let candidate = await iconWorker?.value, !candidate.isEmpty,
@@ -540,10 +552,12 @@ final class AIGenerationSession: ObservableObject {
                     )
                 }
             }
+            persistCheckpoint()
             try await verifyAndRepair(config: config)
             try await ensureRuntimeBackend(config: config)
             try Task.checkCancellation()
             phase = "Ready to review"
+            persistCheckpoint()
         } catch is CancellationError {
             failedPhase = phase
             errorMessage = nil
@@ -559,21 +573,23 @@ final class AIGenerationSession: ObservableObject {
         isWorking = false
     }
 
-    func revise(change: String, researchReport: String = "", styleInstruction: String? = nil, attachments: [ForgeAttachment]? = nil) async {
+    func revise(change: String, researchReport: String = "", historyContext: String = "", styleInstruction: String? = nil, attachments: [ForgeAttachment]? = nil) async {
         let inputs = attachments ?? []
         await ForgeAttachmentContext.$images.withValue(inputs) {
             await reviseWithAttachments(change: change + ForgeAttachment.textContext(inputs),
-                researchReport: researchReport, styleInstruction: styleInstruction)
+                researchReport: researchReport, historyContext: historyContext, styleInstruction: styleInstruction)
         }
         guard !Task.isCancelled else { return }
         streamedHTML = ForgeAttachment.materialize(streamedHTML, items: inputs)
     }
 
-    private func reviseWithAttachments(change: String, researchReport: String = "", styleInstruction: String? = nil) async {
+    private func reviseWithAttachments(change: String, researchReport: String = "", historyContext: String = "", styleInstruction: String? = nil) async {
         guard !streamedHTML.trimmed.isEmpty else { return }
         let config = AISettingsStore.configuration
         guard config.isConfigured else { errorMessage = AIGenerationError.notConfigured.localizedDescription; return }
         lastEditSummary = ""
+        lastEditWasComplex = false
+        sourceReadyForChecks = false
         let beforeEditHTML = streamedHTML
         let editSource = ForgeEditIconContext(beforeEditHTML)
         let beforeEditDescription = description
@@ -599,6 +615,7 @@ final class AIGenerationSession: ObservableObject {
             let editContract = ForgeEditContract.make(
                 request: cleanChange, model: semanticModel, taste: ForgeTasteMemory.summary
             )
+            lastEditWasComplex = [.behavior, .dataModel, .nativeCapability, .architecture, .bugFix].contains(editContract.scope)
             AIDebugTraceStore.shared.append("SEMANTIC EDIT CONTRACT",
                 "Scope: \(editContract.scope.rawValue); targets: \(editContract.targets.joined(separator: ", ")); capability candidates: \(editContract.recommendedCapabilities.joined(separator: ", "))")
             iconRefreshAllowed = Self.changeMayNeedIconRefresh(cleanChange) || renderedIconData == nil
@@ -666,6 +683,8 @@ EDIT IMPLEMENTATION CONTRACT:
 
 Requested edit:
 \(cleanChange)
+
+\(historyContext)
 
 \(styleInstruction ?? "")
 """
@@ -776,7 +795,9 @@ Requested edit:
                 AIDebugTraceStore.shared.append("ICON", "Preserved the existing app icon because this edit did not request an icon or identity change.")
             }
             let reviewedEditHTML = streamedHTML
-            try await verifyAndRepair(config: config, editRequest: cleanChange)
+            sourceReadyForChecks = true
+            persistCheckpoint()
+            try await verifyAndRepair(config: config, editRequest: cleanChange, beforeEdit: beforeEditHTML)
             try await ensureRuntimeBackend(config: config, request: originalPrompt + "\n" + cleanChange)
             if streamedHTML != reviewedEditHTML {
                 let outcomeIssues = (try? await ForgeEditOutcomeReview.issues(
@@ -818,6 +839,8 @@ Requested edit:
             persistCheckpoint()
         } catch is CancellationError {
             failedPhase = phase
+            sourceReadyForChecks = false
+            draftHasBlockingQA = false
             streamedHTML = beforeEditHTML
             description = beforeEditDescription
             iconScript = beforeEditIconScript
@@ -828,6 +851,8 @@ Requested edit:
             phase = "Edit stopped"
         } catch {
             failedPhase = phase
+            sourceReadyForChecks = false
+            draftHasBlockingQA = false
             streamedHTML = beforeEditHTML
             description = beforeEditDescription
             iconScript = beforeEditIconScript
@@ -945,6 +970,9 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
         editingExistingApp = false
         checkpointExistingAppID = nil
         originalPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        sourceReadyForChecks = false
+        pendingCheckpointEdit = nil
+        latestPartialHTML = ""
         generationStartedAt = Date()
         persistCheckpoint()
     }
@@ -965,7 +993,14 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
                 phase: phase,
                 existingAppID: checkpointExistingAppID,
                 streamedByteCount: streamedByteCount,
-                backendRequired: runtimeBackendRequired
+                backendRequired: runtimeBackendRequired,
+                verification: verificationReport,
+                editSummary: lastEditSummary,
+                appliedRequests: checkpointRequests,
+                appliedSummaries: checkpointSummaries,
+                sourceReadyForChecks: sourceReadyForChecks && latestPartialHTML.isEmpty,
+                pendingEdit: pendingCheckpointEdit,
+                blockingQA: draftHasBlockingQA
             )
         )
     }
@@ -984,7 +1019,13 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
         iconScript = checkpoint.iconScript
         renderedIconData = existingIcon
         streamedByteCount = checkpoint.streamedByteCount
-        verificationReport = ""
+        verificationReport = checkpoint.verification ?? ""
+        lastEditSummary = checkpoint.editSummary ?? ""
+        checkpointRequests = checkpoint.appliedRequests ?? []
+        checkpointSummaries = checkpoint.appliedSummaries ?? []
+        sourceReadyForChecks = checkpoint.sourceReadyForChecks == true
+        pendingCheckpointEdit = checkpoint.pendingEdit
+        draftHasBlockingQA = checkpoint.blockingQA == true
         errorMessage = nil
         failedPhase = nil
         isWorking = false
@@ -1013,6 +1054,7 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
 
     func acceptExternalHTML(_ html: String) {
         streamedHTML = html
+        draftHasBlockingQA = false
         verificationReport = ""
         persistCheckpoint()
     }
@@ -1031,6 +1073,7 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
             try await ensureRuntimeBackend(config: config)
             try Task.checkCancellation()
             phase = "Ready to review"
+            persistCheckpoint()
         } catch is CancellationError {
             failedPhase = phase
             errorMessage = nil
@@ -1281,7 +1324,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         }
     }
 
-    private func verifyAndRepair(config: AIProviderConfiguration, editRequest: String? = nil) async throws {
+    private func verifyAndRepair(config: AIProviderConfiguration, editRequest: String? = nil, beforeEdit: String? = nil) async throws {
         try Task.checkCancellation()
         streamedHTML = ForgeAttachment.materialize(streamedHTML, items: ForgeAttachmentContext.images)
         try await ensureRuntimeBackend(config: config)
@@ -1295,8 +1338,12 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             AIDebugTraceStore.shared.append("LOCAL AUTOFIX", "Added missing doctype or viewport metadata without using AI.")
         }
         let original = streamedHTML
-        let testMode = ForgeTestMode.selected
+        var testMode = ForgeTestMode.selected
+        let legacyFixture = beforeEdit.flatMap(HTMLRuntimeVerifier.legacyStorageFixture)
+        let previousWorkflows = beforeEdit.map(HTMLRuntimeVerifier.workflowFixtures) ?? []
+        if testMode == .fast, editRequest != nil, lastEditWasComplex { testMode = .balanced }
         if testMode == .skip {
+            draftHasBlockingQA = false
             let warnings = HTMLQualityChecks.issues(in: original) + Self.coreWorkflowWarnings(prompt: originalPrompt, html: original)
             verificationReport = "Tests skipped at your request. App behavior and buttons have NOT been verified. " + warnings.joined(separator: " ")
             AIDebugTraceStore.shared.append("QA SKIPPED", verificationReport)
@@ -1304,11 +1351,12 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         }
 
         let request = editRequest.map { originalPrompt + "\n" + $0 } ?? originalPrompt
-        let initial = await appCheckFindings(in: original, mode: testMode, request: request)
+        let initial = await appCheckFindings(in: original, mode: testMode, request: request, legacyFixture: legacyFixture, previousWorkflows: previousWorkflows)
         try Task.checkCancellation()
         AIDebugTraceStore.shared.append("QA CLASSIFICATION",
             "Blocking: \(initial.blocking.count); Advisory: \(initial.advisory.count)\n" +
             (initial.blocking + initial.advisory).joined(separator: "\n"))
+        draftHasBlockingQA = !initial.blocking.isEmpty
         if initial.blocking.isEmpty {
             let summary = testMode == .fast
                 ? "Fast local smoke checks passed."
@@ -1338,11 +1386,13 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         phase = "Repairing confirmed app error"
         var remaining = initial.blocking
         var repairedHTML: String?
+        var repairSummary = ""
         do {
             let response = try await AIHTMLAgent.applyQARepair(
                 html: iconContext.html, request: request, research: lastResearch,
                 issues: initial.blocking, plan: plan, config: coder)
             qaRepairResponseBytes = response.utf8.count
+            repairSummary = Self.repairSummary(in: response)
             let output = AIHTMLAgent.parse(response)
             let fixed = output.patch.trimmed.isEmpty
                 ? output.html
@@ -1361,16 +1411,25 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         try Task.checkCancellation()
         if let repairedHTML {
             phase = "Rechecking repaired app"
-            let retest = await appCheckFindings(in: repairedHTML, mode: testMode, request: request)
+            let retest = await appCheckFindings(in: repairedHTML, mode: testMode, request: request, legacyFixture: legacyFixture, previousWorkflows: previousWorkflows)
             try Task.checkCancellation()
             // An interrupted WebView check cannot confirm that the original defect was fixed.
             remaining = retest.blocking + retest.advisory.filter {
                 $0.hasPrefix("Runtime: offscreen WebView verification timed out") ||
                 $0.hasPrefix("Runtime: WebView was unavailable")
             }
+            let oldModel = ForgeSemanticAppModel.build(html: original, purpose: "")
+            let repairedModel = ForgeSemanticAppModel.build(html: repairedHTML, purpose: "")
+            let missingScreens = Set(oldModel.screenIDs ?? []).subtracting(repairedModel.screenIDs ?? [])
+            if !missingScreens.isEmpty {
+                remaining.append("Repair removed existing screens: " + missingScreens.sorted().joined(separator: ", "))
+            }
+            remaining += ForgeEditSafetyGate.violations(before: original, after: repairedHTML, request: request).map(\.description)
             if remaining.isEmpty {
                 streamedHTML = repairedHTML
-                verificationReport = (["Automatic repair passed the local app checks."] + retest.advisory).joined(separator: " ")
+                draftHasBlockingQA = false
+                let issue = String((initial.blocking.first ?? "App check failure").prefix(160))
+                verificationReport = (["Detected: \(issue) \(repairSummary.isEmpty ? "Applied a targeted repair." : repairSummary) Retest passed."] + retest.advisory).joined(separator: " ")
                 AIDebugTraceStore.shared.append("QA RETEST", verificationReport)
                 return
             }
@@ -1379,10 +1438,19 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         throw AIGenerationError.unresolvedAppChecks(remaining)
     }
 
-    private func appCheckFindings(in html: String, mode: ForgeTestMode, request: String) async -> (blocking: [String], advisory: [String]) {
+    private static func repairSummary(in response: String) -> String {
+        let summary = AIHTMLAgent.value("repair_summary", in: response).split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        return String(summary.prefix(180))
+    }
+
+    private func appCheckFindings(in html: String, mode: ForgeTestMode, request: String, legacyFixture: ForgeLegacyStorageFixture?, previousWorkflows: [ForgeWorkflowFixture]) async -> (blocking: [String], advisory: [String]) {
         let structural = HTMLQualityChecks.issues(in: html)
         let functional = Self.coreWorkflowWarnings(prompt: request, html: html)
-        let runtime = await HTMLRuntimeVerifier.verify(html: html, timeout: mode == .fast ? 3 : 6)
+        let testDriving = html.contains("data-forge-drive-start") ||
+            (ForgeCurrentPlace.query(in: request) != nil && ForgeCurrentPlace.requestsDrivingETA(request))
+        let runtime = await HTMLRuntimeVerifier.verify(html: html, timeout: mode == .fast ? 3 : 6, testDriving: testDriving, legacyFixture: legacyFixture ?? HTMLRuntimeVerifier.legacyStorageFixture(html),
+            workflows: previousWorkflows.isEmpty ? HTMLRuntimeVerifier.workflowFixtures(html) : previousWorkflows)
         let blocking = HTMLQualityChecks.blockingIssues(structural) +
             functional.filter {
                 $0.hasPrefix("Current venue:") || (mode == .balanced && $0.hasPrefix("Core workflow:"))
@@ -1396,6 +1464,10 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
                 issue.hasPrefix("Runtime: horizontal page overflow") ||
                 issue.hasPrefix("Runtime: unmarked horizontal scroller") ||
                 issue.hasPrefix("Runtime: page zoom allowed") ||
+                issue.hasPrefix("Current venue:") ||
+                issue.hasPrefix("Legacy storage:") ||
+                issue.hasPrefix("Workflow regression:") ||
+                (testDriving && issue.hasPrefix("Runtime: offscreen WebView verification timed out")) ||
                 issue.hasPrefix("Runtime tapability:") ||
                 issue.hasPrefix("Switch layout:") ||
                 issue.hasPrefix("3D viewer QA:") ||
@@ -2393,7 +2465,7 @@ HTMLAPP FACT-CHECK OVERRIDES:
 
     static func patchSystemPrompt(research: String) -> String {
         ForgeRuntimeAuthoring.instructions + "\n" + """
-You are HTMLApp's code-editing agent. Completion requires implementing the literal request, not a reassuring summary. Inspect handlers, routes, storage and native integrations before patching. The edit contract is advisory interpretation; the user's words remain authoritative. For vague aesthetic edits make reversible improvements without removing features. For behavioral edits implement the actual workflow including loading, empty, denied and failure states. Never substitute styling for functionality. State exactly what changed in edit_summary; never claim tests you did not perform. Preserve the existing HTML title unless the user asks for a rename. Edit the existing single-file HTML app with the smallest safe patch that satisfies the requested change. Preserve all unrelated behavior, IDs, storage keys, API integrations, permissions, navigation and working code. Prefer patching over rewriting.
+You are HTMLApp's code-editing agent. Completion requires implementing the literal request, not a reassuring summary. Inspect handlers, routes, storage and native integrations before patching. The edit contract is advisory interpretation; the user's words remain authoritative. For vague aesthetic edits make reversible improvements without removing features. For behavioral edits implement the actual workflow including loading, empty, denied and failure states. Treat app history as background evidence; preserve the actual current source and honor the latest request. Retain reliable synthetic workflow and storage probes for behavior outside the requested change. Never substitute styling for functionality. State exactly what changed in edit_summary; never claim tests you did not perform. Preserve the existing HTML title unless the user asks for a rename. Edit the existing single-file HTML app with the smallest safe patch that satisfies the requested change. Preserve all unrelated behavior, IDs, storage keys, API integrations, permissions, navigation and working code. Prefer patching over rewriting.
 If adding Home Screen widgets, support all three WidgetKit families (systemSmall, systemMedium, systemLarge); if adding Lock Screen widgets, support all three (accessoryCircular, accessoryRectangular, accessoryInline). If supporting both screens, declare all six or equivalent screen-specific configurations. Use actual HTMLAppNative.widgets.configure families, not invented APIs.
 Keep the saved app's real iOS status bar visible by default. When an immersive redesign genuinely needs to hide it, place <meta name="htmlapp-status-bar" content="hidden"> in the HTML head; otherwise omit it. Preserve the current visibility in unrelated edits. Never draw a fake status bar or Dynamic Island.
 
@@ -2866,6 +2938,7 @@ Verify the diagnosis against the source. If the diagnosis is unavailable, use th
 Preserve the app's UI, working controls, IDs, storage keys, bundled files and native integrations.
 Return exact, unique SEARCH/REPLACE blocks under <htmlapp_patch>...</htmlapp_patch>.
 If a patch cannot express the change, return a complete <htmlapp_code>...</htmlapp_code> document.
+Include <repair_summary>one sentence explaining the actual change</repair_summary>.
 """
         let user = """
 APP REQUEST:

@@ -18,7 +18,7 @@ assert 'ForgeBackendContract.instructions' in service.split('static func systemP
 assert 'ForgeBackendContract.instructions' in service.split('static func patchSystemPrompt',1)[1]
 qa = service.split('private func verifyAndRepair',1)[1]
 assert qa.index('ensureRuntimeBackend') < qa.index('testMode == .skip')
-assert 'backend_required' in service and 'runtimeBackendRequired = runtimeBackendRequired || planning.backendRequired' in service
+assert 'backend_required' in service and 'runtimeBackendRequired = HTMLAppBackendFeature.enabled && (runtimeBackendRequired || planning.backendRequired)' in service
 assert view.index('ForgeBackendContract.issues') < view.index('HTMLAppRuntimeBackend.deploy')
 assert 'HTMLAppBackendAPI.runtimeStatus(link)' in native
 assert 'Repair backend with Forge' in backend and 'connectRuntime()' in backend
@@ -33,6 +33,10 @@ source = (root/'HTMLAppV3/HTMLAppRuntimeBackend.swift').read_text().split('@Main
 resolver = (root/'HTMLAppV3/ForgeCapabilityResolver.swift').read_text()
 helper = resolver[resolver.index('    static func requiresBackend'):resolver.index('    static func infer')]
 contract = (root/'HTMLAppV3/ForgeBackendContract.swift').read_text()
+# Exercise both sides of the production gate without enabling it in the app.
+import re
+contract, count = re.subn(r'static let enabled = (false|true)', 'static let enabled = CommandLine.arguments.contains("--enabled")', contract, count=1)
+assert count == 1
 with tempfile.TemporaryDirectory(prefix='forge-backend-tests-') as directory:
     directory = Path(directory)
     example = root/'backend/runtime-v2/examples'
@@ -59,10 +63,11 @@ struct HTMLAppBackendError: LocalizedError {
 let cases = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))) as! [[Any]]
 for item in cases {
  let issues = ForgeBackendContract.issues(request: item[1] as! String, html: item[2] as! String, required: item[3] as! Bool)
- precondition(!issues.isEmpty == (item[4] as! Bool), "Failed \\(item[0]): \\(issues)")
+ precondition(!issues.isEmpty == (HTMLAppBackendFeature.enabled && (item[4] as! Bool)), "Failed \\(item[0]): \\(issues)")
 }
 print("PASS: \\(cases.count) production backend completeness and bundle cases")
 ''')
     binary=directory/'test'
     subprocess.run([compiler,str(directory/'main.swift'),'-o',str(binary)],check=True)
-    subprocess.run([str(binary),str(directory/'cases.json')],check=True)
+    for flags in ([], ["--enabled"]):
+        subprocess.run([str(binary),str(directory/'cases.json'),*flags],check=True)
