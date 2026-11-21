@@ -681,9 +681,15 @@ struct AIGenerationView: View {
                 session.errorMessage = nil
                 retryLastFailure()
             }
+            if session.canContinueAfterFailedChecks {
+                Button("Continue Anyway", action: session.continueAfterFailedChecks)
+            }
             Button("Dismiss", role: .cancel) { session.errorMessage = nil }
         } message: {
-            Text(session.errorMessage ?? "")
+            let failure = session.errorMessage ?? ""
+            Text(session.canContinueAfterFailedChecks
+                 ? failure + "\n\nTwo retries failed. You can continue and save, but some features may still fail."
+                 : failure)
         }
         .confirmationDialog("Resume Forge draft?", isPresented: $showDraftRecovery, titleVisibility: .visible) {
             Button("Continue Generation") { continueRecoveredDraft() }
@@ -817,17 +823,24 @@ struct AIGenerationView: View {
         if browserResearch.isBrowsing { return browserResearch.progressNote }
         if session.isWorking { return session.progressNote }
         if let uiPolishNotice { return uiPolishNotice }
+        if session.continuedAfterFailedChecks { return "Some features may fail. You can save this draft as-is." }
         if session.draftHasBlockingQA { return "Changes are needed before you can save this draft." }
         if !session.verificationReport.isEmpty { return "Ready to try. Runtime QA ran in an isolated preview; final behavior still needs an on-device try." }
         return session.progressNote
     }
 
     private var canRetryChecks: Bool {
-        guard !session.streamedHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        guard !session.continuedAfterFailedChecks,
+              !session.streamedHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         if session.draftHasBlockingQA || session.phase == "Verification stopped" { return true }
         guard session.phase != "Edit stopped", let failed = session.failedPhase else { return false }
         return failed.contains("icon") || failed.contains("app checks") || failed == "Repairing confirmed app error" ||
             failed.contains("Reviewing") || failed.contains("Rechecking")
+    }
+
+    private var studioDraftTitle: String {
+        if session.continuedAfterFailedChecks { return "Draft has unresolved checks" }
+        return canRetryChecks ? "Draft needs verification" : "Your app is ready"
     }
 
     private var retryButtonTitle: String {
@@ -1602,7 +1615,7 @@ struct AIGenerationView: View {
                 if !session.isWorking && !browserResearch.isBrowsing {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(canRetryChecks ? "Draft needs verification" : "Your app is ready")
+                        Text(studioDraftTitle)
                             .font(.headline)
                         Text(browserResearch.isBrowsing ? browserResearch.status : session.phase)
                             .font(.subheadline)
@@ -1688,8 +1701,19 @@ struct AIGenerationView: View {
                 if !session.isWorking && !browserResearch.isBrowsing && !session.streamedHTML.isEmpty {
                     VStack(spacing: 10) {
                         if canRetryChecks {
-                            Button("Retry Checks", action: retryChecks)
-                                .buttonStyle(.borderedProminent)
+                            HStack {
+                                Button("Retry Checks", action: retryChecks)
+                                    .buttonStyle(.borderedProminent)
+                                if session.canContinueAfterFailedChecks {
+                                    Button("Continue Anyway", action: session.continueAfterFailedChecks)
+                                        .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                        if session.continuedAfterFailedChecks {
+                            Label("Some features may fail. You can save this draft as-is.", systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                         screenEditingTools
                         if let microphoneEditNotice {
@@ -2880,6 +2904,7 @@ Requested edit:
     private func continueRecoveredDraft() {
         guard let draft = recoverableDraft else { return }
         resumeRecoveredDraft()
+        if session.continuedAfterFailedChecks || session.failedCheckRetries > 0 { return }
         if draft.phase.hasPrefix("Ready to review"), !draft.html.isEmpty {
             session.phase = draft.phase
             recordRecoveredEdit(draft.pendingEdit)

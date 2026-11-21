@@ -118,6 +118,13 @@ final class AIGenerationSession: ObservableObject {
     private(set) var sourceReadyForChecks = false
     private(set) var lastEditWasComplex = false
     @Published private(set) var draftHasBlockingQA = false
+    @Published private(set) var failedCheckRetries = 0
+    @Published private(set) var continuedAfterFailedChecks = false
+
+    var canContinueAfterFailedChecks: Bool {
+        !isWorking && !continuedAfterFailedChecks && failedCheckRetries >= 2 &&
+            (sourceReadyForChecks || draftHasBlockingQA) && latestPartialHTML.isEmpty && !streamedHTML.trimmed.isEmpty
+    }
     private var editingExistingApp = false
     private var checkpointExistingAppID: String?
     var runtimeBackendRequired = false
@@ -317,6 +324,7 @@ final class AIGenerationSession: ObservableObject {
         }
         sourceReadyForChecks = false
         draftHasBlockingQA = false
+        resetCheckRetryState()
         iconRefreshAllowed = !preserveIcon
         defer { if preserveIcon { iconScript = savedIconScript } }
         originalPrompt = originalUserPrompt ?? prompt
@@ -595,6 +603,9 @@ final class AIGenerationSession: ObservableObject {
         let beforeEditSourceReady = sourceReadyForChecks
         let beforeEditBlockingQA = draftHasBlockingQA
         let beforeEditVerification = verificationReport
+        let beforeEditCheckRetries = failedCheckRetries
+        let beforeEditContinued = continuedAfterFailedChecks
+        resetCheckRetryState()
         sourceReadyForChecks = false
         let beforeEditHTML = streamedHTML
         let editSource = ForgeEditIconContext(beforeEditHTML)
@@ -849,6 +860,8 @@ Requested edit:
             sourceReadyForChecks = beforeEditSourceReady
             draftHasBlockingQA = beforeEditBlockingQA
             verificationReport = beforeEditVerification
+            failedCheckRetries = beforeEditCheckRetries
+            continuedAfterFailedChecks = beforeEditContinued
             streamedHTML = beforeEditHTML
             description = beforeEditDescription
             iconScript = beforeEditIconScript
@@ -862,6 +875,8 @@ Requested edit:
             sourceReadyForChecks = beforeEditSourceReady
             draftHasBlockingQA = beforeEditBlockingQA
             verificationReport = beforeEditVerification
+            failedCheckRetries = beforeEditCheckRetries
+            continuedAfterFailedChecks = beforeEditContinued
             streamedHTML = beforeEditHTML
             description = beforeEditDescription
             iconScript = beforeEditIconScript
@@ -981,6 +996,7 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
         originalPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         sourceReadyForChecks = false
         pendingCheckpointEdit = nil
+        resetCheckRetryState()
         latestPartialHTML = ""
         generationStartedAt = Date()
         persistCheckpoint()
@@ -1009,7 +1025,9 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
                 appliedSummaries: checkpointSummaries,
                 sourceReadyForChecks: sourceReadyForChecks && latestPartialHTML.isEmpty,
                 pendingEdit: pendingCheckpointEdit,
-                blockingQA: draftHasBlockingQA
+                blockingQA: draftHasBlockingQA,
+                failedCheckRetries: failedCheckRetries,
+                continuedAfterFailedChecks: continuedAfterFailedChecks
             )
         )
     }
@@ -1032,13 +1050,34 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
         lastEditSummary = checkpoint.editSummary ?? ""
         checkpointRequests = checkpoint.appliedRequests ?? []
         checkpointSummaries = checkpoint.appliedSummaries ?? []
-        sourceReadyForChecks = checkpoint.sourceReadyForChecks == true
+        sourceReadyForChecks = checkpoint.sourceReadyForChecks == true || checkpoint.phase == "Background result received"
         pendingCheckpointEdit = checkpoint.pendingEdit
         draftHasBlockingQA = checkpoint.blockingQA == true
+        failedCheckRetries = checkpoint.failedCheckRetries ?? 0
+        continuedAfterFailedChecks = checkpoint.continuedAfterFailedChecks == true
         errorMessage = nil
         failedPhase = nil
         isWorking = false
-        phase = "Draft recovered"
+        if continuedAfterFailedChecks {
+            phase = "Continuing with unresolved checks"
+        } else if failedCheckRetries > 0 {
+            phase = "Verification stopped"
+        } else {
+            phase = "Draft recovered"
+        }
+    }
+
+    private func resetCheckRetryState() {
+        failedCheckRetries = 0
+        continuedAfterFailedChecks = false
+    }
+
+    func continueAfterFailedChecks() {
+        guard canContinueAfterFailedChecks else { return }
+        continuedAfterFailedChecks = true
+        errorMessage = nil
+        phase = "Continuing with unresolved checks"
+        persistCheckpoint()
     }
 
     func clearCheckpoint() {
@@ -1062,6 +1101,7 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
     }
 
     func acceptExternalHTML(_ html: String) {
+        if streamedHTML != html { resetCheckRetryState() }
         streamedHTML = html
         draftHasBlockingQA = false
         verificationReport = ""
@@ -1100,6 +1140,7 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
             }
             try await ensureRuntimeBackend(config: config)
             try Task.checkCancellation()
+            resetCheckRetryState()
             phase = "Ready to review"
             persistCheckpoint()
         } catch is CancellationError {
@@ -1108,6 +1149,9 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
             phase = "Verification stopped"
             persistCheckpoint()
         } catch {
+            if retryingChecks, !Task.isCancelled {
+                failedCheckRetries = min(2, failedCheckRetries + 1)
+            }
             failedPhase = phase
             AIDebugTraceStore.shared.append("VERIFICATION ERROR", error.localizedDescription)
             errorMessage = Self.friendlyMessage(for: error)

@@ -143,6 +143,8 @@ final class ForgeBackgroundUpload: NSObject, URLSessionDataDelegate {
             ? AIHTMLAgent.fallbackIconScript(html: html, originalPrompt: draft.originalPrompt)
             : result.iconScript
         updated.phase = "Background result received"
+        updated.failedCheckRetries = nil
+        updated.continuedAfterFailedChecks = nil
         ForgeDraftCheckpointStore.save(updated)
         clearPending()
         Task { @MainActor in AIDebugTraceStore.shared.append(

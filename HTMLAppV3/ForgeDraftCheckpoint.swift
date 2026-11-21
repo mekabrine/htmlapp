@@ -20,6 +20,8 @@ struct ForgeDraftCheckpoint: Codable, Equatable {
     var sourceReadyForChecks: Bool? = nil
     var pendingEdit: String? = nil
     var blockingQA: Bool? = nil
+    var failedCheckRetries: Int? = nil
+    var continuedAfterFailedChecks: Bool? = nil
 }
 
 enum ForgeDraftCheckpointStore {

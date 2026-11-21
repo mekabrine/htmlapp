@@ -62,8 +62,18 @@ assert "AIDebugTraceStore.shared.begin(" in retry and "AIDebugTraceStore.shared.
 assert "forceChecks: retryingChecks" in retry and "if forceChecks && testMode == .skip" in qa
 forge_view = source("HTMLAppV3/AIGenerationView.swift")
 assert 'Button("Retry Checks", action: retryChecks)' in forge_view
-assert 'Text(canRetryChecks ? "Draft needs verification"' in forge_view
+assert 'return canRetryChecks ? "Draft needs verification"' in forge_view
 assert 'await session.verifyCurrent(retryingChecks: true)' in forge_view
+assert "failedCheckRetries >= 2" in ai
+assert "if retryingChecks, !Task.isCancelled" in retry and "failedCheckRetries = min(2, failedCheckRetries + 1)" in retry
+assert retry.index("resetCheckRetryState()") < retry.index("catch is CancellationError")
+assert "continuedAfterFailedChecks: continuedAfterFailedChecks" in ai
+assert "checkpoint.failedCheckRetries ?? 0" in ai
+assert "if session.continuedAfterFailedChecks || session.failedCheckRetries > 0 { return }" in forge_view
+assert 'Button("Continue Anyway", action: session.continueAfterFailedChecks)' in forge_view
+assert "guard !session.continuedAfterFailedChecks" in forge_view
+save = forge_view.split("private func saveGeneratedApp()", 1)[1].split("private func stopKeepingDraft()", 1)[0]
+assert save.index("guard !canRetryChecks") < save.index("generatedHTMLContainsPrivateLocation") < save.index("await store.add(")
 assert 'HTMLAppPackageTransfer' in core
 
 assert "library.corrupt-" in core and "libraryBackupURL" in core
