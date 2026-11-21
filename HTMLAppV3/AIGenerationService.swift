@@ -329,6 +329,7 @@ final class AIGenerationSession: ObservableObject {
             let improved: String
             if preserveIcon {
                 improved = prompt
+                lastResearch = suppliedResearch
             } else if !fromVoice && (ForgeRunOptions.quick || AIHTMLAgent.canSkipPreflight(for: originalUserPrompt ?? prompt)) {
                 improved = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
                 refinedBrief = improved
@@ -387,7 +388,8 @@ final class AIGenerationSession: ObservableObject {
                     } else {
                         phase = "Finding useful public APIs"
                     }
-                    publicResearch = await SafePublicAPIResearch.research(queries: plan.publicQueries)
+                    let publicQueries = plan.publicQueries.filter { ForgeCurrentPlace.needsExternalResearch(query: $0, for: originalPrompt) }
+                    publicResearch = await SafePublicAPIResearch.research(queries: publicQueries)
                 } else {
                     phase = plan.deviceQueries.isEmpty ? "Using web research" : "Checking device capabilities"
                     publicResearch = ""
@@ -645,7 +647,8 @@ final class AIGenerationSession: ObservableObject {
             )
             let publicResearch: String
             if suppliedResearch.isEmpty, !plan.publicQueries.isEmpty {
-                publicResearch = await SafePublicAPIResearch.research(queries: plan.publicQueries)
+                let publicQueries = plan.publicQueries.filter { ForgeCurrentPlace.needsExternalResearch(query: $0, for: cleanChange) }
+                publicResearch = await SafePublicAPIResearch.research(queries: publicQueries)
             } else {
                 publicResearch = ""
             }
@@ -1239,12 +1242,26 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             if !code.contains("getcurrentposition") && !code.contains("watchposition") {
                 warnings.append("Current venue: use foreground device geolocation so the user does not need to enter their current position.")
             }
-            if !code.contains("nearbyplaces") {
+            if !code.contains("nearbyplaces") && !code.contains("forge.confirmedvenue") {
                 warnings.append("Current venue: resolve the nearby venue with HTMLAppNative.map.nearbyPlaces and confirm a candidate; keep manual search as a fallback.")
             }
             if ForgeCurrentPlace.requestsDrivingETA(prompt) && !code.contains("drivingeta") {
                 warnings.append("Current venue: use HTMLAppNative.map.drivingETA from the live position to the confirmed venue.")
             }
+        }
+        if ForgeCurrentPlace.requestsWalkingRoute(prompt) {
+            let hasNativeRoute = code.range(of: #"\.walkingroute\s*\(|['"]map\.walkingroute['"]"#, options: .regularExpression) != nil
+            let hasExternalRoute = code.contains("fetch(") && (code.contains("/routing") || code.contains("foot-walking"))
+            if !hasNativeRoute && !hasExternalRoute {
+                warnings.append("Walking route: implement the requested in-app route steps, distance and minutes using HTMLAppNative.map.walkingRoute. A straight-line distance or Apple Maps handoff alone does not meet the request.")
+            } else if hasNativeRoute &&
+                        !(code.contains("distancemeters") && code.contains("expectedtraveltimeseconds") &&
+                          code.contains("steps") && code.contains("instructions")) {
+                warnings.append("Walking route: display the route's distanceMeters, expectedTravelTimeSeconds and step instructions in the app.")
+            }
+        }
+        if ForgeCurrentPlace.requestsNearbyDiscovery(prompt) && !code.contains("nearbyplaces") && !code.contains("fetch(") && !code.contains("network.request") {
+            warnings.append("Nearby search: the requested results need real category lookups using HTMLAppNative.map.nearbyPlaces.")
         }
         let routeIntent = (goal.contains("nearest") || goal.contains("nearby")) &&
             (goal.contains("direction") || goal.contains("route"))
@@ -1329,6 +1346,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         streamedHTML = ForgeAttachment.materialize(streamedHTML, items: ForgeAttachmentContext.images)
         try await ensureRuntimeBackend(config: config)
         phase = "Running app checks"
+        let previousFailure = draftHasBlockingQA ? String(verificationReport.prefix(1200)) : ""
         verificationReport = ""
         qaRepairResponseBytes = 0
 
@@ -1356,7 +1374,12 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         AIDebugTraceStore.shared.append("QA CLASSIFICATION",
             "Blocking: \(initial.blocking.count); Advisory: \(initial.advisory.count)\n" +
             (initial.blocking + initial.advisory).joined(separator: "\n"))
-        draftHasBlockingQA = !initial.blocking.isEmpty
+        let unverifiedWorkflows = initial.advisory.filter { $0.hasPrefix("Workflow verification unavailable:") }
+        draftHasBlockingQA = !initial.blocking.isEmpty || !unverifiedWorkflows.isEmpty
+        if initial.blocking.isEmpty && !unverifiedWorkflows.isEmpty {
+            verificationReport = unverifiedWorkflows.joined(separator: " ")
+            throw AIGenerationError.unresolvedAppChecks(unverifiedWorkflows)
+        }
         if initial.blocking.isEmpty {
             let summary = testMode == .fast
                 ? "Fast local smoke checks passed."
@@ -1370,6 +1393,14 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         let iconContext = ForgeEditIconContext(original)
         let (planner, coder) = ForgeRunOptions.$quick.withValue(false) {
             (AISettingsStore.configuration(for: .planner), AISettingsStore.configuration(for: .coder))
+        }
+        var repairEvidence = lastResearch
+        if ForgeCurrentPlace.requestsWalkingRoute(request) {
+            let routeDocs = HTMLAppDeviceAPIResearch.research(queries: ["map.walkingRoute", "map.nearbyPlaces"])
+            repairEvidence += "\n\nInstalled map capabilities:\n" + routeDocs
+        }
+        if !previousFailure.isEmpty {
+            repairEvidence += "\nA previous repair attempt was rejected. Reconsider the diagnosis using the current probe evidence. Previous retest: " + previousFailure
         }
         var plan = ""
         phase = "Diagnosing failed app checks"
@@ -1389,7 +1420,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         var repairSummary = ""
         do {
             let response = try await AIHTMLAgent.applyQARepair(
-                html: iconContext.html, request: request, research: lastResearch,
+                html: iconContext.html, request: request, research: repairEvidence,
                 issues: initial.blocking, plan: plan, config: coder)
             qaRepairResponseBytes = response.utf8.count
             repairSummary = Self.repairSummary(in: response)
@@ -1416,7 +1447,8 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             // An interrupted WebView check cannot confirm that the original defect was fixed.
             remaining = retest.blocking + retest.advisory.filter {
                 $0.hasPrefix("Runtime: offscreen WebView verification timed out") ||
-                $0.hasPrefix("Runtime: WebView was unavailable")
+                $0.hasPrefix("Runtime: WebView was unavailable") ||
+                $0.hasPrefix("Workflow verification unavailable:")
             }
             let oldModel = ForgeSemanticAppModel.build(html: original, purpose: "")
             let repairedModel = ForgeSemanticAppModel.build(html: repairedHTML, purpose: "")
@@ -1435,6 +1467,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             }
             AIDebugTraceStore.shared.append("QA RETEST", remaining.joined(separator: "\n"))
         }
+        verificationReport = remaining.joined(separator: " ")
         throw AIGenerationError.unresolvedAppChecks(remaining)
     }
 
@@ -1453,7 +1486,8 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             workflows: previousWorkflows.isEmpty ? HTMLRuntimeVerifier.workflowFixtures(html) : previousWorkflows)
         let blocking = HTMLQualityChecks.blockingIssues(structural) +
             functional.filter {
-                $0.hasPrefix("Current venue:") || (mode == .balanced && $0.hasPrefix("Core workflow:"))
+                $0.hasPrefix("Current venue:") || $0.hasPrefix("Walking route:") ||
+                $0.hasPrefix("Nearby search:") || (mode == .balanced && $0.hasPrefix("Core workflow:"))
             } +
             runtime.filter { issue in
                 issue.hasPrefix("JavaScript syntax in inline script") ||
@@ -2907,7 +2941,7 @@ smallest required changes, and state what the rerun should verify. Group symptom
 For managed native navigation, HTMLApp toggles the hidden property on data-htmlapp-screen elements and
 dispatches htmlapp:native-tab-select with detail.id. CSS that independently hides an unhidden screen
 must be corrected so the router owns visibility. Keep tab IDs and existing screen contents.
-Preserve working features and data. Use only the source and test evidence. Return a short repair plan in
+Preserve working features and data. Use only the source and test evidence. Treat the reported viewport mode, selector presence and computed visibility as facts; never blame an inactive CSS mode. Return a short repair plan in
 <repair_plan>...</repair_plan>. Do not return a patch or replacement HTML.
 """
         let user = """
@@ -3466,10 +3500,11 @@ enum SafePublicAPIResearch {
             if let catalog {
                 let rows = catalog.split(separator: "\n").map(String.init).filter { row in
                     guard row.hasPrefix("|") else { return false }
-                    let lower = row.lowercased()
                     let columns = row.split(separator: "|", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
-                    let noKey = columns.count > 3 && (columns[3].isEmpty || columns[3].lowercased() == "no")
-                    return noKey && safe(lower) && terms.contains(where: { lower.contains($0) })
+                    guard columns.count > 3, columns[3].lowercased() == "no", safe(row) else { return false }
+                    let description = columns[1].components(separatedBy: "](").first ?? columns[1]
+                    let rowWords = Set(searchTerms(description + " " + columns[2]))
+                    return !rowWords.isDisjoint(with: terms)
                 }
                 matches.append(contentsOf: rows.prefix(6))
             }
@@ -3489,7 +3524,10 @@ enum SafePublicAPIResearch {
     }
 
     private static func searchTerms(_ query: String) -> [String] {
-        query.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init).filter { $0.count > 2 }
+        let noise: Set<String> = ["api", "apis", "app", "auth", "browser", "safe", "with", "from", "the", "and", "for",
+                                  "all", "key", "data", "get", "using", "use", "free", "real", "time", "around"]
+        return query.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+            .filter { $0.count > 2 && !noise.contains($0) }
     }
 
     private static func safe(_ text: String) -> Bool {

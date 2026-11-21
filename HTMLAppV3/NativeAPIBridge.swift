@@ -1864,7 +1864,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         case "scene.hide":
             nativeScene?.shutdown(); nativeScene = nil
             resolve(id, value: ["hidden": true])
-        case "map.nearbyPlaces", "map.drivingETA":
+        case "map.nearbyPlaces", "map.drivingETA", "map.walkingRoute":
             guard let latitude = args["latitude"] as? Double, let longitude = args["longitude"] as? Double,
                   CLLocationCoordinate2DIsValid(CLLocationCoordinate2D(latitude: latitude, longitude: longitude)) else {
                 reject(id, code: "invalid_coordinates", message: "Provide valid latitude and longitude.")
@@ -1890,7 +1890,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             withPermission(.location, id: id) { [weak self] in
                 guard let self else { return }
                 guard UIApplication.shared.applicationState == .active else {
-                    self.reject(id, code: "foreground_required", message: "Open the app to look up places or driving time.")
+                    self.reject(id, code: "foreground_required", message: "Open the app to look up places or directions.")
                     return
                 }
                 guard self.activeMapLookups.insert(method).inserted else {
@@ -1905,8 +1905,14 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
                             let places = try await HTMLAppPlaceLookup.nearby(query: query, latitude: latitude, longitude: longitude)
                             self.resolve(id, value: places.map(\.payload))
                         } else if let destination {
-                            self.resolve(id, value: try await HTMLAppPlaceLookup.drivingETA(from: origin, to: destination))
+                            if method == "map.walkingRoute" {
+                                self.resolve(id, value: try await HTMLAppPlaceLookup.walkingRoute(from: origin, to: destination))
+                            } else {
+                                self.resolve(id, value: try await HTMLAppPlaceLookup.drivingETA(from: origin, to: destination))
+                            }
                         }
+                    } catch let error as MKError where error.code == .loadingThrottled {
+                        self.reject(id, code: "map_lookup_throttled", message: "Apple Maps is limiting requests. Wait a moment and try again.")
                     } catch {
                         self.reject(id, code: "map_lookup_unavailable", message: "Apple Maps could not complete the lookup. Check connectivity and try again.")
                     }
@@ -2847,14 +2853,16 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         let query = (args["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let name = (args["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let directions = args["directions"] as? Bool ?? false
+        let walking = args["transport"] as? String == "walking"
 
         if let latitude, let longitude,
            (-90...90).contains(latitude), (-180...180).contains(longitude) {
             let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)))
             if let name, !name.isEmpty { item.name = name }
-            let options = directions ? [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving] : [:]
-            item.openInMaps(launchOptions: options)
-            resolve(id, value: ["opened": true, "app": "maps"])
+            let mode = walking ? MKLaunchOptionsDirectionsModeWalking : MKLaunchOptionsDirectionsModeDriving
+            let options = directions ? [MKLaunchOptionsDirectionsModeKey: mode] : [:]
+            if item.openInMaps(launchOptions: options) { resolve(id, value: ["opened": true, "app": "maps"]) }
+            else { reject(id, code: "open_failed", message: "Apple Maps could not be opened.") }
             return
         }
 
@@ -2866,7 +2874,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
         var components = URLComponents(string: "https://maps.apple.com/")
         components?.queryItems = [
             URLQueryItem(name: "q", value: query)
-        ] + (directions ? [URLQueryItem(name: "dirflg", value: "d")] : [])
+        ] + (directions ? [URLQueryItem(name: "dirflg", value: walking ? "w" : "d")] : [])
         guard let url = components?.url else {
             reject(id, code: "invalid_arguments", message: "The Maps request could not be created.")
             return
@@ -4252,6 +4260,18 @@ enum HTMLNativeAPIScript {
         }
       };
 
+      let nearbyTail = Promise.resolve();
+      let pendingNearby = 0;
+      function nearbyPlaces(latitude, longitude, query) {
+        if (pendingNearby >= 8) {
+          return Promise.reject(Object.assign(new Error('Wait for nearby searches to finish.'), { code: 'map_lookup_in_progress' }));
+        }
+        pendingNearby++;
+        const result = nearbyTail.then(() => call('map.nearbyPlaces', { latitude, longitude, query }));
+        nearbyTail = result.then(() => { pendingNearby--; }, () => { pendingNearby--; });
+        return result;
+      }
+
       const api = {
         call,
         capabilities: () => call('capabilities.list'),
@@ -4364,8 +4384,9 @@ enum HTMLNativeAPIScript {
           onSelect: callback => { const handler = event => callback(event.detail); window.addEventListener('htmlapp:scene-select', handler); return () => window.removeEventListener('htmlapp:scene-select', handler); }
         },
         map: {
-          nearbyPlaces: (latitude, longitude, query) =>
-            call('map.nearbyPlaces', { latitude, longitude, query }),
+          nearbyPlaces,
+          walkingRoute: (latitude, longitude, destinationLatitude, destinationLongitude) =>
+            call('map.walkingRoute', { latitude, longitude, destinationLatitude, destinationLongitude }),
           drivingETA: (latitude, longitude, destinationLatitude, destinationLongitude) =>
             call('map.drivingETA', { latitude, longitude, destinationLatitude, destinationLongitude }),
           embed: options => call('map.embed', options),

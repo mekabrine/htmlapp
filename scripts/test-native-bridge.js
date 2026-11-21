@@ -29,6 +29,7 @@ async function testNativeRPC() {
             {data: Buffer.from(offset === 0 ? 'MP' : '3!').toString('base64'), total:4, complete:offset === 2, mimeType:'audio/mpeg'}));
           return;
         }
+        if (message.method === 'map.nearbyPlaces') return; // resolve explicitly to test the queue
         if (message.method === 'ui.controls' && message.args.title === 'Pending') return;
         if (message.method === 'ui.controls') {
           queueMicrotask(() => window.__htmlappNativeResolve(message.id, true, {cancelled: false, values: {sound: true}}));
@@ -90,6 +91,21 @@ async function testNativeRPC() {
   assert.ok(sent.some(msg => msg.method === 'network.status'));
   assert.ok(sent.some(msg => msg.method === 'location.geocode' && msg.args.query === 'Central Park'));
   assert.ok(sent.some(msg => msg.method === 'location.distance' && msg.args.latitude2 === 1));
+  const gas = api.map.nearbyPlaces(40, -75, 'gas station');
+  const food = api.map.nearbyPlaces(40, -75, 'fast food');
+  const gasFailure = assert.rejects(gas, /Search failed/);
+  const nativeSearches = () => sent.filter(message => message.method === 'map.nearbyPlaces');
+  const tick = () => new Promise(resolve => setImmediate(resolve));
+  await tick();
+  assert.deepEqual(nativeSearches().map(message => message.args.query), ['gas station']);
+  window.__htmlappNativeResolve(nativeSearches()[0].id, false, { code: 'unavailable', message: 'Search failed' });
+  await gasFailure;
+  await tick();
+  assert.deepEqual(nativeSearches().map(message => message.args.query), ['gas station', 'fast food']);
+  window.__htmlappNativeResolve(nativeSearches()[1].id, true, [{ name: 'Test restaurant' }]);
+  assert.equal((await food)[0].name, 'Test restaurant');
+  await api.map.walkingRoute(40, -75, 41, -74);
+  assert.ok(sent.some(message => message.method === 'map.walkingRoute' && message.args.destinationLongitude === -74));
   await api.audio.record({ maxDuration: 30 });
   await api.audio.levels();
   await api.audio.stopRecording();
@@ -364,6 +380,29 @@ function testForgeScreenSelection() {
   assert.equal(input.style.outline, undefined);
 }
 
+function testForgeWorkflowProbe() {
+  const verifier = fs.readFileSync(path.join(root, 'HTMLAppV3/HTMLRuntimeVerifier.swift'), 'utf8');
+  const script = verifier.split('let workflowProbe = #"""')[1].split('"""#')[0];
+  let hidden = true;
+  let mode = 'standard';
+  const panel = { getClientRects: () => hidden || mode === 'car' ? [] : [1], closest: () => hidden ? panel : null };
+  const button = { getClientRects: () => [1], getAttribute: () => null, click() { hidden = false; } };
+  const probe = vm.runInNewContext(script, {
+    document: {
+      documentElement: { getAttribute: () => mode },
+      querySelector: selector => ({ '#filters': button, '#panel': panel })[selector]
+    },
+    getComputedStyle: element => ({ display: element === panel && (hidden || mode === 'car') ? 'none' : 'block', visibility: 'visible' })
+  });
+  const fixture = { tap: '#filters', expected: '#panel' };
+  assert.equal(probe(fixture, true), 'visible');
+  assert.match(probe(fixture, true), /^fixture:Expected result was already visible/);
+  hidden = true;
+  mode = 'car';
+  assert.match(probe(fixture, true), /car mode, hidden ancestor=false, display=none/);
+  assert.match(probe({ ...fixture, tap: '#missing' }, true), /^blocked:Tap control #missing was missing/);
+}
+
 (async () => {
   await testNativeRPC();
   await testAISessionTools();
@@ -371,6 +410,7 @@ function testForgeScreenSelection() {
   testViewport();
   await testForgeDrivingScenario();
   testForgeScreenSelection();
+  testForgeWorkflowProbe();
   console.log('Native bridge and app viewport JS tests passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 

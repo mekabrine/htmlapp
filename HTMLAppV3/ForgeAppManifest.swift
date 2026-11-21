@@ -74,7 +74,7 @@ struct ForgeAppManifest: Codable {
         case "location":
             if method == "location.distance" { return nil }
             return method == "location.roadSpeedLimit" ? "roadData" : "location"
-        case "map": return ["map.show", "map.nearbyPlaces", "map.drivingETA"].contains(method) ? "location" : nil
+        case "map": return ["map.show", "map.nearbyPlaces", "map.drivingETA", "map.walkingRoute"].contains(method) ? "location" : nil
         case "documents": return "files"
         case "externalApps", "system": return "externalApps"
         default: return nil

@@ -447,20 +447,7 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             if (result as? Bool) != true { appendIssue("Legacy storage: the sample record did not appear after startup.") }
         }
         for workflow in workflows {
-            let script = """
-            const visible = el => el?.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible';
-            const control = document.querySelector(tap);
-            if (!visible(control) || control.disabled || visible(document.querySelector(expected))) return false;
-            control.click();
-            for (let attempt = 0; attempt < 14; attempt++) {
-              if (visible(document.querySelector(expected))) return true;
-              await new Promise(resolve => setTimeout(resolve, 40));
-            }
-            return false;
-            """
-            let result = try? await webView.callAsyncJavaScript(script,
-                arguments: ["tap": workflow.tap, "expected": workflow.visible], in: nil, in: .page)
-            if (result as? Bool) != true { appendIssue("Workflow regression: " + workflow.name + " did not reveal its expected result.") }
+            await checkWorkflow(workflow, in: webView)
         }
         let phone = await snapshot(webView, width: 390, height: 844)
         if let phone {
@@ -533,6 +520,79 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
 
         finish(extra: [])
     }
+
+    private func checkWorkflow(_ workflow: ForgeWorkflowFixture, in webView: WKWebView) async {
+        let selectors = ["tap": workflow.tap, "expected": workflow.visible]
+        guard let bytes = try? JSONSerialization.data(withJSONObject: selectors),
+              let json = String(data: bytes, encoding: .utf8) else { return }
+        do {
+            let setup = "((Self.workflowProbe))((json), true)"
+            guard let initial = try await evaluate(setup, in: webView) as? String else {
+                appendIssue("Workflow verification unavailable: " + workflow.name + " returned no test result.")
+                return
+            }
+            if initial == "visible" { return }
+            if initial.hasPrefix("fixture:") {
+                appendIssue("Workflow fixture: " + workflow.name + " — " + String(initial.dropFirst(8)))
+                return
+            }
+            if initial.hasPrefix("blocked:") {
+                appendIssue("Workflow regression: " + workflow.name + " — " + String(initial.dropFirst(8)))
+                return
+            }
+            var state = initial
+            for _ in 0..<14 {
+                try await Task.sleep(nanoseconds: 40_000_000)
+                guard !completed else { return }
+                let poll = "((Self.workflowProbe))((json), false)"
+                guard let current = try await evaluate(poll, in: webView) as? String else {
+                    appendIssue("Workflow verification unavailable: " + workflow.name + " returned no result after the tap.")
+                    return
+                }
+                if current == "visible" { return }
+                state = current
+            }
+            appendIssue("Workflow regression: " + workflow.name + " — " + state)
+        } catch is CancellationError {
+            return
+        } catch {
+            appendIssue("Workflow verification unavailable: " + workflow.name + " — " + error.localizedDescription)
+        }
+    }
+
+    private static let workflowProbe = #"""
+    (selectors, click) => {
+      const mode = document.documentElement.getAttribute('data-htmlapp-display') || 'standard';
+      const visible = element => {
+        if (!element || !element.getClientRects().length) return false;
+        const style = getComputedStyle(element);
+        return style.display !== 'none' && style.visibility === 'visible';
+      };
+      let control, target;
+      try {
+        control = document.querySelector(selectors.tap);
+        target = document.querySelector(selectors.expected);
+      } catch (_) {
+        return 'fixture:Invalid CSS selector.';
+      }
+      if (click) {
+        if (visible(target)) return 'fixture:Expected result was already visible before the tap (' + mode + ' mode).';
+        if (!control) return 'blocked:Tap control ' + selectors.tap + ' was missing (' + mode + ' mode).';
+        if (!visible(control) || control.disabled || control.getAttribute('aria-disabled') === 'true') {
+          return 'blocked:Tap control ' + selectors.tap + ' was hidden or disabled (' + mode + ' mode).';
+        }
+        if (typeof control.click !== 'function') return 'fixture:Selected element does not support click().';
+        control.click();
+        target = document.querySelector(selectors.expected);
+      }
+      if (visible(target)) return 'visible';
+      if (!target) return 'Tapped ' + selectors.tap + '; result ' + selectors.expected + ' was missing (' + mode + ' mode).';
+      const style = getComputedStyle(target);
+      const hidden = !!target.closest('[hidden]');
+      return 'Tapped ' + selectors.tap + '; ' + selectors.expected + ' stayed hidden (' + mode +
+        ' mode, hidden ancestor=' + hidden + ', display=' + style.display + ', visibility=' + style.visibility + ').';
+    }
+    """#
 
     private static let navigationProbe = #"""
     (() => {

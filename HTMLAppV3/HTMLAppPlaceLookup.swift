@@ -46,6 +46,39 @@ enum HTMLAppPlaceLookup {
         return Array(nearby.prefix(5))
     }
 
+    static func walkingRoute(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) async throws -> [String: Any] {
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
+        request.transportType = .walking
+        let directions = MKDirections(request: request)
+        let deadline = Task {
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            if !Task.isCancelled { directions.cancel() }
+        }
+        defer { deadline.cancel() }
+
+        let response = try await directions.calculate()
+        guard let route = response.routes.first else { throw NSError(domain: MKErrorDomain, code: MKError.Code.directionsNotFound.rawValue) }
+        let count = route.polyline.pointCount
+        let points = route.polyline.points()
+        let sampleCount = min(count, 500)
+        var coordinates: [[String: Double]] = []
+        if sampleCount > 0 {
+            for index in 0..<sampleCount {
+                let offset = index * (count - 1) / max(1, sampleCount - 1)
+                let coordinate = points[offset].coordinate
+                coordinates.append(["latitude": coordinate.latitude, "longitude": coordinate.longitude])
+            }
+        }
+        let steps: [[String: Any]] = route.steps.compactMap { step in
+            guard !step.instructions.isEmpty else { return nil }
+            return ["instructions": step.instructions, "distanceMeters": step.distance]
+        }
+        return ["distanceMeters": route.distance, "expectedTravelTimeSeconds": route.expectedTravelTime,
+                "steps": steps, "coordinates": coordinates]
+    }
+
     static func drivingETA(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) async throws -> [String: Double] {
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: from))

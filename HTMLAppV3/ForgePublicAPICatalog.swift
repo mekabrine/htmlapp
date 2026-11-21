@@ -9,12 +9,15 @@ enum ForgePublicAPICatalog {
         return root["apis"] as? [[String: Any]] ?? []
     }()
     static func context(for request: String) -> String {
+        if ForgeCurrentPlace.requestsNearbyDiscovery(request) || ForgeCurrentPlace.requestsWalkingRoute(request) { return "" }
+        let generic: Set<String> = ["app", "the", "and", "for", "with", "you", "that", "using", "right", "now", "how", "it'll", "each", "api"]
         let words = Set(request.lowercased().split { !$0.isLetter && !$0.isNumber }
-            .map(String.init).filter { $0.count > 2 })
+            .map(String.init).filter { $0.count > 2 && !generic.contains($0) })
         let ranked = entries.enumerated().compactMap { index, entry -> (Int, Int, [String: Any])? in
             guard entry["verificationStatus"] as? String != "fail" else { return nil }
             let text = ["id", "name", "category", "use"].compactMap { entry[$0] as? String }.joined(separator: " ").lowercased()
-            let score = words.filter { text.contains($0) }.count
+            let terms = Set(text.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+            let score = words.intersection(terms).count
             guard score > 0 else { return nil }
             return (score, index, entry)
         }.sorted { $0.0 == $1.0 ? $0.1 < $1.1 : $0.0 > $1.0 }.prefix(6)

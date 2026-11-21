@@ -109,6 +109,16 @@ struct ForgeCapabilityPlan {
             browsers.append("navigator.geolocation (foreground, permission-gated)")
             constraints.append("Resolve current venue from fresh GPS and ask the user to confirm the candidate before saving it; typing is a fallback.")
         }
+        if ForgeCurrentPlace.requestsWalkingRoute(request) {
+            methods += ["map.walkingRoute", "map.embed", "externalApps.maps"]
+            browsers.append("navigator.geolocation (foreground, permission-gated)")
+            constraints.append("Keep requested route details in the app. Show real walking steps, routed distance and ETA; Apple Maps walking handoff is a fallback.")
+        }
+        if ForgeCurrentPlace.requestsNearbyDiscovery(request) {
+            methods.append("map.nearbyPlaces")
+            browsers.append("navigator.geolocation (foreground, permission-gated)")
+            constraints.append("Use one nearby query per requested category and label search coverage. Keep a confirmed school fixed as the search center.")
+        }
         if ForgeCurrentPlace.requestsDrivingETA(request) {
             methods.append("map.drivingETA")
             constraints.append("Use Apple Maps for estimated driving time; refresh on movement in the foreground without re-resolving the destination.")
@@ -223,6 +233,7 @@ enum ForgeCurrentPlace {
     static func query(in request: String) -> String? {
         let text = request.lowercased().replacingOccurrences(of: "’", with: "'")
         for (category, clues) in [
+            ("school", ["school", "campus", "university"]),
             ("hotel", ["hotel", "motel", "resort"]),
             ("restaurant", ["restaurant", "diner", "bistro"]),
             ("cafe", ["cafe", "café", "coffee shop"]),
@@ -240,6 +251,27 @@ enum ForgeCurrentPlace {
             }
         }
         return nil
+    }
+
+    static func requestsNearbyDiscovery(_ request: String) -> Bool {
+        let text = request.lowercased()
+        let local = ["nearby", "around", "near ", "nearest", "closest"].contains(where: text.contains)
+        return local && ["gas station", "fast food", "restaurant", "shop", "store", "places", "point of interest"].contains(where: text.contains)
+    }
+
+    static func requestsWalkingRoute(_ request: String) -> Bool {
+        let text = request.lowercased()
+        return ["walking", "on foot", "pedestrian"].contains(where: text.contains) &&
+            ["direction", "route", "distance", "miles", "minutes", "time"].contains(where: text.contains)
+    }
+
+    static func needsExternalResearch(query: String, for request: String) -> Bool {
+        let text = query.lowercased()
+        if requestsNearbyDiscovery(request) &&
+            ["nearby", "points of interest", "places api"].contains(where: text.contains) { return false }
+        if requestsWalkingRoute(request) &&
+            ["walking route", "walking direction", "pedestrian rout"].contains(where: text.contains) { return false }
+        return true
     }
 
     static func requestsDrivingETA(_ request: String) -> Bool {

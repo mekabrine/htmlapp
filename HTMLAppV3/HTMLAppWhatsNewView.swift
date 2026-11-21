@@ -15,8 +15,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.31"
-    static let compiledBuild = "136"
+    static let compiledVersion = "1.9.32"
+    static let compiledBuild = "137"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -33,36 +33,15 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "widget-context", title: "Add context from the Lock Screen",
-                  description: "Choose camera photos, library photos, files, or skills before sending a voice request to Forge.",
-                  symbol: "paperclip", tint: .blue),
-            Entry(id: "widget-mic-test", title: "Test Alternative before recording",
-                  description: "On the Lock Screen widget screen, say a few words and tap the purple mic. You’ll see the result, and a separate prompt recording starts right after.",
-                  symbol: "mic.badge.plus", tint: .purple),
-            Entry(id: "forge-current-place", title: "Build apps around your current place",
-                  description: "Forge can use Apple Maps for nearby venue candidates and foreground driving estimates. Confirm your destination once and keep the estimate updated as you move.",
-                  symbol: "location.fill", tint: .green),
-            Entry(id: "forge-memory", title: "Forge remembers each app",
-                  description: "Forge uses relevant past requests, style feedback and revision summaries. Review, exclude or pin context in What Forge Remembers.",
-                  symbol: "clock.arrow.circlepath", tint: .purple),
-            Entry(id: "forge-revisions", title: "Know what changed and what stayed",
-                  description: "Edit History shows the requests and checks for saved changes. Restoring an earlier version updates which revisions Forge considers active.",
-                  symbol: "arrow.uturn.backward", tint: .blue),
-            Entry(id: "forge-screen-target", title: "Point Forge at the right screen",
-                  description: "Select an element before asking for a change, or send a screen report with its last control and recent errors. Review files, skills and history in Request Context.",
-                  symbol: "scope", tint: .purple),
-            Entry(id: "forge-preview-compare", title: "Try both versions before saving",
-                  description: "Switch between the previous and edited previews. Preview data is separate from your saved app.",
-                  symbol: "rectangle.on.rectangle", tint: .blue),
-            Entry(id: "forge-driving-destination", title: "Keep your confirmed destination",
-                  description: "Choose a nearby venue during generation and the saved app can use it after you leave. Forge checks movement, driving estimates, denied location and route failures.",
-                  symbol: "mappin.circle.fill", tint: .green),
-            Entry(id: "forge-workflow-tests", title: "Check existing features after an edit",
-                  description: "Forge gives complex edits more verification, checks sample records and tests declared workflows. Repair notes explain what changed and whether the retest passed.",
-                  symbol: "checkmark.shield", tint: .green),
-            Entry(id: "forge-resume", title: "Recover work after an interruption",
-                  description: "Reopen a completed draft or rerun checks on saved source when a build is interrupted. Work History shows preview time, saved results and repair outcomes.",
-                  symbol: "arrow.clockwise.circle", tint: .orange)
+            Entry(id: "walking-routes", title: "Walking directions inside your apps",
+                  description: "Forge can use Apple Maps to show walking steps, routed miles, and estimated minutes inside generated apps.",
+                  symbol: "figure.walk", tint: .green),
+            Entry(id: "nearby-categories", title: "Search more nearby categories",
+                  description: "Category lookups run in sequence, and an app can use a confirmed school or other venue as its search center. Forge prioritizes the installed map tools over unrelated API suggestions.",
+                  symbol: "location.magnifyingglass", tint: .blue),
+            Entry(id: "workflow-diagnostics", title: "Clearer app checks and retries",
+                  description: "Forge identifies the exact control and display mode when a workflow fails. Retry keeps the last failure in view so repairs can use it.",
+                  symbol: "checkmark.shield", tint: .purple)
         ]
     }
 }

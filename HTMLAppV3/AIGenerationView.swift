@@ -2702,7 +2702,10 @@ Requested edit:
 
     private func saveGeneratedApp() {
         guard !session.draftHasBlockingQA else {
-            session.errorMessage = "This draft has a blocking check. Retry the app checks before saving."
+            let finding = String(session.verificationReport.prefix(420))
+            session.errorMessage = finding.isEmpty
+                ? "Retry the app checks before saving this draft."
+                : "Retry checks before saving. " + finding
             return
         }
         if AIPrivacyToolRunner.generatedHTMLContainsPrivateLocation(session.streamedHTML) {

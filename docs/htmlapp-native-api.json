@@ -115,6 +115,7 @@
     "map.hide",
     "map.nearbyPlaces",
     "map.show",
+    "map.walkingRoute",
     "midi.destinations",
     "midi.send",
     "motion.altitude",
@@ -1494,6 +1495,25 @@
       "nativeCancellation": false,
       "arguments": {},
       "requiredArguments": [],
+      "resultType": "unknown"
+    },
+    "map.walkingRoute": {
+      "minimumIOS": "16.0",
+      "permission": "location",
+      "userInitiationRecommended": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "latitude": "number",
+        "longitude": "number",
+        "destinationLatitude": "number",
+        "destinationLongitude": "number"
+      },
+      "requiredArguments": [
+        "latitude",
+        "longitude",
+        "destinationLatitude",
+        "destinationLongitude"
+      ],
       "resultType": "unknown"
     },
     "midi.destinations": {

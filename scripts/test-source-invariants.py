@@ -347,7 +347,7 @@ assert 'httpGet(_ raw:' in privacy and 'PublicWebBrowser.isAllowed(url)' in priv
 assert 'httpShouldSetCookies = false' in privacy and 'completionHandler(nil)' in privacy
 assert 'get_clipboard' not in privacy and 'clipboard' not in privacy_ui.lower()
 assert 'AIPrivacyToolRunner.research(' in forge
-assert 'currentVenueContext(query: query, onPlaces: onPlaces)' in privacy and 'AIPrivacyOptions.location == "precise"' in privacy
+assert 'currentVenueContext(query: query, searchCenter: ForgeCurrentPlace.requestsNearbyDiscovery(prompt), onPlaces: onPlaces)' in privacy and 'AIPrivacyOptions.location == "precise"' in privacy
 assert 'HTMLAppPlaceLookup.nearby(query: query, latitude: latitude, longitude: longitude)' in privacy
 assert 'Use the confirmed device-only destination when present.' in privacy
 assert '$0.hasPrefix("Current venue:")' in ai and 'HTMLAppNative.map.drivingETA' in ai

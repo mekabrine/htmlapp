@@ -1288,6 +1288,12 @@ if (!result.cancelled) console.log(result.value);
 - For drive-estimate apps add `data-forge-drive-start`, `data-forge-drive-refresh`, and `data-forge-drive-status` to the live controls and status. Show returned minutes and set the status element's `data-state` to `denied` or `unavailable` on the respective failures. A manual refresh requests a fresh position immediately.
 - The saved app has its own Location permission. This is separate from AI Generation Privacy. Never write build-time private coordinates or a detected private venue into generated source.
 
+### Nearby places and walking routes
+
+- For discovery around a named venue such as the current school, use its confirmed location as the search center. Look up each requested category via `map.nearbyPlaces`, merge and deduplicate results, and label the provider's coverage. The bridge queues category requests and returns up to five matches per query within 600 m. Keep successful categories when a different query fails.
+- Request an in-app walking route using `map.walkingRoute(originLatitude, originLongitude, destinationLatitude, destinationLongitude)`. Use real GPS for the route origin unless the user specifies a fixed origin. The result contains `distanceMeters`, `expectedTravelTimeSeconds`, `steps` and bounded route `coordinates`. Show miles (meters / 1609.344) and minutes (seconds / 60) separately from straight-line proximity. Show steps in the app, fetch routes on demand, and handle throttling and offline states.
+- `map.embed` can draw the returned route geometry. `externalApps.maps({latitude,longitude,directions:true,transport:"walking"})` is a user-triggered fallback. Use saved-app consent and text-only rendering for all place names and route steps.
+
 ### Regression fixtures
 
 Use inert JSON scripts only for repeatable checks with synthetic data. An `htmlapp-workflow-qa` array can identify up to three checks using `name`, `tap` (a visible control selector), and `visible` (an initially hidden result selector). An `htmlapp-storage-qa` object can hold `localStorage` or `appStorage` dictionaries of raw JSON-string values, plus `selector` and `expectedText` for the app's rendered sample. Keep existing fixture behavior working across unrelated changes. The installed app must never seed its live UI or storage from a QA fixture.

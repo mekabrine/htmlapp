@@ -47,6 +47,13 @@ struct ForgeContractTests {
         precondition(hotelPlan.nativeMethods.contains("map.nearbyPlaces"))
         precondition(hotelPlan.nativeMethods.contains("map.drivingETA"))
         precondition(hotelPlan.permissions.contains("location"))
+        let schoolRequest = "Show gas stations, fast food and stores around the school I'm at right now, with built-in walking directions and minutes."
+        let schoolPlan = ForgeCapabilityPlan.infer(schoolRequest)
+        precondition(ForgeCurrentPlace.query(in: schoolRequest) == "school")
+        precondition(schoolPlan.nativeMethods.contains("map.nearbyPlaces"))
+        precondition(schoolPlan.nativeMethods.contains("map.walkingRoute"))
+        precondition(!ForgeCurrentPlace.needsExternalResearch(query: "browser-safe walking route API", for: schoolRequest))
+        precondition(ForgeCurrentPlace.needsExternalResearch(query: "weather forecast API", for: schoolRequest))
         let aestheticPlan = ForgeCapabilityPlan.infer("make it cleaner")
         precondition(aestheticPlan.nativeMethods.isEmpty)
         let hosted = ForgeAppManifest.build(

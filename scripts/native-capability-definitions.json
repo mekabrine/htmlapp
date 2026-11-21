@@ -1360,6 +1360,26 @@
       "result": "unknown"
     },
     {
+      "method": "map.walkingRoute",
+      "permission": "location",
+      "minimumIOS": "16.0",
+      "userInitiated": false,
+      "nativeCancellation": false,
+      "arguments": {
+        "latitude": "number",
+        "longitude": "number",
+        "destinationLatitude": "number",
+        "destinationLongitude": "number"
+      },
+      "required": [
+        "latitude",
+        "longitude",
+        "destinationLatitude",
+        "destinationLongitude"
+      ],
+      "result": "unknown"
+    },
+    {
       "method": "map.drivingETA",
       "permission": "location",
       "minimumIOS": "16.0",

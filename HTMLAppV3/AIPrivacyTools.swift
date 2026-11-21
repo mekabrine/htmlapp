@@ -226,7 +226,7 @@ final class AIPrivacyToolRunner: NSObject, CLLocationManagerDelegate {
         return String(output.prefix(200_000))
     }
 
-    private func currentVenueContext(query: String, onPlaces: (([HTMLAppPlaceLookup.Place]) -> Void)?) async -> String {
+    private func currentVenueContext(query: String, searchCenter: Bool, onPlaces: (([HTMLAppPlaceLookup.Place]) -> Void)?) async -> String {
         let guidance = """
         CURRENT-VENUE REQUEST (category: \(query)). The user means the venue at their device position.
         Build a primary Use Current Location action. Use foreground navigator.geolocation and
@@ -236,6 +236,7 @@ final class AIPrivacyToolRunner: NSObject, CLLocationManagerDelegate {
         fixed as the live origin moves. For driving time, call HTMLAppNative.map.drivingETA with fresh
         origin coordinates and the saved destination. Read the confirmed destination from device-only secure storage under forge.confirmedVenue before requesting
         another nearby search. Never hard-code the user's location or venue.
+        \(searchCenter ? "The confirmed venue is the search center. Look up places around that fixed center; route to the selected result from current GPS unless the user asks for a route from the center." : "")
         """
         guard AIPrivacyOptions.location == "precise" else {
             return guidance + "\nBuild-time venue lookup requires Precise in AI Generation Privacy. The saved app has its own permission."
@@ -264,7 +265,10 @@ final class AIPrivacyToolRunner: NSObject, CLLocationManagerDelegate {
     /// coding/editing, with six steps and a strict twenty-second overall budget.
     static func research(_ prompt: String, config: AIProviderConfiguration, onPlaces: (([HTMLAppPlaceLookup.Place]) -> Void)? = nil) async -> String {
         if let query = ForgeCurrentPlace.query(in: prompt) {
-            return await AIPrivacyToolRunner().currentVenueContext(query: query, onPlaces: onPlaces)
+            return await AIPrivacyToolRunner().currentVenueContext(query: query, searchCenter: ForgeCurrentPlace.requestsNearbyDiscovery(prompt), onPlaces: onPlaces)
+        }
+        if ForgeCurrentPlace.requestsNearbyDiscovery(prompt) || ForgeCurrentPlace.requestsWalkingRoute(prompt) {
+            return "Resolve current GPS at runtime with per-app Location permission. Use the installed nearby search and walking route APIs when requested."
         }
         guard AIPrivacyOptions.anyEnabled else { return "" }
         let tool = AIPrivacyToolRunner()
