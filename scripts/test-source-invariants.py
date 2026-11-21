@@ -56,6 +56,14 @@ assert qa.index("configuration(for: .coder)") < repair and "plan: plan, config: 
 assert "appCheckFindings(in: original, mode: testMode, request: request, legacyFixture: legacyFixture, previousWorkflows: previousWorkflows)" in qa and "throw AIGenerationError.unresolvedAppChecks(remaining)" in qa
 assert 'issue.hasPrefix("Native navigation:")' in ai, "Blank native tabs must trigger automatic repair"
 assert "qaRepairResponseBytes" in qa
+retry = ai.split("func verifyCurrent(", 1)[1].split("private func recoverIncompleteGeneration(", 1)[0]
+assert "guard config.isConfigured" not in retry, "Local retry must run without requiring a provider"
+assert "AIDebugTraceStore.shared.begin(" in retry and "AIDebugTraceStore.shared.finish(" in retry
+assert "forceChecks: retryingChecks" in retry and "if forceChecks && testMode == .skip" in qa
+forge_view = source("HTMLAppV3/AIGenerationView.swift")
+assert 'Button("Retry Checks", action: retryChecks)' in forge_view
+assert 'Text(canRetryChecks ? "Draft needs verification"' in forge_view
+assert 'await session.verifyCurrent(retryingChecks: true)' in forge_view
 assert 'HTMLAppPackageTransfer' in core
 
 assert "library.corrupt-" in core and "libraryBackupURL" in core
@@ -544,7 +552,8 @@ assert 'Modifying saved data can cause issues' in storage_manager
 assert "HTMLAppStorageManagementView(app: app)" in permission_view
 assert "native_timeout" in native and "clearTimeout(item.timer)" in native
 
-assert "r.bottom <= 0 || r.top >= innerHeight" in runtime_verifier
+assert "Math.min(innerHeight, rect.bottom)" in runtime_verifier
+assert "filter(item => item.bounds).slice(0, 35)" in runtime_verifier
 assert 'let normalized = String(value.reversed().drop(while: { $0 == "/" }).reversed())' in source("HTMLAppV3/AIConfiguration.swift")
 assert '"hasData": sum != nil' in source("HTMLAppV3/HTMLAppHealthReader.swift")
 

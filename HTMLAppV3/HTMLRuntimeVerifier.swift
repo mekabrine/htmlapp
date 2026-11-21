@@ -988,6 +988,11 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
           push('resource error', target.src || target.href || target.tagName || 'unknown resource');
           return;
         }
+        if (/^Script error\.?$/i.test(event.message || '') &&
+            !event.filename && !event.lineno && !event.colno && !event.error) {
+          push('opaque script error', 'WebKit withheld the script location and details during offline QA.');
+          return;
+        }
         push('uncaught error', `${event.message || 'unknown'} ${event.filename || ''}:${event.lineno || 0}:${event.colno || 0}`);
       }, true);
 
@@ -1012,36 +1017,50 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
     private static let touchabilityProbe = #"""
     (() => {
       const issues = [];
-      const controls = Array.from(document.querySelectorAll(
-        'button, [role="button"], [role="tab"], input, select, textarea, a[href]'
-      )).filter(el => {
-        const r = el.getBoundingClientRect();
+      const visibleBounds = el => {
         const css = getComputedStyle(el);
-        return r.width >= 18 && r.height >= 18 &&
-          css.display !== 'none' && css.visibility !== 'hidden' &&
-          !el.disabled && !el.closest('[hidden], [inert]');
-      }).slice(0, 35);
-      let noPointer = 0, covered = 0;
-      for (const el of controls) {
-        if (getComputedStyle(el).pointerEvents === 'none') {
-          noPointer++;
-          continue;
+        if (css.visibility !== 'visible' || !el.getClientRects().length ||
+            el.closest('[hidden], [inert]')) return null;
+        const rect = el.getBoundingClientRect();
+        const left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
+        const top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
+        return right - left >= 4 && bottom - top >= 4 ? {left, right, top, bottom} : null;
+      };
+      const activeModal = Array.from(document.querySelectorAll('dialog[open], [role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]'))
+        .filter(el => (el.getAttribute('aria-modal') === 'true' ||
+          (CSS.supports('selector(:modal)') && el.matches(':modal'))) && visibleBounds(el)).pop();
+      const controls = Array.from((activeModal || document).querySelectorAll(
+        'button, [role="button"], [role="tab"], input, select, textarea, a[href]'
+      )).filter(el => !el.disabled && el.getAttribute('aria-disabled') !== 'true')
+        .map(el => ({el, bounds: visibleBounds(el)})).filter(item => item.bounds).slice(0, 35);
+      const hint = el => el.id ? '#' + el.id : el.tagName.toLowerCase() +
+        (el.classList.length ? '.' + Array.from(el.classList).slice(0, 2).join('.') : '');
+      let noPointer = 0;
+      const covered = [];
+      for (const {el, bounds} of controls) {
+        let blocker = null, reachable = false;
+        for (const [x, y] of [[.5,.5], [.2,.2], [.8,.2], [.2,.8], [.8,.8]]) {
+          const hit = document.elementFromPoint(
+            bounds.left + (bounds.right - bounds.left) * x,
+            bounds.top + (bounds.bottom - bounds.top) * y
+          );
+          if (hit === el || (hit && el.contains(hit))) {
+            reachable = true;
+            break;
+          }
+          if (hit && !hit.contains(el)) blocker ||= hit;
         }
-        const r = el.getBoundingClientRect();
-        // Do not clamp offscreen elements into the viewport: that probes a
-        // different element and produces false overlay/tapability failures.
-        if (r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth) continue;
-        const cx = Math.max(1, Math.min(innerWidth - 1, r.left + r.width / 2));
-        const cy = Math.max(1, Math.min(innerHeight - 1, r.top + r.height / 2));
-        const hit = document.elementFromPoint(cx, cy);
-        if (hit && hit !== el && !el.contains(hit) && !hit.contains(el)) covered++;
+        if (reachable) continue;
+        if (getComputedStyle(el).pointerEvents === 'none') noPointer++;
+        else if (blocker) covered.push(hint(el) + ' by ' + hint(blocker));
       }
       if (noPointer >= Math.max(2, Math.ceil(controls.length / 2))) {
         issues.push('Runtime tapability: most visible controls have pointer-events disabled (' +
           noPointer + '/' + controls.length + ').');
       }
-      if (covered >= Math.max(3, Math.ceil(controls.length * 0.6))) {
-        issues.push('Runtime tapability: ' + covered + ' visible controls are covered by another element. Inspect overlays/z-index.');
+      if (covered.length >= Math.max(3, Math.ceil(controls.length * 0.6))) {
+        issues.push('Runtime tapability: ' + covered.length + '/' + controls.length +
+          ' on-screen controls are covered. Examples: ' + covered.slice(0, 3).join(', ') + '.');
       }
       return issues;
     })()

@@ -403,6 +403,53 @@ function testForgeWorkflowProbe() {
   assert.match(probe({ ...fixture, tap: '#missing' }, true), /^blocked:Tap control #missing was missing/);
 }
 
+function testForgeTapabilityProbe() {
+  const verifier = fs.readFileSync(path.join(root, 'HTMLAppV3/HTMLRuntimeVerifier.swift'), 'utf8');
+  const script = verifier.split('let touchabilityProbe = #"""')[1].split('"""#')[0];
+  const element = (id, top, bottom, attributes = {}) => ({
+    id, tagName: 'DIV', classList: [],
+    getClientRects: () => [1], closest: () => null, contains: () => false,
+    getBoundingClientRect: () => ({left: 0, right: 50, top, bottom}),
+    getAttribute: name => attributes[name]
+  });
+  const offscreen = Array.from({length: 35}, (_, i) => element('offscreen' + i, 101, 120));
+  const buttons = [element('one', 10, 20), element('two', 30, 40), element('three', 50, 60)];
+  const blocker = element('overlay', 0, 100);
+  const hits = (x, y) => buttons.find(button => {
+    const {top, bottom} = button.getBoundingClientRect();
+    return y >= top && y <= bottom;
+  });
+  const run = (hit, modal) => vm.runInNewContext(script, {
+    innerWidth: 100, innerHeight: 100,
+    CSS: { supports: () => true },
+    getComputedStyle: () => ({visibility: 'visible', pointerEvents: 'auto'}),
+    document: {
+      querySelectorAll: selector => selector.startsWith('dialog')
+        ? (modal ? [modal] : []) : [...offscreen, ...buttons],
+      elementFromPoint: hit
+    }
+  });
+  assert.match(run(() => blocker)[0], /3\/3 on-screen controls.*#one by #overlay/);
+  assert.equal(run((x, y) => x === 25 ? blocker : hits(x, y)).length, 0,
+    'A partially covered button still has a reachable tap target');
+  const dismiss = element('dismiss', 70, 90);
+  const modal = {...element('modal', 0, 100, {'aria-modal': 'true'}), querySelectorAll: () => [dismiss]};
+  assert.equal(run((x, y) => y >= 70 ? dismiss : blocker, modal).length, 0,
+    'Controls under an active dialog are intentionally unavailable');
+}
+
+function testForgeScriptDiagnostics() {
+  const verifier = fs.readFileSync(path.join(root, 'HTMLAppV3/HTMLRuntimeVerifier.swift'), 'utf8');
+  const script = verifier.split('let diagnosticsScript = #"""')[1].split('"""#')[0];
+  const listeners = new Map();
+  const window = { addEventListener: (name, fn) => listeners.set(name, fn) };
+  vm.runInNewContext(script, {window});
+  listeners.get('error')({target: window, message: 'Script error.', lineno: 0, colno: 0});
+  listeners.get('error')({target: window, message: 'ReferenceError: init missing', filename: 'app.js', lineno: 7});
+  assert.match(window.__htmlappRuntimeIssues[0], /^opaque script error:/);
+  assert.match(window.__htmlappRuntimeIssues[1], /^uncaught error: .*app.js:7:/);
+}
+
 (async () => {
   await testNativeRPC();
   await testAISessionTools();
@@ -411,6 +458,8 @@ function testForgeWorkflowProbe() {
   await testForgeDrivingScenario();
   testForgeScreenSelection();
   testForgeWorkflowProbe();
+  testForgeTapabilityProbe();
+  testForgeScriptDiagnostics();
   console.log('Native bridge and app viewport JS tests passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 

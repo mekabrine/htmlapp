@@ -817,19 +817,28 @@ struct AIGenerationView: View {
         if browserResearch.isBrowsing { return browserResearch.progressNote }
         if session.isWorking { return session.progressNote }
         if let uiPolishNotice { return uiPolishNotice }
+        if session.draftHasBlockingQA { return "Changes are needed before you can save this draft." }
         if !session.verificationReport.isEmpty { return "Ready to try. Runtime QA ran in an isolated preview; final behavior still needs an on-device try." }
         return session.progressNote
     }
 
+    private var canRetryChecks: Bool {
+        guard !session.streamedHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        if session.draftHasBlockingQA || session.phase == "Verification stopped" { return true }
+        guard session.phase != "Edit stopped", let failed = session.failedPhase else { return false }
+        return failed.contains("icon") || failed.contains("app checks") || failed == "Repairing confirmed app error" ||
+            failed.contains("Reviewing") || failed.contains("Rechecking")
+    }
+
     private var retryButtonTitle: String {
-        if lastFailedChange != nil { return "Retry Edit" }
-        if session.draftHasBlockingQA { return "Retry Checks" }
-        if let failed = session.failedPhase,
-           (failed.contains("icon") || failed.contains("app checks") || failed == "Repairing confirmed app error" ||
-            failed.contains("Reviewing") || failed.contains("Rechecking")) {
-            return "Retry Checks"
-        }
-        return "Retry"
+        if lastFailedChange != nil && session.phase == "Edit stopped" { return "Retry Edit" }
+        return canRetryChecks ? "Retry Checks" : "Retry"
+    }
+
+    private func retryChecks() {
+        guard canRetryChecks, !session.isWorking, !saving else { return }
+        generationTask?.cancel()
+        generationTask = Task { await session.verifyCurrent(retryingChecks: true) }
     }
 
     private var promptView: some View {
@@ -1593,7 +1602,7 @@ struct AIGenerationView: View {
                 if !session.isWorking && !browserResearch.isBrowsing {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(browserResearch.isBrowsing ? "Researching your app" : session.isWorking ? "Creating your app" : "Your app is ready")
+                        Text(canRetryChecks ? "Draft needs verification" : "Your app is ready")
                             .font(.headline)
                         Text(browserResearch.isBrowsing ? browserResearch.status : session.phase)
                             .font(.subheadline)
@@ -1678,6 +1687,10 @@ struct AIGenerationView: View {
 
                 if !session.isWorking && !browserResearch.isBrowsing && !session.streamedHTML.isEmpty {
                     VStack(spacing: 10) {
+                        if canRetryChecks {
+                            Button("Retry Checks", action: retryChecks)
+                                .buttonStyle(.borderedProminent)
+                        }
                         screenEditingTools
                         if let microphoneEditNotice {
                             Text(microphoneEditNotice).font(.caption)
@@ -1745,14 +1758,14 @@ struct AIGenerationView: View {
                                     .disabled(changePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                                 Button(existingApp == nil ? "Save App" : "Save Changes") { saveGeneratedApp() }
                                     .buttonStyle(.borderedProminent)
-                                    .disabled(saving)
+                                    .disabled(saving || canRetryChecks)
                             }
                             if !session.lastEditSummary.isEmpty {
                                 Text(session.lastEditSummary)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
-                            Text("Save the current app now, or apply another AI change first.")
+                            Text(canRetryChecks ? "Retry checks or apply a change to fix this draft." : "Save the current app now, or apply another AI change first.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1773,7 +1786,7 @@ struct AIGenerationView: View {
                                     .buttonStyle(.bordered)
                                 Button(existingApp == nil ? "Save App" : "Save Changes") { saveGeneratedApp() }
                                     .buttonStyle(.borderedProminent)
-                                    .disabled(saving)
+                                    .disabled(saving || canRetryChecks)
                             }
                         }
                     }
@@ -2701,11 +2714,11 @@ Requested edit:
     }
 
     private func saveGeneratedApp() {
-        guard !session.draftHasBlockingQA else {
+        guard !canRetryChecks else {
             let finding = String(session.verificationReport.prefix(420))
             session.errorMessage = finding.isEmpty
-                ? "Retry the app checks before saving this draft."
-                : "Retry checks before saving. " + finding
+                ? "Run the app checks before saving this draft."
+                : "This draft needs verification before saving. " + finding
             return
         }
         if AIPrivacyToolRunner.generatedHTMLContainsPrivateLocation(session.streamedHTML) {
@@ -2832,23 +2845,15 @@ Requested edit:
     }
 
     private func retryLastFailure() {
-        if let change = lastFailedChange {
+        if let change = lastFailedChange, session.phase == "Edit stopped" {
             changePrompt = change
             showingChange = true
             applyAIChange()
             return
         }
 
-        if session.draftHasBlockingQA {
-            generationTask = Task { await session.verifyCurrent() }
-            return
-        }
-
-        if !session.streamedHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let failed = session.failedPhase,
-           (failed.contains("icon") || failed.contains("app checks") || failed == "Repairing confirmed app error" ||
-            failed.contains("Reviewing") || failed.contains("Rechecking")) {
-            generationTask = Task { await session.verifyCurrent() }
+        if canRetryChecks {
+            retryChecks()
             return
         }
 

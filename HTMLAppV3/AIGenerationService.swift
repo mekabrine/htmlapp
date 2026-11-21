@@ -62,7 +62,7 @@ enum AIGenerationError: LocalizedError {
         case .invalidPatch: return "The AI returned a patch that could not be applied safely."
         case .missingIcon: return "The AI could not produce a valid, renderable app icon."
         case .unresolvedAppChecks(let issues):
-            return "Forge could not resolve these app checks. Your draft was kept so you can retry. " + issues.joined(separator: " ")
+            return "App checks are still failing. Your draft was kept. " + issues.joined(separator: " ")
         case .provider(let message): return message
         }
     }
@@ -117,7 +117,7 @@ final class AIGenerationSession: ObservableObject {
     var pendingCheckpointEdit: String?
     private(set) var sourceReadyForChecks = false
     private(set) var lastEditWasComplex = false
-    private(set) var draftHasBlockingQA = false
+    @Published private(set) var draftHasBlockingQA = false
     private var editingExistingApp = false
     private var checkpointExistingAppID: String?
     var runtimeBackendRequired = false
@@ -157,6 +157,7 @@ final class AIGenerationSession: ObservableObject {
         case "Patching the app": return "Applying a focused code patch and preserving unrelated storage, navigation, and behavior."
         case "Generating app icon", "Designing final app icon": return "Designing a simple app-specific icon that stays readable at Home Screen size."
         case "Checking app icon", "Repairing app icon": return "Rendering the icon locally and fixing it if the script is invalid or too detailed."
+        case "Retrying app checks": return "Checking the current draft again and attempting a repair if a problem is confirmed."
         case "Running app checks": return "Loading the generated HTML in an isolated offscreen WebView and checking real runtime failures at phone and iPad widths."
         case "Reviewing source (not running device tests)": return "Combining runtime findings with source checks for a focused release review."
         case "Diagnosing failed app checks": return "The Prompt Planner is using the test failures and source to pinpoint what needs to change."
@@ -591,6 +592,9 @@ final class AIGenerationSession: ObservableObject {
         guard config.isConfigured else { errorMessage = AIGenerationError.notConfigured.localizedDescription; return }
         lastEditSummary = ""
         lastEditWasComplex = false
+        let beforeEditSourceReady = sourceReadyForChecks
+        let beforeEditBlockingQA = draftHasBlockingQA
+        let beforeEditVerification = verificationReport
         sourceReadyForChecks = false
         let beforeEditHTML = streamedHTML
         let editSource = ForgeEditIconContext(beforeEditHTML)
@@ -842,8 +846,9 @@ Requested edit:
             persistCheckpoint()
         } catch is CancellationError {
             failedPhase = phase
-            sourceReadyForChecks = false
-            draftHasBlockingQA = false
+            sourceReadyForChecks = beforeEditSourceReady
+            draftHasBlockingQA = beforeEditBlockingQA
+            verificationReport = beforeEditVerification
             streamedHTML = beforeEditHTML
             description = beforeEditDescription
             iconScript = beforeEditIconScript
@@ -854,8 +859,9 @@ Requested edit:
             phase = "Edit stopped"
         } catch {
             failedPhase = phase
-            sourceReadyForChecks = false
-            draftHasBlockingQA = false
+            sourceReadyForChecks = beforeEditSourceReady
+            draftHasBlockingQA = beforeEditBlockingQA
+            verificationReport = beforeEditVerification
             streamedHTML = beforeEditHTML
             description = beforeEditDescription
             iconScript = beforeEditIconScript
@@ -1062,17 +1068,36 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
         persistCheckpoint()
     }
 
-    func verifyCurrent(omitIcon: Bool = false) async {
+    func verifyCurrent(omitIcon: Bool = false, retryingChecks: Bool = false) async {
+        guard !isWorking, !Task.isCancelled else { return }
+        guard !streamedHTML.trimmed.isEmpty else {
+            errorMessage = AIGenerationError.missingHTML.localizedDescription
+            return
+        }
+
         let config = AISettingsStore.configuration
-        guard config.isConfigured, !streamedHTML.trimmed.isEmpty else { return }
         isWorking = true
         errorMessage = nil
         failedPhase = nil
+        if retryingChecks {
+            AIDebugTraceStore.shared.begin(originalPrompt: originalPrompt, config: config)
+            phase = "Retrying app checks"
+        }
+        defer {
+            isWorking = false
+            if retryingChecks {
+                let outcome = errorMessage.map { "Failed: " + $0 } ?? phase
+                AIDebugTraceStore.shared.finish(outcome: outcome)
+            }
+        }
         do {
-            if !omitIcon && !editingExistingApp {
+            if !retryingChecks && !omitIcon && !editingExistingApp {
                 try await ensureValidIcon(config: config)
             }
-            try await verifyAndRepair(config: config)
+            try await verifyAndRepair(config: config, forceChecks: retryingChecks)
+            if retryingChecks && !omitIcon && !editingExistingApp && renderedIconData == nil {
+                try await ensureValidIcon(config: config)
+            }
             try await ensureRuntimeBackend(config: config)
             try Task.checkCancellation()
             phase = "Ready to review"
@@ -1080,16 +1105,15 @@ Preserve all unrelated features, storage keys, APIs, navigation, data schemas, p
         } catch is CancellationError {
             failedPhase = phase
             errorMessage = nil
-            persistCheckpoint()
             phase = "Verification stopped"
+            persistCheckpoint()
         } catch {
             failedPhase = phase
             AIDebugTraceStore.shared.append("VERIFICATION ERROR", error.localizedDescription)
             errorMessage = Self.friendlyMessage(for: error)
-            persistCheckpoint()
             phase = "Verification stopped"
+            persistCheckpoint()
         }
-        isWorking = false
     }
 
     private func recoverIncompleteGeneration(
@@ -1188,6 +1212,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             }
 
             phase = candidate.isEmpty ? "Generating app icon" : "Repairing app icon"
+            guard config.isConfigured else { throw AIGenerationError.notConfigured }
             do {
                 candidate = try await AIHTMLAgent.generateIconScript(
                     html: streamedHTML,
@@ -1315,6 +1340,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
                 throw HTMLAppBackendError(message: "The requested runtime feature is incomplete. " + issues.joined(separator: " "), status: 422)
             }
             try Task.checkCancellation()
+            guard config.isConfigured else { throw AIGenerationError.notConfigured }
             phase = ForgeBackendContract.requiresBackend(request: intent, html: streamedHTML) ? "Building the backend" : "Building widget updates"
             AIDebugTraceStore.shared.append("BACKEND COMPLETENESS", issues.joined(separator: "\n"))
             let icon = ForgeEditIconContext(streamedHTML)
@@ -1341,13 +1367,12 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         }
     }
 
-    private func verifyAndRepair(config: AIProviderConfiguration, editRequest: String? = nil, beforeEdit: String? = nil) async throws {
+    private func verifyAndRepair(config: AIProviderConfiguration, editRequest: String? = nil, beforeEdit: String? = nil, forceChecks: Bool = false) async throws {
         try Task.checkCancellation()
         streamedHTML = ForgeAttachment.materialize(streamedHTML, items: ForgeAttachmentContext.images)
         try await ensureRuntimeBackend(config: config)
         phase = "Running app checks"
         let previousFailure = draftHasBlockingQA ? String(verificationReport.prefix(1200)) : ""
-        verificationReport = ""
         qaRepairResponseBytes = 0
 
         let normalized = HTMLQualityChecks.normalizeDocument(streamedHTML)
@@ -1360,6 +1385,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         let legacyFixture = beforeEdit.flatMap(HTMLRuntimeVerifier.legacyStorageFixture)
         let previousWorkflows = beforeEdit.map(HTMLRuntimeVerifier.workflowFixtures) ?? []
         if testMode == .fast, editRequest != nil, lastEditWasComplex { testMode = .balanced }
+        if forceChecks && testMode == .skip { testMode = .fast }
         if testMode == .skip {
             draftHasBlockingQA = false
             let warnings = HTMLQualityChecks.issues(in: original) + Self.coreWorkflowWarnings(prompt: originalPrompt, html: original)
@@ -1388,12 +1414,15 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             return
         }
 
+        verificationReport = initial.blocking.joined(separator: " ")
+
         // Keep the candidate separate until it passes the same checks as the original.
         // QUICK changes generation routing, but a confirmed failure still uses both configured roles.
         let iconContext = ForgeEditIconContext(original)
         let (planner, coder) = ForgeRunOptions.$quick.withValue(false) {
             (AISettingsStore.configuration(for: .planner), AISettingsStore.configuration(for: .coder))
         }
+        guard coder.isConfigured else { throw AIGenerationError.notConfigured }
         var repairEvidence = lastResearch
         if ForgeCurrentPlace.requestsWalkingRoute(request) {
             let routeDocs = HTMLAppDeviceAPIResearch.research(queries: ["map.walkingRoute", "map.nearbyPlaces"])
@@ -1406,7 +1435,8 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         phase = "Diagnosing failed app checks"
         do {
             plan = try await AIHTMLAgent.planQARepair(
-                html: iconContext.html, request: request, issues: initial.blocking, config: planner)
+                html: iconContext.html, request: request, issues: initial.blocking,
+                previousFailure: previousFailure, config: planner)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -1431,12 +1461,15 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             if let fixed, !fixed.trimmed.isEmpty, fixed != iconContext.html {
                 repairedHTML = iconContext.restoringIcons(in: fixed)
             } else {
-                AIDebugTraceStore.shared.append("QA PATCH", "Coding Agent returned no applicable change.")
+                let issue = "The AI repair did not produce an applicable change."
+                AIDebugTraceStore.shared.append("QA PATCH", issue)
+                remaining.append(issue)
             }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
             AIDebugTraceStore.shared.append("QA REPAIR ERROR", error.localizedDescription)
+            remaining.append(Self.friendlyMessage(for: error))
         }
 
         try Task.checkCancellation()
@@ -2932,7 +2965,8 @@ Icon direction: infer the most distinctive product metaphor yourself. Do not req
     }
 
     static func planQARepair(
-        html: String, request: String, issues: [String], config: AIProviderConfiguration
+        html: String, request: String, issues: [String], previousFailure: String,
+        config: AIProviderConfiguration
     ) async throws -> String {
         let system = """
 Diagnose confirmed failures in a generated HTMLApp using the supplied source and local WebKit test results.
@@ -2950,6 +2984,9 @@ APP REQUEST:
 
 CONFIRMED FAILURES:
 \(issues.joined(separator: "\n"))
+
+PREVIOUS RETEST:
+\(previousFailure.isEmpty ? "None." : previousFailure)
 
 SOURCE:
 <htmlapp_existing>
