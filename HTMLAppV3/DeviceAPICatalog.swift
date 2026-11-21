@@ -482,15 +482,15 @@ enum HTMLAppDeviceAPIResearch {
             title: "Native Files picker",
             keywords: ["file picker", "documents", "import file", "files app", "open document", "multiple files"],
             purpose: "Let the user choose one or more documents from the iOS Files picker and import them into the HTMLApp.",
-            api: "await HTMLAppNative.files.pick({ multiple? })",
+            api: "await HTMLAppNative.files.pick()",
             example: """
-            const files = await HTMLAppNative.files.pick({ multiple: true });
+            const files = await HTMLAppNative.files.pick();
             for (const file of files) {
               const response = await fetch(file.url);
               const bytes = await response.arrayBuffer();
             }
             """,
-            constraints: "Returns [{name,url,mimeType,size}]. The url is a local relative URL scoped to the current HTMLApp. Cancellation rejects normally."
+            constraints: "The picker allows multiple files and returns an array, including when one file is selected. Returns [{name,url,mimeType,size}]. The url is a local relative URL scoped to the current HTMLApp. Cancellation rejects normally."
         ),
         .init(
             id: "appStorage",

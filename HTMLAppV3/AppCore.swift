@@ -566,6 +566,13 @@ final class AppStore: ObservableObject {
     func add(html: String, summary: String, backendTemplate: String? = nil, runtimeID: String? = nil) async {
         let name = HTMLTools.title(in: html) ?? "Untitled App"
         let icon = await HTMLAppIconTools.savedIcon(html: html, name: name)
+        _ = addLocalHTML(html: html, name: name, summary: summary, icon: icon,
+                         backendTemplate: backendTemplate, runtimeID: runtimeID)
+    }
+
+    @discardableResult
+    private func addLocalHTML(html: String, name: String, summary: String, icon: Data?,
+                              backendTemplate: String? = nil, runtimeID: String? = nil) -> Bool {
         let now = Date()
         let destination = validPendingInsertionFolderID()
         let app = SavedHTMLApp(
@@ -577,11 +584,44 @@ final class AppStore: ObservableObject {
             websiteSourceURL: nil, websiteFingerprint: nil
         )
         apps.insert(app, at: 0)
-        guard save() else { apps.removeAll { $0.id == app.id }; return }
+        guard save() else { apps.removeAll { $0.id == app.id }; return false }
         pendingInsertionFolderID = nil
         HTMLAppRuntimeBackend.importPublicLink(app.html, localID: app.id)
         if let backendTemplate { HTMLAppBackendProvisioning.enqueue(app, template: backendTemplate) }
         Task(priority: .utility) { await SourceCache.shared.refresh(app: app, force: false) }
+        return true
+    }
+
+    enum LocalHTMLImportOutcome: Equatable { case installed, updated, needsDestination }
+
+    func importLocalHTML(_ payload: HTMLFileImportPayload, icon: Data? = nil,
+                         installIfUnmatched: Bool = true) async throws -> LocalHTMLImportOutcome {
+        let defaultName = (payload.fileName as NSString).deletingPathExtension
+        let name = HTMLTools.title(in: payload.html) ?? defaultName
+        let importedIcon: Data?
+        if let icon { importedIcon = icon }
+        else { importedIcon = await HTMLAppIconTools.savedIcon(html: payload.html, name: name) }
+
+        let matches = apps.filter { app in
+            guard app.websiteSourceURL == nil, app.name.caseInsensitiveCompare(name) == .orderedSame,
+                  let importedIcon else { return false }
+            return app.favicon == importedIcon || app.resolvedIconData == importedIcon
+        }
+        if matches.count > 1 {
+            if !installIfUnmatched { return .needsDestination }
+            throw ForgeAttachment.Failure.message("Several saved apps have the same name and icon. Open the file from Files and choose a destination if you need to update a specific copy.")
+        }
+        if let app = matches.first {
+            guard updateLocalHTML(app, html: payload.html, name: app.name, summary: app.summary, icon: app.favicon ?? importedIcon) else {
+                throw ForgeAttachment.Failure.message(errorMessage ?? "The app update could not be saved.")
+            }
+            return .updated
+        }
+        guard installIfUnmatched else { return .needsDestination }
+        guard addLocalHTML(html: payload.html, name: name, summary: "Imported from " + payload.fileName, icon: importedIcon) else {
+            throw ForgeAttachment.Failure.message(errorMessage ?? "The app could not be saved.")
+        }
+        return .installed
     }
 
     func addTransferredApp(
@@ -789,6 +829,10 @@ final class AppStore: ObservableObject {
     func update(_ app: SavedHTMLApp, html: String, summary: String) async -> Bool {
         let name = HTMLTools.title(in: html) ?? app.name
         let icon = await HTMLAppIconTools.savedIcon(html: html, name: name)
+        return updateLocalHTML(app, html: html, name: name, summary: summary, icon: icon)
+    }
+
+    private func updateLocalHTML(_ app: SavedHTMLApp, html: String, name: String, summary: String, icon: Data?) -> Bool {
         guard let index = apps.firstIndex(where: { $0.id == app.id }) else { return false }
         let previous = apps[index]
         apps[index].name = name
@@ -1404,26 +1448,31 @@ final class AppStore: ObservableObject {
         // full-screen cover, app switch or document-provider open animation.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) { [weak self] in
             guard let self else { return }
-            self.externalImportPresentationScheduled = false
             guard self.canPresentExternalHTMLImport,
                   self.externalImportPayload == nil,
                   self.runningApp == nil,
-                  !self.pendingExternalHTMLFiles.isEmpty else { return }
+                  !self.pendingExternalHTMLFiles.isEmpty else {
+                self.externalImportPresentationScheduled = false
+                return
+            }
             let url = self.pendingExternalHTMLFiles.removeFirst()
-            defer { HTMLExternalFileInbox.disposeIfStaged(url) }
-            do {
-                let data = try HTMLExternalFileInbox.read(url)
-                let html = String(data: data, encoding: .utf8)
-                    ?? String(decoding: data, as: UTF8.self)
-                guard !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    throw HTMLExternalFileInbox.ImportError.empty
+            Task {
+                defer {
+                    HTMLExternalFileInbox.disposeIfStaged(url)
+                    self.externalImportPresentationScheduled = false
+                    self.presentNextExternalHTMLImport()
                 }
-                self.externalImportPayload = HTMLFileImportPayload(
-                    fileName: url.lastPathComponent, html: html
-                )
-            } catch {
-                self.errorMessage = "Couldn't open the shared HTML file: \(error.localizedDescription)"
-                self.presentNextExternalHTMLImport()
+                do {
+                    let payload = try HTMLFileImportPayload.read(url)
+                    let outcome = try await self.importLocalHTML(payload, installIfUnmatched: false)
+                    if outcome == .updated {
+                        self.notice = "Updated " + (HTMLTools.title(in: payload.html) ?? payload.fileName) + "."
+                    } else {
+                        self.externalImportPayload = payload
+                    }
+                } catch {
+                    self.errorMessage = "Couldn't open the shared HTML file: \(error.localizedDescription)"
+                }
             }
         }
     }

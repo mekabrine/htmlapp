@@ -277,6 +277,8 @@ struct HTMLAppBackendView: View {
     @State private var busy = false
     @State private var showKey = false
     @State private var importing = false
+    @State private var sourceImportChoices: [URL] = []
+    @State private var choosingImportedSource = false
     @State private var showSource = false
     @State private var confirmUnlink = false
     @State private var source: String?
@@ -452,9 +454,22 @@ struct HTMLAppBackendView: View {
             }
             .navigationTitle("Backend")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-            .fileImporter(isPresented: $importing, allowedContentTypes: [UTType(filenameExtension: "py") ?? .plainText]) { result in
-                do { try importSource(result.get()) }
-                catch { message = error.localizedDescription }
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+                do {
+                    let files = try result.get()
+                    if files.count == 1, let file = files.first { try importSource(file) }
+                    else if !files.isEmpty {
+                        sourceImportChoices = files
+                        choosingImportedSource = true
+                    }
+                } catch { message = error.localizedDescription }
+            }
+            .sheet(isPresented: $choosingImportedSource, onDismiss: { sourceImportChoices = [] }) {
+                ImportFileChoiceView(title: "Choose Python Source", files: sourceImportChoices) { file in
+                    do { try importSource(file) }
+                    catch { message = error.localizedDescription }
+                    choosingImportedSource = false
+                } cancel: { choosingImportedSource = false }
             }
             .sheet(isPresented: $repairingBackend) {
                 AIGenerationView(existingApp: app, initialEdit: "Implement this app’s complete intended backend and connect every server-dependent control. Replace placeholder URLs and local-only substitutes with a generated runtime v2 Python bundle and matching frontend. Preserve the design and user data. Use the saved VPS secret automatically; do not ask for provisioning JSON.")

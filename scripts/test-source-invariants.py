@@ -270,9 +270,20 @@ assert 'loadFileRepresentation(forTypeIdentifier:' in native
 assert 'FileManager.default.copyItem(at: url, to: staging)' in native
 assert 'loadDataRepresentation(forTypeIdentifier:' in native
 assert 'photo_import_failed' in native
-assert 'queuedFileImport = payload' in library
-assert 'presentQueuedFileImport()' in library
-assert 'DispatchQueue.main.asyncAfter(deadline: .now() + 0.45)' in library
+assert 'await importHTMLBatch(urls)' in library
+assert 'for url in urls where !icons.contains(url)' in library
+assert 'companionIcons.first.map(HTMLAppIconTools.readImportIcon)' in library
+assert 'picker.allowsMultipleSelection = true' in native
+for picker_source in ("ForgeSkillPicker", "HTMLAppBackend", "DataTransferView", "AISettingsView", "LibraryUI"):
+    assert "allowsMultipleSelection: true" in source(f"HTMLAppV3/{picker_source}.swift")
+skills = source("HTMLAppV3/ForgeSkillPicker.swift")
+assert 'Button("Import a File")' in skills and 'Button("Paste Contents")' in skills
+assert 'try save(ForgeImportedSkill.read(url))' in skills
+assert 'try save(ForgeImportedSkill.make(text: pastedMarkdown))' in skills
+imports = source("HTMLAppV3/AppCore.swift")
+assert 'app.name.caseInsensitiveCompare(name) == .orderedSame' in imports
+assert 'app.favicon == importedIcon || app.resolvedIconData == importedIcon' in imports
+assert 'updateLocalHTML(app, html: payload.html, name: app.name, summary: app.summary' in imports
 
 
 # Regeneration must preserve the user-approved mockup, including when a
@@ -805,9 +816,9 @@ settings = source("HTMLAppV3/AISettingsView.swift")
 library = source("HTMLAppV3/LibraryUI.swift")
 assert "HTMLApp-AI-App-Builder-SKILL.md" in project
 assert 'ShareLink(item: skillURL' in settings
-assert 'serverDependentImport = payload' in library
-assert 'Import Hosted Website' in library
-assert 'Import Local Copy' in library
+assert "callsOriginalServer" in library and "Use Website Import" in library
+assert "await store.importLocalHTML(payload, icon: icon)" in library
+assert "pendingImportURLs.count == 1" in source("HTMLAppV3/DataTransferView.swift")
 assert 'CFBundleDocumentTypes:' in project and 'public.html' in project
 # Version/build consistency is already validated dynamically at the top of this script.
 assert f'MARKETING_VERSION: "{version}"' in project
@@ -867,7 +878,8 @@ assert "queueExternalHTMLFile(url)" in appcore
 assert "pendingExternalHTMLFiles" in appcore and "canPresentExternalHTMLImport" in appcore
 assert "HTMLExternalFileInbox.stage(url)" in appcore
 assert "self.pendingExternalHTMLFiles.removeFirst()" in appcore
-assert "HTMLExternalFileInbox.read(url)" in library
+assert "HTMLFileImportPayload.read(url)" in library and "HTMLFileImportPayload.read(url)" in appcore
+assert "HTMLExternalFileInbox.read(url)" in source("HTMLAppV3/HTMLFileImport.swift")
 assert "HTMLExternalFileInbox.disposeIfStaged(url)" in library
 assert "NSFileCoordinator" in incoming and "startAccessingSecurityScopedResource" in incoming
 assert "DisclosureGroup(\"Advanced Settings\")" in settings

@@ -54,9 +54,7 @@ struct LibraryView: View {
     @State private var importingFile = false
     @State private var showWebsiteImporter = false
     @State private var nearbyTransferRoute: NearbyTransferRoute?
-    @State private var pendingImport: HTMLFileImportPayload?
-    @State private var queuedFileImport: HTMLFileImportPayload?
-    @State private var serverDependentImport: HTMLFileImportPayload?
+    @State private var importingHTMLBatch = false
     @State private var pendingDelete: SavedHTMLApp?
     @State private var permissionsApp: SavedHTMLApp?
     @State private var storageManagementApp: SavedHTMLApp?
@@ -183,31 +181,12 @@ struct LibraryView: View {
         }
         .sheet(item: $permissionsApp) { EnhancedAppPermissionsView(app: $0) }
         .sheet(item: $storageManagementApp) { HTMLAppStorageManagementView(app: $0) }
-        .sheet(item: $pendingImport) { ImportHTMLDestinationView(payload: $0).environmentObject(store) }
-        .onChange(of: pendingImport) { item in
-            if item == nil {
-                presentQueuedFileImport()
+        .overlay {
+            if importingHTMLBatch {
+                ProgressView("Importing HTML files…")
+                    .padding(20)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             }
-        }
-        .alert("This HTML needs its original server", isPresented: Binding(
-            get: { serverDependentImport != nil },
-            set: { if !$0 { serverDependentImport = nil } }
-        )) {
-            Button("Import Local Copy") {
-                queuedFileImport = serverDependentImport
-                serverDependentImport = nil
-                presentQueuedFileImport()
-            }
-            Button("Import Hosted Website") {
-                serverDependentImport = nil
-                showWebsiteImporter = true
-            }
-            Button("Cancel", role: .cancel) { serverDependentImport = nil }
-        } message: {
-            Text("This file calls a root-relative server API such as /api/build. Saving it offline cannot include the server. To keep the build or login functions working, enter the real hosted website URL in Website Import. If you import a local copy, those API calls will be unavailable until configured.")
-        }
-        .onChange(of: importingFile) { showing in
-            if !showing { presentQueuedFileImport() }
         }
         .fullScreenCover(item: $nearbyTransferRoute) { route in
             NavigationStack {
@@ -295,7 +274,8 @@ struct LibraryView: View {
             Button("Make an App with AI") { showGenerator = true }
             Button("Save a Website") { showWebsiteImporter = true }
             Button("Write HTML Code") { editor = .new }
-            Button("Import an HTML File") { importingFile = true }
+            Button("Import HTML Files") { importingFile = true }
+                .disabled(importingHTMLBatch)
             Button("Receive an App from Another Device") {
                 nearbyTransferRoute = NearbyTransferRoute(appIDs: [])
             }
@@ -348,7 +328,7 @@ struct LibraryView: View {
             // of public.html, so type-restricted picking can disable the file.
             // Accept Files items, then inspect the selected extension ourselves.
             allowedContentTypes: [.item],
-            allowsMultipleSelection: false,
+            allowsMultipleSelection: true,
             onCompletion: importFile
         )
         .confirmationDialog(
@@ -724,49 +704,53 @@ struct LibraryView: View {
     }
 
     private func importFile(_ result: Result<[URL], Error>) {
+        guard !importingHTMLBatch else { return }
         do {
-            guard let url = try result.get().first else { return }
-            defer { HTMLExternalFileInbox.disposeIfStaged(url) }
-
-            // Coordinated reading covers iCloud and third-party providers,
-            // while Files/share-sheet launches are already staged in private
-            // temporary storage and survive startup presentation delays.
-            let data = try HTMLExternalFileInbox.read(url)
-            let html = String(data: data, encoding: .utf8)
-                ?? String(decoding: data, as: UTF8.self)
-            guard !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                store.errorMessage = "The selected file is empty."
-                return
-            }
-            let payload = HTMLFileImportPayload(fileName: url.lastPathComponent, html: html)
-            // Root-relative /api calls still require the original server.
-            if html.range(
-                of: #"(?i)(?:fetch\s*\(\s*['\x22\x60]|const\s+API\s*=\s*['\x22])/api/"#,
-                options: .regularExpression
-            ) != nil {
-                serverDependentImport = payload
-            } else {
-                queuedFileImport = payload
-                presentQueuedFileImport()
+            let urls = try result.get()
+            guard !urls.isEmpty else { return }
+            importingHTMLBatch = true
+            Task {
+                defer { importingHTMLBatch = false }
+                await importHTMLBatch(urls)
             }
         } catch {
-            store.errorMessage = "Couldn't open the selected file: \(error.localizedDescription)"
+            store.errorMessage = "Couldn't open the selected files: " + error.localizedDescription
         }
     }
 
-    private func presentQueuedFileImport() {
-        guard !importingFile, pendingImport == nil,
-              serverDependentImport == nil,
-              queuedFileImport != nil else { return }
-        // UIKit document picker dismissal and launch covers can otherwise
-        // race the next SwiftUI sheet on iOS 16.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            guard !importingFile, pendingImport == nil,
-                  serverDependentImport == nil,
-                  let payload = queuedFileImport else { return }
-            queuedFileImport = nil
-            pendingImport = payload
+    private func importHTMLBatch(_ urls: [URL]) async {
+        var installed = 0
+        var updated = 0
+        var serverDependent: [String] = []
+        var failures: [String] = []
+        let iconExtensions: Set<String> = ["png", "jpg", "jpeg", "ico", "heic"]
+        let icons = urls.filter { iconExtensions.contains($0.pathExtension.lowercased()) }
+        for url in urls where !icons.contains(url) {
+            defer { HTMLExternalFileInbox.disposeIfStaged(url) }
+            do {
+                let payload = try HTMLFileImportPayload.read(url)
+                let stem = url.deletingPathExtension().lastPathComponent
+                let companionIcons = icons.filter { $0.deletingPathExtension().lastPathComponent.caseInsensitiveCompare(stem) == .orderedSame }
+                guard companionIcons.count <= 1 else {
+                    throw ForgeAttachment.Failure.message("Select only one matching icon per HTML file.")
+                }
+                let icon = try companionIcons.first.map(HTMLAppIconTools.readImportIcon)
+                switch try await store.importLocalHTML(payload, icon: icon) {
+                case .installed: installed += 1
+                case .updated: updated += 1
+                case .needsDestination: break
+                }
+                if payload.callsOriginalServer { serverDependent.append(payload.fileName) }
+            } catch {
+                failures.append(url.lastPathComponent + ": " + error.localizedDescription)
+            }
         }
+        if installed + updated == 0 && failures.isEmpty { failures.append("Select an HTML file along with any companion icon.") }
+        if installed + updated > 0 { store.notice = "Installed \(installed), updated \(updated)." }
+        if !serverDependent.isEmpty {
+            failures.append("These files still need their original server for some features: " + serverDependent.joined(separator: ", ") + ". Use Website Import if you need those features.")
+        }
+        if !failures.isEmpty { store.errorMessage = failures.joined(separator: "\n") }
     }
 
     private func refresh(_ app: SavedHTMLApp) {

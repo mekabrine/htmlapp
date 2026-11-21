@@ -26,6 +26,25 @@ struct HTMLFileImportPayload: Identifiable, Equatable {
         self.widgets = widgets
         self.backgroundJobs = backgroundJobs
     }
+
+    static func read(_ url: URL) throws -> Self {
+        let data = try HTMLExternalFileInbox.read(url)
+        let html = String(decoding: data, as: UTF8.self)
+        guard !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw HTMLExternalFileInbox.ImportError.empty
+        }
+        if url.pathExtension.lowercased() == "txt",
+           html.range(of: #"(?i)<!doctype\s+html|<html\b|<body\b|<[a-z][a-z0-9-]*\b[^>]*>"#, options: .regularExpression) == nil {
+            throw HTMLExternalFileInbox.ImportError.unsupportedType
+        }
+        return Self(fileName: url.lastPathComponent, html: html)
+    }
+
+    var callsOriginalServer: Bool {
+        html.range(of: #"(?i)(?:fetch\s*\(\s*['\x22\x60]|const\s+API\s*=\s*['\x22])/api/"#,
+                   options: .regularExpression) != nil
+    }
+
 }
 
 enum HTMLFileName {
@@ -33,6 +52,26 @@ enum HTMLFileName {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         let safe = name.unicodeScalars.map { allowed.contains($0) ? String($0) : "-" }.joined()
         return String(safe.prefix(64)).isEmpty ? "HTMLApp" : String(safe.prefix(64))
+    }
+}
+
+/// Choose which of several selected files fills an existing single-file slot.
+struct ImportFileChoiceView: View {
+    let title: String
+    let files: [URL]
+    let choose: (URL) -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List(files.indices, id: \.self) { index in
+                let file = files[index]
+                Button(file.lastPathComponent) { choose(file) }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) } }
+        }
     }
 }
 
@@ -111,11 +150,11 @@ struct ImportHTMLDestinationView: View {
     private func update(_ app: SavedHTMLApp) {
         working = true
         Task {
-            await store.update(
+            guard await store.update(
                 app,
                 html: payload.html,
                 summary: payload.app?.summary ?? app.summary
-            )
+            ) else { working = false; return }
             if let portableData = payload.portableData {
                 HTMLAppPortableDataStore.replace(appID: app.id, values: portableData)
             }

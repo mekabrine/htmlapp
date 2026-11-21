@@ -33,18 +33,40 @@ private struct ForgeImportedSkill: Codable, Identifiable {
     static func read(_ url: URL) throws -> Self {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
-        guard url.pathExtension.lowercased() == "md",
-              let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-              (1...maximumBytes).contains(size) else {
+        guard url.pathExtension.lowercased() == "md" else {
             throw ForgeAttachment.Failure.message("Choose a Markdown (.md) file up to 512 KB.")
         }
-        let data = try Data(contentsOf: url)
-        guard data.count <= maximumBytes, let text = String(data: data, encoding: .utf8),
-              !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ForgeAttachment.Failure.message("This file must contain readable UTF-8 Markdown.")
+        var coordinationError: NSError?
+        var result: Result<Self, Error>?
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: url, options: [], error: &coordinationError) { readable in
+            result = Result {
+                guard let size = try readable.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                      (1...maximumBytes).contains(size) else {
+                    throw ForgeAttachment.Failure.message("Choose a Markdown (.md) file up to 512 KB.")
+                }
+                let data = try Data(contentsOf: readable, options: .mappedIfSafe)
+                guard data.count <= maximumBytes, let text = String(data: data, encoding: .utf8) else {
+                    throw ForgeAttachment.Failure.message("Choose readable UTF-8 Markdown up to 512 KB.")
+                }
+                return try make(text: text, fileName: url.lastPathComponent)
+            }
         }
-        let title = Self.title(in: text, fallback: url.deletingPathExtension().lastPathComponent)
-        return Self(attachment: ForgeAttachment(name: url.lastPathComponent, text: text, jpeg: nil, skillTitle: title),
+        if let coordinationError { throw coordinationError }
+        guard let result else {
+            throw ForgeAttachment.Failure.message("The skill file is not ready. Download it in Files and try again.")
+        }
+        return try result.get()
+    }
+
+    static func make(text: String, fileName: String? = nil) throws -> Self {
+        guard text.utf8.count <= maximumBytes, !text.contains("\0"),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ForgeAttachment.Failure.message("Enter readable Markdown up to 512 KB.")
+        }
+        let fallback = fileName.map { ($0 as NSString).deletingPathExtension } ?? "Pasted Skill"
+        let title = Self.title(in: text, fallback: fallback)
+        let name = fileName ?? HTMLFileName.safe(title) + ".md"
+        return Self(attachment: ForgeAttachment(name: name, text: text, jpeg: nil, skillTitle: title),
                     title: title, importedAt: Date())
     }
 }
@@ -63,6 +85,9 @@ struct ForgeSkillPicker: View {
     @State private var skills: [ForgeImportedSkill] = []
     @State private var search = ""
     @State private var importing = false
+    @State private var choosingImport = false
+    @State private var pasting = false
+    @State private var pastedMarkdown = ""
     @State private var error: String?
 
     private static var directory: URL {
@@ -98,7 +123,7 @@ struct ForgeSkillPicker: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
 
-                Button { importing = true } label: {
+                Button { choosingImport = true } label: {
                     Label("Import New Skill", systemImage: "plus")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 44)
@@ -161,20 +186,66 @@ struct ForgeSkillPicker: View {
             }
         }
         .task { load() }
-        .fileImporter(isPresented: $importing,
-                      allowedContentTypes: [UTType(filenameExtension: "md") ?? .plainText]) { result in
+        .confirmationDialog("Import New Skill", isPresented: $choosingImport, titleVisibility: .visible) {
+            Button("Import a File") { importing = true }
+            Button("Paste Contents") { pastedMarkdown = ""; pasting = true }
+            Button("Cancel", role: .cancel) {}
+        }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             do {
-                let skill = try ForgeImportedSkill.read(result.get())
-                try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-                let destination = Self.directory.appendingPathComponent(skill.id.uuidString + ".json")
-                try JSONEncoder().encode(skill).write(to: destination, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-                skills.append(skill)
-                search = ""
+                var failures: [String] = []
+                for url in try result.get() {
+                    do { try save(ForgeImportedSkill.read(url)) }
+                    catch { failures.append(url.lastPathComponent + ": " + error.localizedDescription) }
+                }
+                if !failures.isEmpty { error = failures.joined(separator: "\n") }
             } catch { self.error = error.localizedDescription }
         }
-        .alert("Skills", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+        .sheet(isPresented: $pasting) { pasteSheet }
+        .alert("Skills", isPresented: Binding(get: { error != nil && !pasting }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) { error = nil }
         } message: { Text(error ?? "") }
+    }
+
+    private var pasteSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Paste the Markdown for your skill. Forge uses the heading or front matter as its name.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                TextEditor(text: $pastedMarkdown)
+                    .font(.system(.body, design: .monospaced))
+                    .accessibilityLabel("Skill Markdown")
+            }
+            .padding()
+            .navigationTitle("Paste Skill Contents")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { pasting = false } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Import") {
+                        do {
+                            try save(ForgeImportedSkill.make(text: pastedMarkdown))
+                            pasting = false
+                        } catch { self.error = error.localizedDescription }
+                    }
+                    .disabled(pastedMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .alert("Couldn’t Import Skill", isPresented: Binding(
+                get: { error != nil && pasting }, set: { if !$0 { error = nil } }
+            )) {
+                Button("OK", role: .cancel) { error = nil }
+            } message: { Text(error ?? "") }
+        }
+    }
+
+    private func save(_ skill: ForgeImportedSkill) throws {
+        try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+        let destination = Self.directory.appendingPathComponent(skill.id.uuidString + ".json")
+        try JSONEncoder().encode(skill).write(to: destination, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        skills.append(skill)
+        selection.append(skill.attachment)
+        search = ""
     }
 
     private func load() {

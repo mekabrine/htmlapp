@@ -2924,7 +2924,7 @@ final class HTMLNativeAPIBridge: NSObject, CNContactPickerDelegate, PHPickerView
             return
         }
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
-        picker.allowsMultipleSelection = args["multiple"] as? Bool ?? false
+        picker.allowsMultipleSelection = true
         picker.delegate = self
         filePickerCallbackID = id
         presenter.present(picker, animated: true)

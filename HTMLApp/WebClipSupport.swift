@@ -23,6 +23,27 @@ enum HTMLAppIconTools {
         return generatedIcon(name: name, html: html)
     }
 
+    static func readImportIcon(_ url: URL) throws -> Data {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        var coordinationError: NSError?
+        var result: Result<Data, Error>?
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: url, options: [], error: &coordinationError) { readable in
+            result = Result {
+                let size = try readable.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard (1...8_000_000).contains(size),
+                      let image = UIImage(contentsOfFile: readable.path),
+                      let icon = normalizedPNG(image) else {
+                    throw ForgeAttachment.Failure.message("Choose a readable companion icon under 8 MB.")
+                }
+                return icon
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let result else { throw ForgeAttachment.Failure.message("The companion icon could not be read.") }
+        return try result.get()
+    }
+
     static func generatedIcon(name: String, html: String) -> Data {
         let colors = detectedColors(in: html)
         let background = UIColor(htmlColor: colors.background) ?? .systemIndigo

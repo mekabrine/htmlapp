@@ -35,7 +35,28 @@ struct AIConfigurationSettingsView: View {
     @State private var showAdvancedGeneration = false
     @State private var musicPrefetchTask: Task<Void, Never>?
     @State private var choosingMusicFile = false
+    @State private var musicImportChoices: [URL] = []
+    @State private var choosingImportedTrack = false
     @State private var musicFileError: String?
+
+    private func importMusic(_ selected: URL) {
+        do {
+            let accessed = selected.startAccessingSecurityScopedResource()
+            defer { if accessed { selected.stopAccessingSecurityScopedResource() } }
+            let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("GenerationMusic", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let ext = selected.pathExtension.isEmpty ? "m4a" : selected.pathExtension
+            let destination = root.appendingPathComponent(UUID().uuidString + "." + ext)
+            try FileManager.default.copyItem(at: selected, to: destination)
+            localMusicURL = destination.absoluteString
+            musicURL = localMusicURL
+            musicFileError = nil
+            generationMusic.prefetch()
+        } catch {
+            musicFileError = "Could not import audio file: " + error.localizedDescription
+        }
+    }
 
     var body: some View {
         Form {
@@ -207,24 +228,21 @@ struct AIConfigurationSettingsView: View {
                         Label(localMusicURL.isEmpty ? "Choose Audio File" : "Change Audio File", systemImage: "folder")
                     }
                     .fileImporter(isPresented: $choosingMusicFile,
-                                  allowedContentTypes: [.audio]) { result in
+                                  allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
                         do {
-                            let selected = try result.get()
-                            let accessed = selected.startAccessingSecurityScopedResource()
-                            defer { if accessed { selected.stopAccessingSecurityScopedResource() } }
-                            let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                                .appendingPathComponent("GenerationMusic", isDirectory: true)
-                            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-                            let ext = selected.pathExtension.isEmpty ? "m4a" : selected.pathExtension
-                            let destination = root.appendingPathComponent(UUID().uuidString + "." + ext)
-                            try FileManager.default.copyItem(at: selected, to: destination)
-                            localMusicURL = destination.absoluteString
-                            musicURL = localMusicURL
-                            musicFileError = nil
-                            generationMusic.prefetch()
-                        } catch {
-                            musicFileError = "Could not import audio file: \(error.localizedDescription)"
-                        }
+                            let files = try result.get()
+                            if files.count == 1, let file = files.first { importMusic(file) }
+                            else if !files.isEmpty {
+                                musicImportChoices = files
+                                choosingImportedTrack = true
+                            }
+                        } catch { musicFileError = "Could not select audio: " + error.localizedDescription }
+                    }
+                    .sheet(isPresented: $choosingImportedTrack, onDismiss: { musicImportChoices = [] }) {
+                        ImportFileChoiceView(title: "Choose Active Track", files: musicImportChoices) { file in
+                            importMusic(file)
+                            choosingImportedTrack = false
+                        } cancel: { choosingImportedTrack = false }
                     }
                     if !localMusicURL.isEmpty {
                         Text(URL(string: localMusicURL)?.lastPathComponent ?? "Selected audio")

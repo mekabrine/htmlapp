@@ -5,9 +5,15 @@ struct HTMLAppDataTransferView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selectedIDs: Set<String> = []
     @State private var showImporter = false
-    @State private var pendingImportURL: URL?
+    @State private var pendingImportFailures: [String] = []
+    @State private var pendingImportURLs: [URL] = []
+    @State private var pendingImportDirectory: URL?
     @State private var showImportMode = false
     @State private var importing = false
+
+    private var canReplaceLibrary: Bool {
+        pendingImportURLs.count == 1 && pendingImportFailures.isEmpty
+    }
 
     var body: some View {
         List {
@@ -105,28 +111,30 @@ struct HTMLAppDataTransferView: View {
                 Text("Import Behavior")
             }
         }
+        .onDisappear { clearPendingImport() }
         .navigationTitle("Backup & Transfer")
         .navigationBarTitleDisplayMode(.inline)
         .fileImporter(
             isPresented: $showImporter,
             allowedContentTypes: [.zip, UTType(filenameExtension: "zip")].compactMap { $0 },
-            allowsMultipleSelection: false
+            allowsMultipleSelection: true
         ) { result in
             receiveImport(result)
         }
         .confirmationDialog(
-            "How should this backup be imported?",
+            "How should the selected backups be imported?",
             isPresented: $showImportMode,
             titleVisibility: .visible
         ) {
             Button("Merge as New Copies") { importPending(replace: false) }
-            Button("Replace Entire Library", role: .destructive) { importPending(replace: true) }
-            Button("Cancel", role: .cancel) {
-                if let pendingImportURL { try? FileManager.default.removeItem(at: pendingImportURL) }
-                pendingImportURL = nil
+            if canReplaceLibrary {
+                Button("Replace Entire Library", role: .destructive) { importPending(replace: true) }
             }
+            Button("Cancel", role: .cancel) { clearPendingImport() }
         } message: {
-            Text("Merge keeps your current library. Replace Library removes existing saved HTMLApps first.")
+            Text(canReplaceLibrary
+                 ? "Merge keeps your current library. Replace Library removes existing saved HTMLApps first."
+                 : "All selected backups will be merged as new copies. Select one backup to replace the entire library.")
         }
         .overlay {
             if importing {
@@ -140,33 +148,57 @@ struct HTMLAppDataTransferView: View {
 
     private func receiveImport(_ result: Result<[URL], Error>) {
         do {
-            guard let source = try result.get().first else { return }
-            let accessing = source.startAccessingSecurityScopedResource()
-            defer { if accessing { source.stopAccessingSecurityScopedResource() } }
-
-            let destination = FileManager.default.temporaryDirectory
-                .appendingPathComponent("HTMLApp-Import-\(UUID().uuidString).zip")
-            try? FileManager.default.removeItem(at: destination)
-            try FileManager.default.copyItem(at: source, to: destination)
-            pendingImportURL = destination
-            showImportMode = true
+            let sources = try result.get()
+            guard !sources.isEmpty else { return }
+            clearPendingImport()
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("HTMLApp-Import-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            pendingImportDirectory = directory
+            var failures: [String] = []
+            for source in sources {
+                let accessing = source.startAccessingSecurityScopedResource()
+                defer { if accessing { source.stopAccessingSecurityScopedResource() } }
+                do {
+                    let subdirectory = directory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+                    try FileManager.default.createDirectory(at: subdirectory, withIntermediateDirectories: true)
+                    let destination = subdirectory.appendingPathComponent(source.lastPathComponent)
+                    try FileManager.default.copyItem(at: source, to: destination)
+                    pendingImportURLs.append(destination)
+                } catch { failures.append(source.lastPathComponent + ": " + error.localizedDescription) }
+            }
+            if pendingImportURLs.isEmpty {
+                clearPendingImport()
+                store.errorMessage = failures.joined(separator: "\n")
+            } else {
+                pendingImportFailures = failures
+                showImportMode = true
+            }
         } catch {
-            store.errorMessage = "The selected backup could not be opened: \(error.localizedDescription)"
+            store.errorMessage = "The selected backups could not be opened: " + error.localizedDescription
         }
     }
 
+    private func clearPendingImport() {
+        if let pendingImportDirectory { try? FileManager.default.removeItem(at: pendingImportDirectory) }
+        pendingImportURLs = []
+        pendingImportDirectory = nil
+        pendingImportFailures = []
+    }
+
     private func importPending(replace: Bool) {
-        guard let url = pendingImportURL else { return }
+        guard !pendingImportURLs.isEmpty, !replace || canReplaceLibrary else { return }
         importing = true
-        defer {
-            importing = false
-            pendingImportURL = nil
-            try? FileManager.default.removeItem(at: url)
+        defer { importing = false; clearPendingImport() }
+        var failures = pendingImportFailures
+        var imported = 0
+        for url in pendingImportURLs {
+            do {
+                try store.importPortablePackage(from: url, replaceExisting: replace)
+                imported += 1
+            } catch { failures.append(url.lastPathComponent + ": " + error.localizedDescription) }
         }
-        do {
-            try store.importPortablePackage(from: url, replaceExisting: replace)
-        } catch {
-            store.errorMessage = "The HTMLApp backup could not be imported: \(error.localizedDescription)"
-        }
+        if imported > 1 { store.notice = "Imported \(imported) backups." }
+        if !failures.isEmpty { store.errorMessage = failures.joined(separator: "\n") }
     }
 }
