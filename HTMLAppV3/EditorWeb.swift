@@ -107,8 +107,6 @@ struct WebRunner: View {
     @State private var awaitingEdit = false
     @State private var transcriptReview: String?
     @State private var spokenEdit = ""
-    @State private var reportDraft = ""
-    @State private var runnerErrors: [String] = []
     @StateObject private var runnerContext = ForgeScreenContext()
     @State private var spokenAttachments: [ForgeAttachment] = []
     @State private var recordingTask: Task<Void, Never>?
@@ -152,28 +150,8 @@ struct WebRunner: View {
                         .background(.bar)
                     }
             } else {
-                HTMLWebView(html: liveHTML, appID: app.id, restoresSession: true, screenContext: runnerContext,
-                            onJavaScriptError: { error in
-                                if runnerErrors.count < 6, !runnerErrors.contains(error) { runnerErrors.append(error) }
-                            })
+                HTMLWebView(html: liveHTML, appID: app.id, restoresSession: true, screenContext: runnerContext)
                     .ignoresSafeArea()
-                    .overlay(alignment: .topTrailing) {
-                        if alwaysShowEditMicrophone {
-                            Menu {
-                                Button("Report this screen to Forge") {
-                                    Task {
-                                        let details = await runnerContext.report()
-                                        reportDraft = "Investigate this screen: " + details +
-                                            (runnerErrors.isEmpty ? "" : "\nErrors: " + runnerErrors.joined(separator: "\n"))
-                                        showingVoiceEditor = true
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: "ellipsis.circle")
-                                    .font(.title3).padding(10).background(.regularMaterial, in: Circle())
-                            }.padding(12).accessibilityLabel("Forge screen tools")
-                        }
-                    }
             }
         }
             .overlay(alignment: .topLeading) {
@@ -223,9 +201,9 @@ struct WebRunner: View {
                 editorPresentationTask?.cancel()
                 editDictation.cancel()
             }
-            .sheet(isPresented: $showingVoiceEditor, onDismiss: { spokenAttachments.removeAll(); reportDraft = "" }) {
+            .sheet(isPresented: $showingVoiceEditor, onDismiss: { spokenAttachments.removeAll() }) {
                 AIGenerationView(existingApp: store.apps.first(where: { $0.id == app.id }) ?? app,
-                                 initialEdit: reportDraft.isEmpty ? spokenEdit : "", initialAttachments: spokenAttachments, initialReport: reportDraft)
+                                 initialEdit: spokenEdit, initialAttachments: spokenAttachments, liveScreenContext: runnerContext)
                     .environmentObject(store)
             }
             .forgeAttachments(attachmentSelection, dictation: editDictation) { words, items in

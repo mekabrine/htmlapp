@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WebKit
 
 @MainActor
@@ -29,10 +30,23 @@ final class ForgeScreenContext: ObservableObject {
     }
 
     func report() async -> String {
-        guard let webView else { return "Screen details unavailable." }
+        guard let webView else { return "" }
         let value = try? await webView.evaluateJavaScript("window.__forgeScreenContext?.report()")
-        guard let text = value as? String, !text.isEmpty else { return "Screen details unavailable." }
-        return String(text.prefix(1800))
+        guard let text = value as? String, !text.isEmpty else { return "" }
+        return String(text.prefix(3000))
+    }
+
+    func screenshot() async -> ForgeAttachment? {
+        guard let webView, webView.window != nil, !webView.bounds.isEmpty else { return nil }
+        let configuration = WKSnapshotConfiguration()
+        configuration.rect = webView.bounds
+        configuration.snapshotWidth = NSNumber(value: min(Double(webView.bounds.width), 800))
+        configuration.afterScreenUpdates = false
+        let image: UIImage? = await withCheckedContinuation { continuation in
+            webView.takeSnapshot(with: configuration) { image, _ in continuation.resume(returning: image) }
+        }
+        guard let image else { return nil }
+        return try? ForgeAttachment.photo(image, name: "Current app screen.jpg")
     }
 
     static let script = #"""
@@ -66,7 +80,22 @@ final class ForgeScreenContext: ObservableObject {
         clear,
         report() {
           const tab = document.querySelector('[data-htmlapp-screen]:not([hidden]),[role="tab"][aria-selected="true"]');
-          return (tab ? describe(tab) : 'Current app view') + (last ? '\nLast control: ' + last : '');
+          const width = window.innerWidth, height = window.innerHeight;
+          const visible = [];
+          const nodes = document.querySelectorAll('header,main,nav,section,h1,h2,button,a,input,select,textarea,[data-forge-id],[role="button"]');
+          for (const node of nodes) {
+            const rect = node.getBoundingClientRect();
+            if (rect.width < 2 || rect.height < 2 || rect.right <= 0 || rect.left >= width ||
+                rect.bottom <= 0 || rect.top >= height || node.closest('[hidden],[aria-hidden="true"]')) continue;
+            const style = getComputedStyle(node);
+            if (style.visibility !== 'visible' || style.opacity === '0') continue;
+            visible.push(describe(node, true) + ' x/y/w/h=' +
+              [rect.x, rect.y, rect.width, rect.height].map(Math.round).join('/'));
+            if (visible.length >= 12) break;
+          }
+          return 'Viewport ' + width + '×' + height + '\n' +
+            (tab ? describe(tab) : 'Current app view') +
+            (last ? '\nLast control: ' + last : '') + '\n' + visible.join('\n');
         }
       };
     })();

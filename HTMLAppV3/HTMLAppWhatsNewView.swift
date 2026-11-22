@@ -15,8 +15,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.33"
-    static let compiledBuild = "138"
+    static let compiledVersion = "1.9.34"
+    static let compiledBuild = "139"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -33,18 +33,15 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "instant-generation", title: "See when Forge is starting",
-                  description: "Generate shows a spinner during preparation and transcription. Once the build starts, Forge shows its progress.",
-                  symbol: "sparkles", tint: .purple),
-            Entry(id: "repair-retries", title: "More reliable Forge checks",
-                  description: "Forge can apply multi-part repairs and rerun workflow checks. After two failed retries, you can choose to save the draft with unresolved checks.",
+            Entry(id: "live-edit-context", title: "Forge sees the screen you’re editing",
+                  description: "Edits use the current layout automatically. You can also opt to send a screenshot with an edit. The in-app Report Screen menu has been removed.",
+                  symbol: "viewfinder", tint: .purple),
+            Entry(id: "stable-resize-checks", title: "More accurate app checks",
+                  description: "Forge waits for WebKit to resize, tests what’s actually selected in a dropdown, and closes complete HTML documents that are missing their final tag.",
                   symbol: "checkmark.shield", tint: .blue),
-            Entry(id: "multi-file-import", title: "Import and update several apps at once",
-                  description: "Select multiple files in Files. Matching HTML app names and icons update the existing apps while keeping their data.",
-                  symbol: "folder.badge.plus", tint: .green),
-            Entry(id: "paste-skills", title: "Paste a Forge skill",
-                  description: "Import Markdown files or paste the contents of a skill directly into Forge.",
-                  symbol: "doc.on.clipboard", tint: .purple)
+            Entry(id: "repair-match-retry", title: "Better recovery from rejected repairs",
+                  description: "Forge retries a rejected edit block with the matching error and nearby source before asking you to retry the checks.",
+                  symbol: "arrow.clockwise", tint: .green)
         ]
     }
 }

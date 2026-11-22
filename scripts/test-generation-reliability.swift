@@ -46,6 +46,11 @@ struct GenerationReliabilityTests {
         precondition(HTMLPatchApplier.apply(payload(taggedFirst + "<htmlapp_patch><search>"), to: source) == nil)
         precondition(HTMLPatchApplier.apply(payload(taggedFirst + "<htmlapp_patch><search></search></htmlapp_patch>"), to: source) == nil)
         precondition(HTMLPatchApplier.apply(payload("<htmlapp_patch>" + first + "</htmlapp_patch><htmlapp_patch>" + second + "</htmlapp_patch>"), to: "alpha beta") == "one two")
+        let incomplete = "<!DOCTYPE html><html lang='en'><head></head><body>Visible</body>"
+        let completed = HTMLQualityChecks.normalizeDocument(incomplete)
+        precondition(completed.hasSuffix("</body>\n</html>"))
+        precondition(!HTMLQualityChecks.issues(in: "<html><body><script>const sample = '<html>'; </script><htmlapp-viewer></htmlapp-viewer></body></html>").contains("Unbalanced <html> tags."))
+        precondition(HTMLQualityChecks.issues(in: "<html><body><script>bad</body></html>").contains("Unbalanced <script> tags."))
         let icon = "<link href='data:image/png;base64," + String(repeating: "A", count: 200_000)
             + "' rel='apple-touch-icon icon'>"
         let photo = "<img src='data:image/png;base64,appPhoto'>"

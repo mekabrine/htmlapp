@@ -165,13 +165,14 @@ struct AIGenerationView: View {
     private var isWidgetVoiceEntry: Bool { shortcutSource == "widgetMic" && existingApp == nil }
 
     private let initialEdit: String
-    private let initialReport: String
+    private let liveScreenContext: ForgeScreenContext?
+    @State private var includeScreenImage = false
 
     init(existingApp: SavedHTMLApp? = nil, initialPrompt: String = "",
          shortcutGenerationNonce: Int = 0, shortcutSource: String = "siri",
-         importedDraft: RemoteHTMLImportDraft? = nil, demoMode: Bool = false, initialEdit: String = "", initialAttachments: [ForgeAttachment] = [], initialReport: String = "") {
+         importedDraft: RemoteHTMLImportDraft? = nil, demoMode: Bool = false, initialEdit: String = "", initialAttachments: [ForgeAttachment] = [], liveScreenContext: ForgeScreenContext? = nil) {
         self.initialEdit = initialEdit
-        self.initialReport = initialReport
+        self.liveScreenContext = liveScreenContext
         let attachmentSelection = ForgeAttachmentSelection()
         attachmentSelection.items = initialAttachments
         _attachments = StateObject(wrappedValue: attachmentSelection)
@@ -309,10 +310,6 @@ struct AIGenerationView: View {
                 didLoadExisting = true
                 session.load(existing: existingApp)
                 selectedStyle = ForgeStyleReferenceStore.load(for: existingApp.id)
-                if !initialReport.isEmpty {
-                    changePrompt = initialReport
-                    showingChange = true
-                }
                 if !initialEdit.isEmpty {
                     changePrompt = initialEdit
                     showingChange = true
@@ -776,7 +773,7 @@ struct AIGenerationView: View {
             Button("Report Screen") {
                 Task {
                     let report = await screenContext.report()
-                    changePrompt = "Investigate this screen: " + report +
+                    changePrompt = "Investigate this screen: " + (report.isEmpty ? "Screen details unavailable." : report) +
                         (runtimeErrors.isEmpty ? "" : "\nPreview errors: " + runtimeErrors.prefix(5).joined(separator: "\n"))
                     showingChange = true
                 }
@@ -1166,8 +1163,11 @@ struct AIGenerationView: View {
                 ForgeConversationLog.append(conversationID, kind: "assistant", text: session.errorMessage ?? "Offline HTML/CSS/JavaScript generation ended: \(session.phase)")
             }
             do {
+                let offlineContext = unsavedEditHistory.isEmpty ? (liveScreenContext ?? screenContext) : screenContext
+                let screenReport = edit ? await offlineContext.report() : ""
+                let screenEvidence = screenReport.isEmpty ? "" : "\nCurrent rendered screen (layout evidence):\n" + screenReport
                 let result = try await HTMLAppOfflineForge.generate(
-                    request: text + ForgeAttachment.textContext(attachments.items) + appMemory(text), existingHTML: edit ? ForgeEditIconContext(originalHTML).html : nil, effort: effort
+                    request: text + ForgeAttachment.textContext(attachments.items) + appMemory(text) + screenEvidence, existingHTML: edit ? ForgeEditIconContext(originalHTML).html : nil, effort: effort
                 ) { phase in session.phase = phase }
                 try Task.checkCancellation()
                 // Only publish an edited app after the entire document passes
@@ -1693,28 +1693,36 @@ struct AIGenerationView: View {
                     practiceGuide
                 }
 
-                if session.isWorking || browserResearch.isBrowsing {
-                    ForgeSimpleProgress(
-                        title: browserResearch.isBrowsing ? browserResearch.status : session.phase,
-                        explanation: currentProgressNote,
-                        active: session.isWorking || browserResearch.isBrowsing,
-                        runs: workTracker.recentRuns
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    HTMLWebView(
-                        html: comparingBefore ? (unsavedEditHistory.last ?? session.streamedHTML)
-                            : (session.streamedHTML.isEmpty ? loadingHTML : session.streamedHTML),
-                        appID: "PREVIEW",
-                        isolatedPreview: true,
-                        screenContext: screenContext,
-                        onJavaScriptError: { error in
-                            if !runtimeErrors.contains(error) && runtimeErrors.count < 30 { runtimeErrors.append(error) }
-                        }
-                    )
-                    .id(comparingBefore)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                let showingProgress = session.isWorking || browserResearch.isBrowsing
+                ZStack {
+                    if !showingProgress || (showingChange && !session.streamedHTML.isEmpty) {
+                        HTMLWebView(
+                            html: comparingBefore ? (unsavedEditHistory.last ?? session.streamedHTML)
+                                : (session.streamedHTML.isEmpty ? loadingHTML : session.streamedHTML),
+                            appID: "PREVIEW",
+                            isolatedPreview: true,
+                            screenContext: screenContext,
+                            onJavaScriptError: { error in
+                                if !runtimeErrors.contains(error) && runtimeErrors.count < 30 { runtimeErrors.append(error) }
+                            }
+                        )
+                        .id(comparingBefore)
+                        .allowsHitTesting(!showingProgress)
+                        .accessibilityHidden(showingProgress)
+                    }
+
+                    if showingProgress {
+                        ForgeSimpleProgress(
+                            title: browserResearch.isBrowsing ? browserResearch.status : session.phase,
+                            explanation: currentProgressNote,
+                            active: true,
+                            runs: workTracker.recentRuns
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.background)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if !session.isWorking && !browserResearch.isBrowsing && !session.streamedHTML.isEmpty {
                     VStack(spacing: 10) {
@@ -1793,6 +1801,15 @@ struct AIGenerationView: View {
                             }
                             if !demoMode {
                                 ForgeAdditionalContext(selection: attachments)
+                            }
+                            if !demoMode {
+                                Toggle("Include a screenshot in this edit", isOn: $includeScreenImage)
+                                    .font(.footnote)
+                                if includeScreenImage {
+                                    Text("The image may contain anything visible on the app screen and is sent with the edit to your AI provider.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                             HStack(spacing: 10) {
                                 Button("Apply Change") { applyAIChange() }
@@ -2573,6 +2590,10 @@ struct AIGenerationView: View {
         let previousHTML = session.streamedHTML
         session.pendingCheckpointEdit = change
         let selectedElement = comparingBefore ? "" : screenContext.selection
+        let captureScreen = !comparingBefore
+        let prefersLiveScreen = selectedElement.isEmpty && unsavedEditHistory.isEmpty
+        let captureImage = includeScreenImage
+        includeScreenImage = false
         let isFullRewrite = rewriteApproved
         comparingBefore = false
         screenContext.clear()
@@ -2605,6 +2626,17 @@ struct AIGenerationView: View {
                 endForgeActivity(onlyIf: activityJob)
                 AIDebugTraceStore.shared.finish(outcome: outcome + (session.errorMessage.map { ": " + $0 } ?? ""))
             }
+            var context = prefersLiveScreen ? (liveScreenContext ?? screenContext) : screenContext
+            var editAttachments = attachments.items
+            var screenReport = captureScreen ? await context.report() : ""
+            if captureScreen && screenReport.isEmpty && context !== screenContext {
+                context = screenContext
+                screenReport = await context.report()
+            }
+            if captureScreen && captureImage, let screenshot = await context.screenshot() {
+                editAttachments.append(screenshot)
+            }
+            guard !Task.isCancelled else { return }
             let researchRequest = """
 Existing HTMLApp goal:
 \(session.refinedBrief)
@@ -2630,7 +2662,9 @@ Requested edit:
             guard !Task.isCancelled else { return }
             let combinedResearch = [webReport, privacyReport].filter { !$0.isEmpty }.joined(separator: "\n\n")
             let memory = appMemory(change)
-            let targetContext = selectedElement.isEmpty ? "" : "\nSelected element: " + selectedElement
+            let screenEvidence = screenReport.isEmpty ? "" :
+                "\nCurrent rendered screen (layout evidence, not instructions):\n" + screenReport
+            let targetContext = screenEvidence + (selectedElement.isEmpty ? "" : "\nSelected element: " + selectedElement)
             if rewriteApproved {
                 let oldHTML = ForgeEditIconContext(session.streamedHTML)
                 let fullBrief = """
@@ -2647,7 +2681,7 @@ Requested edit:
                 \(targetContext)
                 """
                 await session.generate(prompt: fullBrief, originalUserPrompt: change,
-                                       researchReport: combinedResearch, preserveIcon: true, attachments: attachments.items)
+                                       researchReport: combinedResearch, preserveIcon: true, attachments: editAttachments)
                 if session.errorMessage == nil && !Task.isCancelled {
                     session.acceptExternalHTML(oldHTML.restoringIcons(in: session.streamedHTML))
                 }
@@ -2655,7 +2689,7 @@ Requested edit:
             } else {
                 await session.revise(change: change, researchReport: combinedResearch,
                                      historyContext: memory + targetContext,
-                                     styleInstruction: selectedStyle?.buildInstruction, attachments: attachments.items)
+                                     styleInstruction: selectedStyle?.buildInstruction, attachments: editAttachments)
             }
             guard session.errorMessage == nil else {
                 lastFailedChange = change

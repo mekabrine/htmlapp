@@ -7,7 +7,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 source = (root / "HTMLAppV3/AIGenerationService.swift").read_text()
 start = source.index("struct HTMLPatchApplication {")
-end = source.index("\nenum HTMLQualityChecks {", start)
+end = source.index("\nactor HTMLAppPublicAPICatalogCache {", start)
 with tempfile.TemporaryDirectory(prefix="htmlapp-generation-") as directory:
     extracted = Path(directory) / "Patch.swift"
     icon_context = source.index("struct ForgeEditIconContext {")

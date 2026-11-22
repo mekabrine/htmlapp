@@ -444,29 +444,7 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             } catch { appendIssue("Current venue: driving scenario could not execute.") }
         }
         if let fixture = legacyFixture {
-            let arguments: [String: Any] = [
-                "selector": fixture.selector, "expected": fixture.expectedText,
-                "requiresLocalSeed": !(fixture.localStorage ?? [:]).isEmpty
-            ]
-            do {
-                let result = try await webView.callAsyncJavaScript(Self.storageProbe, arguments: arguments, in: nil, in: .page)
-                switch result as? String {
-                case "matched": break
-                case "seed-unavailable":
-                    appendIssue("Storage verification unavailable: WebView could not seed the localStorage sample.")
-                case "invalid-selector":
-                    appendIssue("Storage fixture: the sample selector is invalid.")
-                case "missing":
-                    appendIssue("Legacy storage: the sample record did not appear in \(fixture.selector) after startup.")
-                default:
-                    appendIssue("Storage verification unavailable: the app check returned no storage result.")
-                }
-            } catch {
-                appendIssue("Storage verification unavailable: " + error.localizedDescription)
-            }
-        }
-        for workflow in workflows {
-            await checkWorkflow(workflow, in: webView)
+            await checkStorage(fixture, in: webView)
         }
         let phone = await snapshot(webView, width: 390, height: 844)
         if let phone {
@@ -527,6 +505,10 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             }
         }
 
+        for workflow in workflows {
+            await checkWorkflow(workflow, in: webView)
+        }
+
         let recordedValue = try? await evaluate(
             "JSON.stringify((window.__htmlappRuntimeIssues || []).slice(0, 40))",
             in: webView
@@ -540,13 +522,48 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
         finish(extra: [])
     }
 
-    private func checkWorkflow(_ workflow: ForgeWorkflowFixture, in webView: WKWebView) async {
-        let selectors = ["tap": workflow.tap, "expected": workflow.visible]
-        let script = "return (\(Self.workflowProbe))(selectors, tap);"
+    private func probeArguments(_ arguments: [String: Any]) -> String? {
+        guard let bytes = try? JSONSerialization.data(withJSONObject: arguments) else { return nil }
+        return String(data: bytes, encoding: .utf8)
+    }
+
+    private func checkStorage(_ fixture: ForgeLegacyStorageFixture, in webView: WKWebView) async {
+        guard let json = probeArguments([
+            "selector": fixture.selector, "expected": fixture.expectedText,
+            "requiresLocalSeed": !(fixture.localStorage ?? [:]).isEmpty
+        ]) else { return }
         do {
-            let setup = try await webView.callAsyncJavaScript(
-                script, arguments: ["selectors": selectors, "tap": true], in: nil, in: .page)
-            guard let initial = setup as? String else {
+            for _ in 0..<20 {
+                guard !completed, !Task.isCancelled else { return }
+                let outcome = try await evaluate("(\(Self.storageProbe))(\(json))", in: webView) as? String
+                switch outcome {
+                case "matched": return
+                case "seed-unavailable":
+                    appendIssue("Storage verification unavailable: WebView could not seed the localStorage sample.")
+                    return
+                case "invalid-selector":
+                    appendIssue("Storage fixture: the sample selector is invalid.")
+                    return
+                case "missing":
+                    try await Task.sleep(nanoseconds: 40_000_000)
+                default:
+                    appendIssue("Storage verification unavailable: the app check returned no storage result.")
+                    return
+                }
+            }
+            appendIssue("Legacy storage: the sample record did not appear in \(fixture.selector) after startup.")
+        } catch is CancellationError {
+            return
+        } catch {
+            appendIssue("Storage verification unavailable: " + error.localizedDescription)
+        }
+    }
+
+    private func checkWorkflow(_ workflow: ForgeWorkflowFixture, in webView: WKWebView) async {
+        guard let json = probeArguments(["tap": workflow.tap, "expected": workflow.visible]) else { return }
+        let script = "(\(Self.workflowProbe))"
+        do {
+            guard let initial = try await evaluate("\(script)(\(json), true)", in: webView) as? String else {
                 appendIssue("Workflow verification unavailable: " + workflow.name + " returned no test result.")
                 return
             }
@@ -563,9 +580,7 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             for _ in 0..<14 {
                 try await Task.sleep(nanoseconds: 40_000_000)
                 guard !completed else { return }
-                let poll = try await webView.callAsyncJavaScript(
-                    script, arguments: ["selectors": selectors, "tap": false], in: nil, in: .page)
-                guard let current = poll as? String else {
+                guard let current = try await evaluate("\(script)(\(json), false)", in: webView) as? String else {
                     appendIssue("Workflow verification unavailable: " + workflow.name + " returned no result after the tap.")
                     return
                 }
@@ -581,15 +596,19 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
     }
 
     private static let storageProbe = #"""
-    if (requiresLocalSeed && window.__htmlappQAStorageSeeded !== true) return 'seed-unavailable';
-    for (let pass = 0; pass < 20; pass++) {
+    ({selector, expected, requiresLocalSeed}) => {
+      if (requiresLocalSeed && window.__htmlappQAStorageSeeded !== true) return 'seed-unavailable';
       let element;
       try { element = document.querySelector(selector); }
       catch (_) { return 'invalid-selector'; }
-      if (element?.getClientRects().length && element.innerText.includes(expected)) return 'matched';
-      await new Promise(resolve => setTimeout(resolve, 40));
+      if (!element?.getClientRects().length) return 'missing';
+      if (element.tagName === 'SELECT') {
+        const option = element.selectedOptions[0];
+        return option && (option.label.includes(expected) || option.value === expected) ? 'matched' : 'missing';
+      }
+      const text = ['INPUT', 'TEXTAREA'].includes(element.tagName) ? element.value : element.innerText;
+      return typeof text === 'string' && text.includes(expected) ? 'matched' : 'missing';
     }
-    return 'missing';
     """#
 
     private static let workflowProbe = #"""
@@ -816,7 +835,32 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
         webView.frame = CGRect(x: 0, y: 0, width: width, height: height)
         webView.setNeedsLayout()
         webView.layoutIfNeeded()
-        try? await Task.sleep(nanoseconds: 25_000_000)
+        // A detached WebView may still report fixed geometry from the previous
+        // size on the next tick. Confirm both viewport measurements before QA.
+        let ready = """
+        (() => {
+          const gauge = document.createElement('div');
+          gauge.style.cssText = 'all:initial!important;position:fixed!important;inset:0!important;width:auto!important;min-width:0!important;max-width:none!important;visibility:hidden!important;pointer-events:none!important';
+          document.documentElement.appendChild(gauge);
+          const width = gauge.getBoundingClientRect().width;
+          gauge.remove();
+          return Math.abs(window.innerWidth - \(Int(width))) <= 2 && Math.abs(width - \(Int(width))) <= 2 &&
+            Math.abs(window.innerHeight - \(Int(height))) <= 2;
+        })()
+        """
+        var settled = false
+        for _ in 0..<6 {
+            guard !completed, !Task.isCancelled else { return nil }
+            try? await Task.sleep(nanoseconds: 25_000_000)
+            if (try? await evaluate(ready, in: webView)) as? Bool == true {
+                settled = true
+                break
+            }
+        }
+        guard settled else {
+            appendIssue("Runtime: WebView did not settle at \(Int(width))×\(Int(height)); layout at this size was not verified.")
+            return nil
+        }
         if let controls = (try? await evaluate(Self.switchGeometryProbe, in: webView)) as? [String] {
             controls.forEach(appendIssue)
         }

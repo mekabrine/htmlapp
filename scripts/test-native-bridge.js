@@ -359,18 +359,20 @@ function testForgeScreenSelection() {
     value = 'private typed text';
     getAttribute() { return null; }
     closest(selector) { return selector.includes('input') ? this : null; }
+    getBoundingClientRect() { return {width: 64, height: 44, left: 12, right: 76, top: 20, bottom: 64, x: 12, y: 20}; }
   }
   const input = new Element();
-  const window = { webkit: { messageHandlers: { htmlappForgeSelection: {
+  const window = { innerWidth: 390, innerHeight: 844, webkit: { messageHandlers: { htmlappForgeSelection: {
     postMessage(payload) { selection = payload.selection; }
   } } } };
   vm.runInNewContext(script, {
-    window, Element, getComputedStyle: () => ({ fontSize: '16px' }),
-    document: { addEventListener(_, callback) { click = callback; }, querySelector: () => null }
+    window, Element, getComputedStyle: () => ({ fontSize: '16px', visibility: 'visible', opacity: '1' }),
+    document: { addEventListener(_, callback) { click = callback; }, querySelector: () => null, querySelectorAll: () => [input] }
   });
   const event = { target: input, preventDefault() {}, stopImmediatePropagation() {} };
   click(event);
   assert.match(window.__forgeScreenContext.report(), /Last control: input id=answer/);
+  assert.match(window.__forgeScreenContext.report(), /x\/y\/w\/h=12\/20\/64\/44/);
   window.__forgeScreenContext.pick(true);
   click(event);
   assert.match(selection, /input id=answer/);
@@ -403,17 +405,25 @@ function testForgeWorkflowProbe() {
   assert.match(probe({ ...fixture, tap: '#missing' }, true), /^blocked:Tap control #missing was missing/);
 }
 
-async function testForgeStorageProbe() {
+function testForgeStorageProbe() {
   const verifier = fs.readFileSync(path.join(root, 'HTMLAppV3/HTMLRuntimeVerifier.swift'), 'utf8');
   const script = verifier.split('let storageProbe = #"""')[1].split('"""#')[0];
-  const probe = vm.runInNewContext('(async (selector, expected, requiresLocalSeed) => {' + script + '})', {
+  const select = {
+    tagName: 'SELECT', getClientRects: () => [1], innerText: 'Solid blue Solid red',
+    selectedOptions: [{label: 'Solid blue', value: 'blue'}]
+  };
+  const probe = vm.runInNewContext(script, {
     window: { __htmlappQAStorageSeeded: false },
-    document: { querySelector: () => ({ getClientRects: () => [1], innerText: 'Blue · 5 min' }) },
-    setTimeout: resolve => resolve()
+    document: { querySelector: selector => selector === '#pattern'
+      ? select : ({ getClientRects: () => [1], innerText: 'Blue · 5 min' }) }
   });
-  assert.equal(await probe('#historyList', 'Blue', true), 'seed-unavailable');
-  assert.equal(await probe('#historyList', 'Blue', false), 'matched');
-  assert.equal(await probe('#historyList', 'Red', false), 'missing');
+  const check = (selector, expected, requiresLocalSeed = false) => probe({selector, expected, requiresLocalSeed});
+  assert.equal(check('#historyList', 'Blue', true), 'seed-unavailable');
+  assert.equal(check('#historyList', 'Blue'), 'matched');
+  assert.equal(check('#historyList', 'Red'), 'missing');
+  assert.equal(check('#pattern', 'Solid blue'), 'matched');
+  assert.equal(check('#pattern', 'blue'), 'matched');
+  assert.equal(check('#pattern', 'Solid red'), 'missing');
 }
 
 function testForgeTapabilityProbe() {
@@ -471,7 +481,7 @@ function testForgeScriptDiagnostics() {
   await testForgeDrivingScenario();
   testForgeScreenSelection();
   testForgeWorkflowProbe();
-  await testForgeStorageProbe();
+  testForgeStorageProbe();
   testForgeTapabilityProbe();
   testForgeScriptDiagnostics();
   console.log('Native bridge and app viewport JS tests passed.');

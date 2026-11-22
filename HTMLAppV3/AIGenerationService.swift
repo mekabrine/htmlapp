@@ -1422,7 +1422,7 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         let normalized = HTMLQualityChecks.normalizeDocument(streamedHTML)
         if normalized != streamedHTML {
             streamedHTML = normalized
-            AIDebugTraceStore.shared.append("LOCAL AUTOFIX", "Added missing doctype or viewport metadata without using AI.")
+            AIDebugTraceStore.shared.append("LOCAL AUTOFIX", "Normalized document metadata or closed a complete HTML root without using AI.")
         }
         let original = streamedHTML
         var testMode = ForgeTestMode.selected
@@ -1501,21 +1501,31 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         var repairedHTML: String?
         var repairSummary = ""
         do {
-            let response = try await AIHTMLAgent.applyQARepair(
-                html: iconContext.html, request: request, research: repairEvidence,
-                issues: initial.blocking, plan: plan, config: coder)
-            qaRepairResponseBytes = response.utf8.count
-            repairSummary = Self.repairSummary(in: response)
-            let output = AIHTMLAgent.parse(response)
-            let patchResult = output.patch.trimmed.isEmpty ? nil
-                : HTMLPatchApplier.applyDetailed(output.patch, to: iconContext.html)
-            let fixed: String? = patchResult == nil ? output.html : patchResult?.html
-            if let fixed, !fixed.trimmed.isEmpty, fixed != iconContext.html {
-                repairedHTML = iconContext.restoringIcons(in: fixed)
-            } else {
+            for attempt in 0..<2 {
+                try Task.checkCancellation()
+                let response = try await AIHTMLAgent.applyQARepair(
+                    html: iconContext.html, request: request, research: repairEvidence,
+                    issues: initial.blocking, plan: plan, config: coder)
+                qaRepairResponseBytes += response.utf8.count
+                repairSummary = Self.repairSummary(in: response)
+                let output = AIHTMLAgent.parse(response)
+                let patchResult = output.patch.trimmed.isEmpty ? nil
+                    : HTMLPatchApplier.applyDetailed(output.patch, to: iconContext.html)
+                let fixed: String? = patchResult == nil ? output.html : patchResult?.html
+                if let fixed, !fixed.trimmed.isEmpty, fixed != iconContext.html {
+                    repairedHTML = iconContext.restoringIcons(in: fixed)
+                    break
+                }
                 let issue = patchResult?.failureReason ?? "The AI repair did not change the draft."
                 AIDebugTraceStore.shared.append("QA PATCH", issue)
-                remaining.append(issue)
+                if attempt == 1 {
+                    remaining.append(issue)
+                } else {
+                    repairEvidence += "\nThe previous repair was rejected without changing the draft. " + issue
+                    if let snippet = patchResult?.contextSnippet, !snippet.isEmpty {
+                        repairEvidence += "\nExact source around the failed match:\n" + snippet
+                    }
+                }
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -3532,7 +3542,18 @@ enum HTMLQualityChecks {
            let head = result.range(of: #"<head\b[^>]*>"#, options: [.regularExpression, .caseInsensitive]) {
             result.insert(contentsOf: "\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">", at: head.upperBound)
         }
+        let markup = documentMarkup(result)
+        if captures(#"(?i)<(html)\b[^>]*>"#, in: markup).count == 1,
+           markup.range(of: #"(?i)</html\s*>"#, options: .regularExpression) == nil,
+           markup.range(of: #"(?i)</body\s*>\s*$"#, options: .regularExpression) != nil {
+            result += "\n</html>"
+        }
         return result
+    }
+
+    private static func documentMarkup(_ html: String) -> String {
+        html.replacingOccurrences(of: #"(?is)<!--.*?-->|(<script\b[^>]*>).*?(</script\s*>)|(<style\b[^>]*>).*?(</style\s*>)"#,
+                                  with: "$1$2$3$4", options: .regularExpression)
     }
 
     static func blockingIssues(_ issues: [String]) -> [String] {
@@ -3550,10 +3571,12 @@ enum HTMLQualityChecks {
         if !lower.contains("viewport-fit=cover") { issues.append("Viewport must include viewport-fit=cover for HTMLApp's edge-to-edge WebView.") }
         if !lower.contains("safe-area-inset-top") { issues.append("Missing top safe-area handling; content may sit under the notch or Dynamic Island.") }
         if !lower.contains("safe-area-inset-bottom") { issues.append("Missing bottom safe-area handling for the Home Indicator.") }
-        if count("<script", in: lower) != count("</script>", in: lower) { issues.append("Unbalanced <script> tags.") }
-        if count("<style", in: lower) != count("</style>", in: lower) { issues.append("Unbalanced <style> tags.") }
-        if count("<body", in: lower) != count("</body>", in: lower) { issues.append("Unbalanced <body> tags.") }
-        if count("<html", in: lower) != count("</html>", in: lower) { issues.append("Unbalanced <html> tags.") }
+        let markup = documentMarkup(html)
+        for tag in ["script", "style", "body", "html"] {
+            let opened = captures("(?i)<(\(tag))\\b[^>]*>", in: markup).count
+            let closed = captures("(?i)</(\(tag))\\s*>", in: markup).count
+            if opened != closed { issues.append("Unbalanced <\(tag)> tags.") }
+        }
         if lower.contains("alert(") { issues.append("Uses browser alert(); routine feedback should use in-app UI.") }
         if lower.contains("confirm(") { issues.append("Uses browser confirm(); destructive confirmation should use in-app UI.") }
         if lower.contains("example.com") || lower.contains("your_api_key") || lower.contains("api-key-here") { issues.append("Contains a likely placeholder endpoint or key.") }
@@ -3582,10 +3605,6 @@ enum HTMLQualityChecks {
             issues.append("Contains remote script or stylesheet dependencies; generated HTMLApps should remain self-contained and offline-capable.")
         }
         return issues
-    }
-
-    private static func count(_ needle: String, in haystack: String) -> Int {
-        haystack.components(separatedBy: needle).count - 1
     }
 
     private static func captures(_ pattern: String, in text: String) -> [String] {

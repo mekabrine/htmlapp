@@ -1,5 +1,29 @@
 [
   {
+    "version": "1.9.34",
+    "summary": "Added live screen context for Forge edits and improved HTML repair, responsive layout, and storage checks.",
+    "changes": [
+      {
+        "title": "Forge sees the screen you’re editing",
+        "description": "Edits use the current layout automatically. You can also opt to send a screenshot with an edit. The in-app Report Screen menu has been removed.",
+        "symbol": "viewfinder",
+        "tint": "purple"
+      },
+      {
+        "title": "More accurate app checks",
+        "description": "Forge waits for WebKit to resize, tests what’s actually selected in a dropdown, and closes complete HTML documents that are missing their final tag.",
+        "symbol": "checkmark.shield",
+        "tint": "blue"
+      },
+      {
+        "title": "Better recovery from rejected repairs",
+        "description": "Forge retries a rejected edit block with the matching error and nearby source before asking you to retry the checks.",
+        "symbol": "arrow.clockwise",
+        "tint": "green"
+      }
+    ]
+  },
+  {
     "version": "1.9.33",
     "summary": "Added immediate Forge generation feedback, improved verification and repair, enabled multi-file app updates, and added pasted skill import.",
     "changes": [
