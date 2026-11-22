@@ -15,8 +15,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.34"
-    static let compiledBuild = "139"
+    static let compiledVersion = "1.9.35"
+    static let compiledBuild = "140"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -33,15 +33,12 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "live-edit-context", title: "Forge sees the screen you’re editing",
-                  description: "Edits use the current layout automatically. You can also opt to send a screenshot with an edit. The in-app Report Screen menu has been removed.",
-                  symbol: "viewfinder", tint: .purple),
-            Entry(id: "stable-resize-checks", title: "More accurate app checks",
-                  description: "Forge waits for WebKit to resize, tests what’s actually selected in a dropdown, and closes complete HTML documents that are missing their final tag.",
-                  symbol: "checkmark.shield", tint: .blue),
-            Entry(id: "repair-match-retry", title: "Better recovery from rejected repairs",
-                  description: "Forge retries a rejected edit block with the matching error and nearby source before asking you to retry the checks.",
-                  symbol: "arrow.clockwise", tint: .green)
+            Entry(id: "launch-screen", title: "A branded opening screen",
+                  description: "HTMLApp shows its icon as iOS starts it, then shows the saved app’s name and icon while its page opens.",
+                  symbol: "apps.iphone", tint: .purple),
+            Entry(id: "opening-preview", title: "Preview your saved app while it opens",
+                  description: "In an app’s Permissions, turn on Save an opening preview. HTMLApp keeps a snapshot on this device and refreshes it after an edit or update.",
+                  symbol: "photo.on.rectangle", tint: .blue)
         ]
     }
 }

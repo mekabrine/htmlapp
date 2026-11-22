@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.9.35",
+    "summary": "Added a branded launch screen and optional per-app opening snapshots.",
+    "changes": [
+      {
+        "title": "A branded opening screen",
+        "description": "HTMLApp shows its icon as iOS starts it, then shows the saved app’s name and icon while its page opens.",
+        "symbol": "apps.iphone",
+        "tint": "purple"
+      },
+      {
+        "title": "Preview your saved app while it opens",
+        "description": "In an app’s Permissions, turn on Save an opening preview. HTMLApp keeps a snapshot on this device and refreshes it after an edit or update.",
+        "symbol": "photo.on.rectangle",
+        "tint": "blue"
+      }
+    ]
+  },
+  {
     "version": "1.9.34",
     "summary": "Added live screen context for Forge edits and improved HTML repair, responsive layout, and storage checks.",
     "changes": [

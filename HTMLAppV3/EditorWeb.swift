@@ -88,6 +88,7 @@ struct EditorView: View {
     }
 }
 
+@MainActor
 struct WebRunner: View {
     let app: SavedHTMLApp
     @EnvironmentObject private var store: AppStore
@@ -112,7 +113,16 @@ struct WebRunner: View {
     @State private var recordingTask: Task<Void, Never>?
     @StateObject private var attachmentSelection = ForgeAttachmentSelection()
 
-    private var liveHTML: String { store.apps.first(where: { $0.id == app.id })?.html ?? app.html }
+    @StateObject private var openingPreview: HTMLAppOpeningPreview
+
+    init(app: SavedHTMLApp) {
+        self.app = app
+        _openingPreview = StateObject(wrappedValue: HTMLAppOpeningPreview(app: app))
+    }
+
+    private var liveApp: SavedHTMLApp { store.apps.first(where: { $0.id == app.id }) ?? app }
+    private var liveHTML: String { liveApp.html }
+    private var showingOpeningPreview: Bool { openingPreview.isShowing && !carDisplay && !carWindow }
 
     static func shouldHideStatusBar(in html: String) -> Bool {
         // The tag may use single/double quotes and either attribute order.
@@ -150,8 +160,14 @@ struct WebRunner: View {
                         .background(.bar)
                     }
             } else {
-                HTMLWebView(html: liveHTML, appID: app.id, restoresSession: true, screenContext: runnerContext)
+                let openingApp = liveApp
+                HTMLWebView(html: openingApp.html, appID: app.id, restoresSession: true, screenContext: runnerContext,
+                            onInitialDocument: { webView, succeeded in
+                                openingPreview.loaded(webView, app: openingApp, succeeded: succeeded)
+                            })
                     .ignoresSafeArea()
+                    .allowsHitTesting(!showingOpeningPreview)
+                    .accessibilityHidden(showingOpeningPreview)
             }
         }
             .overlay(alignment: .topLeading) {
@@ -177,6 +193,17 @@ struct WebRunner: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
                     .padding()
                 }
+            }
+            .overlay {
+                if showingOpeningPreview {
+                    HTMLAppOpeningPreviewView(app: liveApp, image: openingPreview.image(for: liveApp), failed: openingPreview.failed) {
+                        store.runningApp = nil
+                    }
+                }
+            }
+            .task {
+                do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
+                openingPreview.endWait()
             }
             .onChange(of: editDictation.transcribingOffline) { processing in
                 if !processing && awaitingEdit {
@@ -397,10 +424,12 @@ struct HTMLWebView: UIViewRepresentable {
     var isolatedPreview = false
     var screenContext: ForgeScreenContext? = nil
     var onJavaScriptError: ((String) -> Void)? = nil
+    var onInitialDocument: ((WKWebView, Bool) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         let coordinator = Coordinator(appID: appID, restoresSession: restoresSession, onJavaScriptError: onJavaScriptError)
         coordinator.screenContext = screenContext
+        coordinator.onInitialDocument = onInitialDocument
         return coordinator
     }
 
@@ -553,23 +582,22 @@ struct HTMLWebView: UIViewRepresentable {
         webView.scrollView.minimumZoomScale = 1
         webView.scrollView.maximumZoomScale = 1
         webView.allowsBackForwardNavigationGestures = false
-        if HTMLAppDocumentMode.usesPackageRuntime(html) {
-            resources.load(initialDocument, into: webView)
-        } else {
-            webView.loadHTMLString(initialDocument, baseURL: SourceCache.shared.baseURL(appID: appID))
-        }
+        context.coordinator.openingNavigation = HTMLAppDocumentMode.usesPackageRuntime(html)
+            ? resources.load(initialDocument, into: webView)
+            : webView.loadHTMLString(initialDocument, baseURL: SourceCache.shared.baseURL(appID: appID))
         return webView
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
+        context.coordinator.onInitialDocument = onInitialDocument
         guard context.coordinator.lastHTML != html else { return }
         context.coordinator.lastHTML = html
         let document = context.coordinator.documentForReload(originalHTML: html)
         if HTMLAppDocumentMode.usesPackageRuntime(html),
            let resources = uiView.configuration.urlSchemeHandler(forURLScheme: HTMLAppResourceScheme.scheme) as? HTMLAppResourceScheme {
-            resources.load(document, into: uiView)
+            context.coordinator.openingNavigation = resources.load(document, into: uiView)
         } else {
-            uiView.loadHTMLString(document, baseURL: SourceCache.shared.baseURL(appID: appID))
+            context.coordinator.openingNavigation = uiView.loadHTMLString(document, baseURL: SourceCache.shared.baseURL(appID: appID))
         }
     }
 
@@ -604,6 +632,8 @@ struct HTMLWebView: UIViewRepresentable {
         let appID: String
         weak var screenContext: ForgeScreenContext?
         var onJavaScriptError: ((String) -> Void)?
+        var onInitialDocument: ((WKWebView, Bool) -> Void)?
+        var openingNavigation: WKNavigation?
         var lastHTML = ""
         private weak var webView: WKWebView?
         private var shakeExit: HTMLAppFaceDownShakeExit?
@@ -716,6 +746,7 @@ struct HTMLWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            defer { finishOpeningNavigation(navigation, in: webView, succeeded: true) }
             (webView as? HTMLAppDisplayWebView)?.updateDisplay(force: true)
             applyAccessibleTextScale(to: webView)
 
@@ -728,6 +759,20 @@ struct HTMLWebView: UIViewRepresentable {
 
             webView.evaluateJavaScript("window.__htmlappStateCaptureEnabled = true;")
             showOfflineNoticeIfNeeded()
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            finishOpeningNavigation(navigation, in: webView, succeeded: false)
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            finishOpeningNavigation(navigation, in: webView, succeeded: false)
+        }
+
+        private func finishOpeningNavigation(_ navigation: WKNavigation?, in webView: WKWebView, succeeded: Bool) {
+            guard let openingNavigation, openingNavigation === navigation else { return }
+            self.openingNavigation = nil
+            onInitialDocument?(webView, succeeded)
         }
 
         private func showOfflineNoticeIfNeeded() {
@@ -752,6 +797,8 @@ struct HTMLWebView: UIViewRepresentable {
         }
 
         func shutdown() {
+            openingNavigation = nil
+            onInitialDocument = nil
             if let launchObserver { NotificationCenter.default.removeObserver(launchObserver) }
             launchObserver = nil
             lifecycleObservers.forEach { NotificationCenter.default.removeObserver($0) }

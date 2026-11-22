@@ -7,8 +7,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: targeted
-    MARKETING_VERSION: "1.9.34"
-    CURRENT_PROJECT_VERSION: "139"
+    MARKETING_VERSION: "1.9.35"
+    CURRENT_PROJECT_VERSION: "140"
     TARGETED_DEVICE_FAMILY: "1,2"
     SUPPORTS_MACCATALYST: NO
     CODE_SIGN_STYLE: Automatic
@@ -75,6 +75,7 @@ targets:
           make_icon 152 "AppIcon-76@2x.png"
           make_icon 167 "AppIcon-83.5@2x.png"
           make_icon 180 "AppIcon-60@3x.png"
+          /usr/bin/sips -z 288 288 "${MASTER}" --out "${ROOT}/Assets.xcassets/HTMLAppLaunchMark.imageset/LaunchMark.png" >/dev/null
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mekabrine.htmlapp
@@ -126,7 +127,10 @@ targets:
         # A launch screen is required for native-resolution iPhone rendering.
         # Without it, iOS can run the entire SwiftUI/WKWebView app in a
         # legacy 320-point compatibility viewport with black letterboxing.
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: HTMLAppLaunchBackground
+          UIImageName: HTMLAppLaunchMark
+          UIImageRespectsSafeAreaInsets: true
         NSSpeechRecognitionUsageDescription: Dictate an app idea. Speech may be processed by Apple when on-device recognition is unavailable.
         NSBonjourServices:
           - _htmlapp-share._tcp

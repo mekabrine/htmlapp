@@ -7,11 +7,13 @@ struct EnhancedAppPermissionsView: View {
     @State private var choices: [HTMLPermission: HTMLPermissionChoice]
     @State private var sensorChoice: HTMLPermissionChoice
     @State private var showAll = false
+    @State private var openingPreviewEnabled: Bool
     @State private var showingStorageManagement = false
     @State private var requested: Set<String>
 
     init(app: SavedHTMLApp) {
         self.app = app
+        _openingPreviewEnabled = State(initialValue: HTMLAppOpeningPreviewCache.isEnabled(for: app.id))
         _requested = State(initialValue: HTMLPermissionStore.requested(appID: app.id))
         _choices = State(initialValue: Dictionary(uniqueKeysWithValues: HTMLPermission.allCases.map {
             ($0, HTMLPermissionStore.choice(for: $0, appID: app.id))
@@ -60,6 +62,15 @@ struct EnhancedAppPermissionsView: View {
                     Button(showAll ? "Show requested only" : "Show all permissions") {
                         showAll.toggle()
                     }
+                }
+
+                Section {
+                    Toggle("Save an opening preview", isOn: $openingPreviewEnabled)
+                        .onChange(of: openingPreviewEnabled) { enabled in
+                            HTMLAppOpeningPreviewCache.setEnabled(enabled, for: app.id)
+                        }
+                } footer: {
+                    Text("HTMLApp keeps a screenshot of this app’s opening screen on this device until the app changes. Use it for apps whose opening screen is safe to show. Turning this off deletes the saved image.")
                 }
 
                 Section("Developer · App Data") {

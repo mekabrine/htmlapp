@@ -19,3 +19,5 @@ __pycache__/
 # Vendored runtime distributions are intentional source assets
 !HTMLApp/Resources/RuntimeLibraries/**/build/
 !HTMLApp/Resources/RuntimeLibraries/**/build/**
+
+/HTMLApp/Assets.xcassets/HTMLAppLaunchMark.imageset/LaunchMark.png

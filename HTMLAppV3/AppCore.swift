@@ -1191,6 +1191,7 @@ final class AppStore: ObservableObject {
     }
 
     func delete(_ app: SavedHTMLApp) {
+        HTMLAppOpeningPreviewCache.setEnabled(false, for: app.id)
         _ = HTMLAppBackgroundLocation.disable(appID: app.id)
         ForgeVenueSeed.remove(app.id)
         HTMLAppBackendProvisioning.cancel(app.id)
@@ -1280,6 +1281,7 @@ final class AppStore: ObservableObject {
 
         if replaceExisting {
             for app in apps {
+                HTMLAppOpeningPreviewCache.setEnabled(false, for: app.id)
                 SourceCache.shared.remove(appID: app.id)
                 ForgeSemanticAppModelStore.remove(for: app.id)
                 ForgeAppManifestStore.remove(for: app.id)

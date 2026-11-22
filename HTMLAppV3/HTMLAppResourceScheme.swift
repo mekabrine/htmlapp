@@ -27,10 +27,11 @@ final class HTMLAppResourceScheme: NSObject, WKURLSchemeHandler {
         url.port == nil && url.query == nil
     }
 
-    func load(_ html: String, into webView: WKWebView) {
+    @discardableResult
+    func load(_ html: String, into webView: WKWebView) -> WKNavigation? {
         document = Data(html.utf8)
         modules = ForgeModuleBundle.files(in: html)
-        webView.load(URLRequest(url: URL(string: "htmlapp-resource://\(host)/index.html")!))
+        return webView.load(URLRequest(url: URL(string: "htmlapp-resource://\(host)/index.html")!))
     }
     func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
         guard let url = urlSchemeTask.request.url, url.scheme == Self.scheme, url.host == host,
