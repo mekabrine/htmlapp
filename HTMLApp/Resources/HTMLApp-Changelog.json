@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.9.36",
+    "summary": "Redesigned Nearby Transfer with a direct device picker, live orientation icons, and app previews before acceptance.",
+    "changes": [
+      {
+        "title": "Pick a nearby device right away",
+        "description": "Nearby Transfer opens the device picker. Other devices appear while their Library is open, with iPhone or iPad icons that follow their orientation when motion is available.",
+        "symbol": "dot.radiowaves.left.and.right",
+        "tint": "purple"
+      },
+      {
+        "title": "See what’s being sent before accepting",
+        "description": "Incoming offers show the sender, app name, and a square preview when available. The app package is sent only after you tap Receive.",
+        "symbol": "photo.on.rectangle",
+        "tint": "blue"
+      }
+    ]
+  },
+  {
     "version": "1.9.35",
     "summary": "Added a branded launch screen and optional per-app opening snapshots.",
     "changes": [

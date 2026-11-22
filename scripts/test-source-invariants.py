@@ -55,7 +55,21 @@ assert 'withPermission(.clipboard, id: id)' in native, "Clipboard read requires 
 assert 'withPermission(.files, id: id)' in native, "Files picker requires per-app consent"
 assert 'case files' in source("HTMLAppV3/PermissionSystem.swift")
 assert 'includePersonalData: false' in core, "Nearby export must omit personal state"
-assert 'includePersonalData: false' in source("HTMLAppV3/NearbyAppTransfer.swift"), "Nearby import must ignore old personal state"
+nearby = source("HTMLAppV3/NearbyAppTransfer.swift")
+assert 'includePersonalData: false' in nearby, "Nearby import must ignore old personal state"
+assert "MCNearbyServiceBrowser(" in nearby and "MCBrowserViewController" not in nearby
+assert ".modifier(NearbyLibraryReceiver(" in core
+assert "if sending { transfer.startBrowsing() }" in nearby
+assert "acceptedByReceiver, !sendingBusy" in nearby
+assert "setInboundTicket((session, peer, false))" in nearby
+assert "claimInboundResource(session: session, peer: peerID, starting: false)" in nearby
+assert "didChange state" in nearby and "HTMLAPP_IMPORTED_V2" in nearby
+assert "CGImageSourceCopyPropertiesAtIndex" in nearby
+assert "deviceMotionUpdateInterval = 0.25" in source("HTMLAppV3/NearbyDeviceOrientation.swift")
+assert "_htmlapp-tilt._tcp" in project
+nearby_preview = source("HTMLAppV3/NearbyAppPreview.swift")
+assert ".nonPersistent()" in nearby_preview and "connect-src 'none'" in nearby_preview
+assert "HTMLNativeAPIScript" not in nearby_preview
 qa = ai.split("private func verifyAndRepair(", 1)[1].split("private func appCheckFindings(", 1)[0]
 clean = qa.index("if initial.blocking.isEmpty")
 plan = qa.index("AIHTMLAgent.planQARepair(")

@@ -40,7 +40,7 @@ struct HTMLAppDataTransferView: View {
                 NavigationLink("Open Nearby Transfer") {
                     NearbyAppTransferView(appIDs: selectedIDs)
                 }
-                Text("Select apps below to send, or open Nearby Transfer with nothing selected to receive. Transfers are encrypted; iOS chooses Bluetooth, peer-to-peer Wi-Fi, or local Wi-Fi as available.").font(.footnote)
+                Text("Select apps below to choose a nearby device. To receive, stay in the Library with HTMLApp open. Transfers are encrypted.").font(.footnote)
             }
 
             if !store.apps.isEmpty {

@@ -6,6 +6,7 @@ import WidgetKit
 struct HTMLAppMain: App {
     @UIApplicationDelegateAdaptor(HTMLAppBackgroundURLSessionDelegate.self) private var backgroundURLDelegate
     @StateObject private var store = AppStore()
+    @StateObject private var nearbyTransfer = NearbyAppTransfer()
     @AppStorage("onboardingComplete") private var onboardingComplete = false
     @AppStorage("htmlapp.lastOpenedVersion") private var lastOpenedVersion = ""
     @AppStorage("htmlapp.previousOpenedVersion") private var previousOpenedVersion = ""
@@ -54,7 +55,13 @@ struct HTMLAppMain: App {
                     HTMLAppDisplayRoot()
                 }
             }
+                .modifier(NearbyLibraryReceiver(
+                    transfer: nearbyTransfer,
+                    enabled: onboardingComplete && !presentingWhatsNew && store.libraryLoaded &&
+                        store.runningApp == nil && !store.lockScreenVoiceCreatePresented
+                ))
                 .environmentObject(store)
+                .environmentObject(nearbyTransfer)
                 .fullScreenCover(isPresented: Binding(
                     get: { !onboardingComplete },
                     set: { if !$0 { onboardingComplete = true } }

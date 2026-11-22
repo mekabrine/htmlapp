@@ -1,366 +1,704 @@
+import ImageIO
+import MultipeerConnectivity
 import SwiftUI
 import UIKit
-import MultipeerConnectivity
 
-final class NearbyAppTransfer: NSObject, ObservableObject, MCSessionDelegate, MCNearbyServiceAdvertiserDelegate {
-    @Published var status = "Keep Nearby Transfer open on both devices, then connect to the device you recognize."
-    @Published var connected = false
-    @Published var active = false
-    @Published var busy = false
-    @Published var received: URL?
-    @Published var recipientConfirmed = false
-    @Published var sendFailed = false
-    @Published var invitationName: String?
-    private var invitation: ((Bool, MCSession?) -> Void)?
-    let session = MCSession(peer: MCPeerID(displayName: String(UIDevice.current.name.prefix(50))), securityIdentity: nil, encryptionPreference: .required)
+struct NearbyDevice: Identifiable {
+    let id: MCPeerID
+    let name: String
+    let isTablet: Bool
+    let token: String
+    var turn: UInt8
+}
+
+struct NearbyOffer: Identifiable {
+    let id = UUID()
+    let sender: String
+    let names: [String]
+    let preview: UIImage?
+
+    var title: String { names.count == 1 ? names[0] : "\(names.count) apps" }
+}
+
+final class NearbyAppTransfer: NSObject, ObservableObject, MCSessionDelegate,
+                               MCNearbyServiceAdvertiserDelegate, MCNearbyServiceBrowserDelegate {
+    private static let service = "htmlapp-share"
+    private static let offerHandshake = Data("HTMLAPP_OFFER_V2".utf8)
+    private static let accepted = Data("HTMLAPP_ACCEPTED_V2".utf8)
+    private static let declined = Data("HTMLAPP_DECLINED_V2".utf8)
+    private static let importReceipt = Data("HTMLAPP_IMPORTED_V2".utf8)
+    private static let archiveName = "HTMLApp.htmlapp.zip"
+    private static let maxPreviewBytes = 150_000
+    static let maximumArchiveBytes = 100_000_000
+
+    private struct OfferPacket: Codable {
+        let names: [String]
+        let preview: Data?
+    }
+
+    @Published private(set) var devices: [NearbyDevice] = []
+    @Published private(set) var offer: NearbyOffer?
+    @Published private(set) var received: URL?
+    @Published private(set) var acceptedByReceiver = false
+    @Published private(set) var recipientConfirmed = false
+    @Published private(set) var sendingBusy = false
+    @Published private(set) var transferActive = false
+    @Published var status = ""
+    @Published var receiverScreenVisible = false
+    @Published var isSaving = false
+
+    private let motion = NearbyDeviceOrientation()
+    private let token = UUID().uuidString.lowercased()
     private var advertiser: MCNearbyServiceAdvertiser?
+    private var browser: MCNearbyServiceBrowser?
+    private var session: MCSession?
+    private var peer: MCPeerID?
+    private var outgoingOffer: Data?
     private var outbound: URL?
+    private var authorizedInbound = false
+    private var incomingResource = false
+    private let inboundLock = NSLock()
+    private var inboundTicket: (session: MCSession, peer: MCPeerID, started: Bool)?
+    private var libraryVisible = false
 
-    override init() { super.init(); session.delegate = self }
-    func start() {
-        guard !active else { return }
-        let advertiser = MCNearbyServiceAdvertiser(peer: session.myPeerID, discoveryInfo: nil, serviceType: "htmlapp-share")
-        advertiser.delegate = self; advertiser.startAdvertisingPeer(); self.advertiser = advertiser
-        active = true; status = "Visible nearby. Only accept a device you recognize."
+    static var displayName: String {
+        let alias = UserDefaults.standard.string(forKey: "htmlapp.nearbyDeviceName") ?? ""
+        return clippedName(alias.isEmpty ? UIDevice.current.name : alias, maxBytes: 56, fallback: "Apple device")
     }
-    func answer(_ accept: Bool) {
-        invitation?(accept, accept ? session : nil); invitation = nil; invitationName = nil
+
+    static func setDisplayName(_ name: String) {
+        let clean = clippedName(name, maxBytes: 56, fallback: "")
+        UserDefaults.standard.set(clean, forKey: "htmlapp.nearbyDeviceName")
     }
-    func stop() {
-        answer(false); advertiser?.stopAdvertisingPeer(); advertiser = nil
-        session.disconnect(); active = false; connected = false; busy = false; recipientConfirmed = false
-        if let outbound { try? FileManager.default.removeItem(at: outbound) }; outbound = nil
+
+    private static func clippedName(_ name: String, maxBytes: Int, fallback: String) -> String {
+        var value = ""
+        for char in name.trimmingCharacters(in: .whitespacesAndNewlines)
+            where char.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
+            if value.utf8.count + String(char).utf8.count > maxBytes { break }
+            value.append(char)
+        }
+        return value.isEmpty ? fallback : value
     }
-    func send(_ url: URL) {
-        guard !busy, let peer = session.connectedPeers.first else { return }
-        outbound = url; busy = true; sendFailed = false; status = "Sending app without saved data…"
-        session.sendResource(at: url, withName: "HTMLApp.htmlapp.zip", toPeer: peer) { [weak self] error in
-            DispatchQueue.main.async {
-                self?.busy = false
-                self?.status = error == nil ? "Sent. Waiting for the other device to save the app…" : "Transfer failed: \(error!.localizedDescription)"
-                if error != nil {
-                    self?.sendFailed = true
-                } else {
-                    // Resource completion is not proof that import succeeded.
-                    // Require an encrypted receipt from the receiving device.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 90) { [weak self] in
-                        guard let self, self.active && !self.recipientConfirmed else { return }
-                        self.status = "The receiving device hasn't confirmed saving yet."
-                        self.sendFailed = true
-                    }
-                }
-                try? FileManager.default.removeItem(at: url); self?.outbound = nil
+
+    override init() {
+        super.init()
+        motion.onChange = { [weak self] in
+            guard let self else { return }
+            self.devices = self.devices.map { device in
+                var updated = device
+                updated.turn = self.motion.turns[device.token] ?? 0
+                return updated
             }
         }
     }
+
+    func setLibraryVisible(_ visible: Bool) {
+        libraryVisible = visible
+        if visible {
+            startAdvertising()
+        } else {
+            stopAdvertising()
+            if outgoingOffer == nil && received == nil { resetSession() }
+        }
+    }
+
+    func restartDiscovery() {
+        stopAdvertising()
+        let wasBrowsing = browser != nil
+        stopBrowsing()
+        if wasBrowsing { startBrowsing() }
+        else { startAdvertising() }
+    }
+
+    private func startAdvertising() {
+        guard libraryVisible, browser == nil, advertiser == nil else { return }
+        let local = MCPeerID(displayName: Self.displayName)
+        let details = ["version": "2", "token": token, "type": UIDevice.current.userInterfaceIdiom == .pad ? "pad" : "phone"]
+        let service = MCNearbyServiceAdvertiser(peer: local, discoveryInfo: details, serviceType: Self.service)
+        advertiser = service
+        service.delegate = self
+        service.startAdvertisingPeer()
+        motion.advertise(token: token)
+    }
+
+    private func stopAdvertising() {
+        advertiser?.stopAdvertisingPeer()
+        advertiser = nil
+        motion.stopAdvertising()
+    }
+
+    func startBrowsing() {
+        guard browser == nil else { return }
+        resetSession()
+        stopAdvertising()
+        let service = MCNearbyServiceBrowser(peer: MCPeerID(displayName: Self.displayName), serviceType: Self.service)
+        browser = service
+        service.delegate = self
+        service.startBrowsingForPeers()
+        motion.browse()
+        status = "Looking for nearby devices…"
+    }
+
+    private func stopBrowsing() {
+        browser?.stopBrowsingForPeers()
+        browser = nil
+        motion.stopBrowsing()
+        devices = []
+    }
+
+    func endSending() {
+        stopBrowsing()
+        resetSession()
+        startAdvertising()
+    }
+
+    func invite(_ device: NearbyDevice, names: [String], preview: Data?) {
+        guard let browser, session == nil, devices.contains(where: { $0.id == device.id }) else {
+            status = "That device is no longer nearby. Choose a device again."
+            return
+        }
+        let packet = OfferPacket(names: names.prefix(30).map { Self.clippedName($0, maxBytes: 180, fallback: "HTML app") },
+                                 preview: preview.flatMap { $0.count <= Self.maxPreviewBytes ? $0 : nil })
+        guard !packet.names.isEmpty, let bytes = try? JSONEncoder().encode(packet) else { return }
+        let session = connect(local: browser.myPeerID, remote: device.id)
+        outgoingOffer = bytes
+        status = "Waiting for \(device.name) to respond…"
+        browser.invitePeer(device.id, to: session, withContext: Self.offerHandshake, timeout: 20)
+        expire(session, after: 60, message: "No response. You can choose the device again.") {
+            !$0.acceptedByReceiver
+        }
+    }
+
+    private func connect(local: MCPeerID, remote: MCPeerID) -> MCSession {
+        let session = MCSession(peer: local, securityIdentity: nil, encryptionPreference: .required)
+        self.session = session
+        peer = remote
+        session.delegate = self
+        transferActive = true
+        return session
+    }
+
+    private func expire(_ connection: MCSession, after seconds: Double, message: String, when shouldExpire: @escaping (NearbyAppTransfer) -> Bool) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self, weak connection] in
+            guard let self, let connection, self.session === connection, shouldExpire(self) else { return }
+            self.resetSession()
+            self.status = message
+        }
+    }
+
+    private func resetSession(preserveReceipt: Bool = false) {
+        let old = session
+        session = nil
+        setInboundTicket(nil)
+        old?.disconnect()
+        peer = nil
+        offer = nil
+        outgoingOffer = nil
+        authorizedInbound = false
+        incomingResource = false
+        acceptedByReceiver = false
+        if !preserveReceipt { recipientConfirmed = false }
+        transferActive = false
+        sendingBusy = false
+        if let outbound { try? FileManager.default.removeItem(at: outbound) }
+        outbound = nil
+    }
+
+    func answer(_ accept: Bool) {
+        guard offer != nil, let session, let peer else { return }
+        offer = nil
+        authorizedInbound = accept
+        if accept { setInboundTicket((session, peer, false)) }
+        do {
+            try session.send(accept ? Self.accepted : Self.declined, toPeers: [peer], with: .reliable)
+            status = accept ? "Receiving app…" : "Transfer declined."
+            // Give the reliable response time to leave before disconnecting.
+            if !accept {
+                expire(session, after: 1, message: "Transfer declined.") { _ in true }
+            } else {
+                expire(session, after: 90, message: "The sender didn’t finish the transfer.") { !$0.incomingResource }
+            }
+        } catch {
+            resetSession()
+            status = "The sender disconnected."
+        }
+    }
+
+    func send(_ url: URL) {
+        guard let session, let peer, acceptedByReceiver, !sendingBusy else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        outbound = url
+        sendingBusy = true
+        status = "Sending app without saved data…"
+        expire(session, after: 120, message: "The transfer timed out.") { $0.sendingBusy }
+        session.sendResource(at: url, withName: Self.archiveName, toPeer: peer) { [weak self, weak session] error in
+            DispatchQueue.main.async {
+                guard let self, let session, self.session === session else { return }
+                try? FileManager.default.removeItem(at: url)
+                self.outbound = nil
+                self.sendingBusy = false
+                if self.recipientConfirmed { return }
+                if let error {
+                    self.resetSession()
+                    self.status = "Transfer failed: \(error.localizedDescription)"
+                } else {
+                    self.status = "Sent. Waiting for the receiving device to save it…"
+                    self.expire(session, after: 90, message: "The receiving device didn’t confirm saving.") { !$0.recipientConfirmed }
+                }
+            }
+        }
+    }
+
+    func failSending(_ message: String) {
+        resetSession()
+        status = message
+    }
+
+    func finishImport(success: Bool, message: String) {
+        if success, let session, let peer {
+            try? session.send(Self.importReceipt, toPeers: [peer], with: .reliable)
+        }
+        if let received { try? FileManager.default.removeItem(at: received) }
+        received = nil
+        isSaving = false
+        status = message
+        if let session {
+            expire(session, after: 1, message: message) { _ in true }
+        }
+    }
+
+    func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String: String]?) {
+        DispatchQueue.main.async {
+            guard self.browser === browser, info?["version"] == "2",
+                  let token = info?["token"], token != self.token,
+                  UUID(uuidString: token) != nil else { return }
+            let isTablet = info?["type"] == "pad"
+            let device = NearbyDevice(id: peerID, name: peerID.displayName, isTablet: isTablet,
+                                      token: token, turn: self.motion.turns[token] ?? 0)
+            self.devices.removeAll { $0.id == peerID }
+            self.devices.append(device)
+            self.devices.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
+    }
+
+    func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {
+        DispatchQueue.main.async {
+            guard self.browser === browser else { return }
+            self.devices.removeAll { $0.id == peerID }
+        }
+    }
+
+    func browser(_ browser: MCNearbyServiceBrowser, didNotStartBrowsingForPeers error: Error) {
+        DispatchQueue.main.async {
+            guard self.browser === browser else { return }
+            self.status = "Can’t find nearby devices. Check Local Network access in Settings."
+        }
+    }
+
     func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didReceiveInvitationFromPeer peerID: MCPeerID, withContext context: Data?, invitationHandler: @escaping (Bool, MCSession?) -> Void) {
         DispatchQueue.main.async {
-            guard self.session.connectedPeers.isEmpty, self.invitation == nil else { invitationHandler(false, nil); return }
-            self.invitation = invitationHandler; self.invitationName = peerID.displayName
+            guard self.advertiser === advertiser, self.libraryVisible, self.session == nil,
+                  context == Self.offerHandshake else { invitationHandler(false, nil); return }
+            // Open only the encrypted control channel. App bytes are sent after Receive.
+            let session = self.connect(local: advertiser.myPeerID, remote: peerID)
+            invitationHandler(true, session)
+            self.expire(session, after: 22, message: "The sender didn’t deliver a preview.") {
+                $0.offer == nil && !$0.authorizedInbound
+            }
         }
     }
+
     func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didNotStartAdvertisingPeer error: Error) {
-        DispatchQueue.main.async { self.status = "Nearby discovery failed. Check Local Network permission: \(error.localizedDescription)"; self.active = false }
+        DispatchQueue.main.async {
+            guard self.advertiser === advertiser else { return }
+            self.status = "Nearby receiving is unavailable. Check Local Network access in Settings."
+        }
     }
+
     func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
         DispatchQueue.main.async {
-            self.connected = !session.connectedPeers.isEmpty
-            self.status = state == .connected ? "Connected to \(peerID.displayName)! You can send your selected apps now." : "Not connected yet. Keep this screen open on both devices."
-            if state == .notConnected { self.busy = false }
+            guard self.session === session, self.peer == peerID else { return }
+            if state == .connected, let offer = self.outgoingOffer {
+                do { try session.send(offer, toPeers: [peerID], with: .reliable) }
+                catch { self.failSending("Couldn’t send the preview. Choose the device again.") }
+            } else if state == .notConnected {
+                if self.received != nil { return }
+                self.resetSession(preserveReceipt: true)
+                if !self.recipientConfirmed { self.status = "The device disconnected. You can try again." }
+            }
         }
     }
-    private static let importReceipt = Data("HTMLAPP_IMPORTED_V1".utf8)
-    func confirmImport() {
-        guard let peer = session.connectedPeers.first else { return }
-        try? session.send(Self.importReceipt, toPeers: [peer], with: .reliable)
-    }
+
     func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
-        guard data == Self.importReceipt, session.connectedPeers.contains(peerID) else { return }
         DispatchQueue.main.async {
-            self.recipientConfirmed = true
-            self.status = "The other device saved your app!"
+            guard self.session === session, self.peer == peerID else { return }
+            if self.outgoingOffer != nil {
+                switch data {
+                case Self.accepted: self.acceptedByReceiver = true
+                case Self.declined: self.failSending("\(peerID.displayName) declined the transfer.")
+                case Self.importReceipt where self.acceptedByReceiver:
+                    self.recipientConfirmed = true
+                    self.status = "The other device saved your app!"
+                default: break
+                }
+                return
+            }
+
+            guard self.libraryVisible, self.offer == nil, !self.authorizedInbound,
+                  data.count <= 210_000,
+                  let packet = try? JSONDecoder().decode(OfferPacket.self, from: data),
+                  (1...30).contains(packet.names.count) else { return }
+            let names = packet.names.map { Self.clippedName($0, maxBytes: 180, fallback: "HTML app") }
+            self.offer = NearbyOffer(sender: peerID.displayName, names: names, preview: Self.decodePreview(packet.preview))
+            self.expire(session, after: 50, message: "The nearby offer expired.") { $0.offer != nil }
         }
     }
-    func session(_ session: MCSession, didReceive stream: InputStream, withName streamName: String, fromPeer peerID: MCPeerID) { stream.close() }
-    func session(_ session: MCSession, didStartReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, with progress: Progress) {
-        DispatchQueue.main.async { self.busy = true; self.status = "Receiving app from \(peerID.displayName)…" }
+
+    private static func decodePreview(_ data: Data?) -> UIImage? {
+        guard let data, data.count <= maxPreviewBytes,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) == 1,
+              let attributes = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = attributes[kCGImagePropertyPixelWidth] as? Int,
+              let height = attributes[kCGImagePropertyPixelHeight] as? Int,
+              (1...1_024).contains(width), (1...1_024).contains(height), abs(width - height) <= 2 else { return nil }
+        return UIImage(data: data)
     }
+
+    func session(_ session: MCSession, didReceive stream: InputStream, withName streamName: String, fromPeer peerID: MCPeerID) {
+        stream.close()
+    }
+
+    private func setInboundTicket(_ ticket: (session: MCSession, peer: MCPeerID, started: Bool)?) {
+        inboundLock.lock()
+        inboundTicket = ticket
+        inboundLock.unlock()
+    }
+
+    private func claimInboundResource(session: MCSession, peer: MCPeerID, starting: Bool) -> Bool {
+        inboundLock.lock()
+        defer { inboundLock.unlock() }
+        guard let ticket = inboundTicket, ticket.session === session,
+              ticket.peer == peer, ticket.started != starting else { return false }
+        inboundTicket = starting ? (session, peer, true) : nil
+        return true
+    }
+
+    func session(_ session: MCSession, didStartReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, with progress: Progress) {
+        guard resourceName == Self.archiveName, progress.totalUnitCount <= Int64(Self.maximumArchiveBytes),
+              claimInboundResource(session: session, peer: peerID, starting: true) else {
+            progress.cancel()
+            return
+        }
+        DispatchQueue.main.async {
+            guard self.session === session, self.peer == peerID, self.authorizedInbound else { return }
+            self.incomingResource = true
+            self.expire(session, after: 120, message: "The transfer timed out.") {
+                $0.received == nil && $0.authorizedInbound
+            }
+        }
+    }
+
     func session(_ session: MCSession, didFinishReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, at localURL: URL?, withError error: Error?) {
+        guard resourceName == Self.archiveName,
+              claimInboundResource(session: session, peer: peerID, starting: false) else { return }
         do {
             if let error { throw error }
-            guard resourceName == "HTMLApp.htmlapp.zip", let localURL,
-                  let size = try localURL.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 100_000_000 else { throw HTMLAppPackageError.invalidArchive }
+            guard let localURL, let size = try localURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                  (1...Self.maximumArchiveBytes).contains(size) else { throw HTMLAppPackageError.invalidArchive }
+            // Multipeer removes the supplied URL when this callback returns.
             let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Nearby-\(UUID().uuidString).zip")
             try FileManager.default.copyItem(at: localURL, to: destination)
             DispatchQueue.main.async {
-                if let old = self.received { try? FileManager.default.removeItem(at: old) }
-                self.received = destination; self.busy = false; self.status = "Backup received. Review and import as new copies below."
+                guard self.session === session, self.peer == peerID, self.authorizedInbound, self.received == nil else {
+                    try? FileManager.default.removeItem(at: destination)
+                    return
+                }
+                self.authorizedInbound = false
+                self.received = destination
             }
-        } catch { DispatchQueue.main.async { self.busy = false; self.status = "Receive failed: \(error.localizedDescription)" } }
+        } catch {
+            DispatchQueue.main.async {
+                guard self.session === session else { return }
+                self.resetSession()
+                self.status = "Receive failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+}
+
+private struct NearbyOfferPopup: View {
+    let offer: NearbyOffer
+    let answer: (Bool) -> Void
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.black.opacity(0.5)).ignoresSafeArea()
+            ViewThatFits(in: .vertical) {
+                card
+                ScrollView { card }
+            }
+            .frame(maxWidth: 420)
+            .padding(20)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var card: some View {
+        VStack(spacing: 16) {
+            Text("\(offer.sender) would like to send you \(offer.title).")
+                .font(.title3.bold())
+                .multilineTextAlignment(.center)
+            if let image = offer.preview {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 260)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .accessibilityLabel("Preview of \(offer.names[0])")
+                if offer.names.count > 1 {
+                    Text("Preview of \(offer.names[0])")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Label("Preview unavailable", systemImage: "photo")
+                    .foregroundStyle(.secondary)
+            }
+            if offer.names.count > 1 {
+                Text(offer.names.joined(separator: ", "))
+                    .font(.footnote)
+                    .lineLimit(3)
+            }
+            Text("The sender supplied this preview. Receive apps only from devices you recognize.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 12) {
+                Button("Decline", role: .cancel) { answer(false) }
+                    .buttonStyle(.bordered)
+                Button("Receive") { answer(true) }
+                    .buttonStyle(.borderedProminent)
+            }
+            .controlSize(.large)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(20)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
     }
 }
 
-struct NearbyPeerBrowser: UIViewControllerRepresentable {
-    let session: MCSession
-    @Environment(\.dismiss) private var dismiss
-    func makeCoordinator() -> Coordinator { Coordinator { dismiss() } }
-    func makeUIViewController(context: Context) -> MCBrowserViewController {
-        let browser = MCBrowserViewController(serviceType: "htmlapp-share", session: session)
-        browser.maximumNumberOfPeers = 1; browser.delegate = context.coordinator
-        return browser
-    }
-    func updateUIViewController(_ uiViewController: MCBrowserViewController, context: Context) {}
-    final class Coordinator: NSObject, MCBrowserViewControllerDelegate {
-        let close: () -> Void
-        init(close: @escaping () -> Void) { self.close = close }
-        func browserViewControllerDidFinish(_ browserViewController: MCBrowserViewController) { close() }
-        func browserViewControllerWasCancelled(_ browserViewController: MCBrowserViewController) { close() }
+struct NearbyLibraryReceiver: ViewModifier {
+    @ObservedObject var transfer: NearbyAppTransfer
+    let enabled: Bool
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.scenePhase) private var scenePhase
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityHidden(transfer.offer != nil && !transfer.receiverScreenVisible)
+            .task(id: enabled && scenePhase != .background) {
+                transfer.setLibraryVisible(enabled && scenePhase != .background)
+            }
+            .overlay {
+                if let offer = transfer.offer, !transfer.receiverScreenVisible {
+                    NearbyOfferPopup(offer: offer, answer: transfer.answer)
+                }
+            }
+            .onChange(of: transfer.received) { url in
+                guard let url, !transfer.isSaving else { return }
+                transfer.isSaving = true
+                Task { @MainActor in
+                    do {
+                        try store.importPortablePackage(from: url, replaceExisting: false, includePersonalData: false)
+                        transfer.finishImport(success: true, message: "App saved to Library!")
+                        store.notice = "Nearby transfer saved to your Library."
+                    } catch {
+                        let message = "Couldn’t save the received app: \(error.localizedDescription)"
+                        transfer.finishImport(success: false, message: message)
+                        if !transfer.receiverScreenVisible { store.errorMessage = message }
+                    }
+                }
+            }
     }
 }
 
 struct NearbyAppTransferView: View {
+    let appIDs: Set<String>
     @EnvironmentObject private var store: AppStore
-    @Environment(\.scenePhase) private var scenePhase
-    @AppStorage("developerMode") private var developerMode = false
-    @StateObject private var transfer = NearbyAppTransfer()
-    @State private var browse = false
-    @State private var startedSending = false
-    @State private var importing = false
-    @State private var transferError: String?
+    @EnvironmentObject private var transfer: NearbyAppTransfer
     @Environment(\.dismiss) private var dismiss
-    @State private var chooseApps = false
-    @State private var selectedAppIDs: Set<String>
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var chosenDevice: NearbyDevice?
+    @State private var editingName = false
+    @State private var deviceName = ""
+    @State private var previewApps: [SavedHTMLApp] = []
+    @State private var sentAppIDs = Set<String>()
 
-    init(appIDs: Set<String>) {
-        _selectedAppIDs = State(initialValue: appIDs)
-    }
-
-    private var isReceiveOnly: Bool { selectedAppIDs.isEmpty }
+    private var sending: Bool { !appIDs.isEmpty }
 
     var body: some View {
         List {
-            Section("Connection Setup") {
-                Label("Turn on Wi-Fi and Bluetooth on both devices", systemImage: "wifi")
-                    .font(.subheadline.weight(.semibold))
-                Text("Open Control Center or iOS Settings and enable both radios. iOS does not allow apps to turn Wi-Fi or Bluetooth on for you.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                Button {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                } label: {
-                    Label("Open iOS Settings", systemImage: "gear")
-                }
-            }
-            if isReceiveOnly {
-                Section {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Image(systemName: importing ? "square.and.arrow.down.fill" :
-                            transfer.connected ? "checkmark.circle.fill" : "iphone.gen3.radiowaves.left.and.right")
-                            .font(.system(size: 42))
-                            .foregroundStyle(transfer.connected ? Color.green : Color.accentColor)
-                        Text(importing ? "Saving your app…" :
-                            transfer.connected ? "Connected! Waiting for the app…" : "Ready to receive")
-                            .font(.title2.weight(.bold))
-                        Text("Ask the sender to choose this device. Tap Accept when its name appears. The app will be saved in your Library automatically.")
-                            .font(.body)
-                        if importing { ProgressView() }
-                        Text(transfer.status).font(.footnote).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 22)
-                } header: {
-                    Text("Receive an app")
-                }
+            if sending {
+                senderContent
             } else {
-                Section {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label(selectedAppIDs.count == 1 ? "One app ready to share" : "\(selectedAppIDs.count) apps ready to share",
-                              systemImage: "app.badge")
-                            .font(.title3.bold())
-                        if selectedAppIDs.count == 1,
-                           let app = store.apps.first(where: { selectedAppIDs.contains($0.id) }) {
-                            HStack(spacing: 12) {
-                                AppIconView(app: app, size: 46)
-                                Text(app.name).font(.headline)
-                            }
-                        }
-                        Button("Change apps") { chooseApps = true }
-                            .font(.subheadline)
-                        Divider()
-                        Text(transfer.connected ? "Connected! Sending automatically…" : "Tap Find device, then choose the receiving phone.")
-                            .font(.headline)
-                        if transfer.busy { ProgressView() }
-                        Button { browse = true } label: {
-                            Label(transfer.connected ? "Connected to receiver" : "Find receiving phone",
-                                  systemImage: "dot.radiowaves.left.and.right")
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!transfer.active || transfer.connected || transfer.busy || startedSending)
-                        Text(transfer.status).font(.footnote).foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 18)
-                } header: {
-                    Text("Send an app")
-                } footer: {
-                    Text("Both devices must keep HTMLApp open. Once connected, your app sends automatically and this screen closes after the receiver saves it.")
+                Section("Receive nearby") {
+                    Label("Ready to receive in the Library", systemImage: "dot.radiowaves.left.and.right")
+                    Text("Keep HTMLApp open in the Library. Incoming offers appear here and in the Library.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if transfer.isSaving { ProgressView("Saving to your Library…") }
                 }
             }
-            if selectedAppIDs.contains(where: { HTMLAppBackendStore.link(for: $0) != nil }) {
-                Section("Private backend") {
-                    Label("V2 apps keep their public backend connection. Python source and private control keys are excluded. Legacy apps are shared without a backend connection.",
-                          systemImage: "lock.shield")
-                }
+            if !transfer.status.isEmpty {
+                Section { Text(transfer.status).foregroundStyle(.secondary) }
             }
-            if let transferError {
-                Section {
-                    Label(transferError, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
-                    if isReceiveOnly {
-                        Button("Keep waiting") { self.transferError = nil }
-                    } else {
-                        Button("Try sending again") {
-                            self.transferError = nil
-                            startedSending = false
-                            sendSelectedApps()
-                        }
-                        .disabled(!transfer.connected || transfer.busy)
-                    }
+            Section {
+                Button {
+                    deviceName = NearbyAppTransfer.displayName
+                    editingName = true
+                } label: {
+                    LabeledContent("Your device name", value: NearbyAppTransfer.displayName)
                 }
-            }
-            if developerMode {
-                Section("Connection details") {
-                    Text("Encrypted local MultipeerConnectivity over Bluetooth and/or Wi-Fi. Only accept devices you recognize.")
-                        .font(.footnote)
-                    Button("Disconnect", role: .destructive) {
-                        transfer.stop()
-                        dismiss()
-                    }
-                }
+                .disabled(transfer.transferActive || chosenDevice != nil)
+            } footer: {
+                Text("If iOS supplies a generic name like iPhone, you can enter the name from Settings → General → About → Name. It’s used only for Nearby Transfer.")
             }
         }
-        .navigationTitle(isReceiveOnly ? "Receive App" : "Send App")
+        .navigationTitle(sending ? "Choose Nearby Device" : "Nearby Transfer")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $browse) {
-            NearbyPeerBrowser(session: transfer.session)
-        }
-        .sheet(isPresented: $chooseApps) {
-            NavigationStack {
-                List {
-                    ForEach(store.orderedApps) { app in
-                        Button {
-                            if selectedAppIDs.contains(app.id) { selectedAppIDs.remove(app.id) }
-                            else { selectedAppIDs.insert(app.id) }
-                        } label: {
-                            HStack(spacing: 12) {
-                                AppIconView(app: app, size: 40)
-                                Text(app.name).foregroundStyle(.primary)
-                                Spacer()
-                                Image(systemName: selectedAppIDs.contains(app.id) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selectedAppIDs.contains(app.id) ? Color.accentColor : Color.secondary)
-                            }
-                        }
-                    }
-                }
-                .navigationTitle("Apps to Send")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { chooseApps = false } } }
+        .alert("Nearby device name", isPresented: $editingName) {
+            TextField("Device name", text: $deviceName)
+            Button("Save") {
+                NearbyAppTransfer.setDisplayName(deviceName)
+                transfer.restartDiscovery()
             }
-        }
-        .alert(
-            "Accept nearby connection?",
-            isPresented: Binding(
-                get: { transfer.invitationName != nil },
-                set: { if !$0 { transfer.answer(false) } }
-            )
-        ) {
-            Button("Accept") { transfer.answer(true) }
-            Button("Decline", role: .cancel) { transfer.answer(false) }
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text(transfer.invitationName ?? "Unknown device")
+            Text("Leave it blank to use the name provided by iOS.")
+        }
+        .accessibilityHidden(!sending && transfer.offer != nil)
+        .overlay {
+            if !sending, let offer = transfer.offer {
+                NearbyOfferPopup(offer: offer, answer: transfer.answer)
+            }
         }
         .onAppear {
-            transfer.start()
+            transfer.receiverScreenVisible = !sending
+            if sending { transfer.startBrowsing() }
         }
-        .onChange(of: transfer.connected) { connected in
-            if connected {
-                // The sender should never have to press Done in the device browser.
-                browse = false
-                if !isReceiveOnly && !startedSending { sendSelectedApps() }
-            } else if startedSending && !transfer.recipientConfirmed {
-                startedSending = false
-                transferError = "Connection lost. Keep both devices nearby, then try again."
+        .onChange(of: scenePhase) { phase in
+            guard sending else { return }
+            if phase == .background {
+                chosenDevice = nil
+                transfer.endSending()
+            } else if phase == .active {
+                transfer.startBrowsing()
             }
-        }
-        .onChange(of: transfer.received) { url in
-            guard isReceiveOnly, let url, !importing else { return }
-            importing = true
-            Task { @MainActor in
-                // Let the saving indicator render before importing larger packages.
-                try? await Task.sleep(nanoseconds: 100_000_000)
-                do {
-                    try store.importPortablePackage(from: url, replaceExisting: false, includePersonalData: false)
-                    transfer.confirmImport()
-                    try? FileManager.default.removeItem(at: url)
-                    transfer.received = nil
-                    transfer.status = "App saved to Library!"
-                    try? await Task.sleep(nanoseconds: 900_000_000)
-                    dismiss()
-                } catch {
-                    transferError = "Couldn't save the received app: \(error.localizedDescription)"
-                    importing = false
-                    try? FileManager.default.removeItem(at: url)
-                    transfer.received = nil
-                }
-            }
-        }
-        .onChange(of: transfer.sendFailed) { failed in
-            guard failed, !isReceiveOnly else { return }
-            startedSending = false
-            transferError = "The transfer didn't finish. Keep both devices nearby and try again."
-        }
-        .onChange(of: transfer.recipientConfirmed) { confirmed in
-            guard confirmed, !isReceiveOnly else { return }
-            for appID in selectedAppIDs {
-                ForgeConversationLog.append(appID, kind: "share", text: "Nearby recipient confirmed importing this app.")
-            }
-            Task {
-                try? await Task.sleep(nanoseconds: 750_000_000)
-                dismiss()
-            }
-        }
-        .onChange(of: scenePhase) {
-            if $0 == .background { transfer.stop() }
         }
         .onDisappear {
-            if !browse && !chooseApps {
-                transfer.stop()
-                if let url = transfer.received {
-                    try? FileManager.default.removeItem(at: url)
-                    transfer.received = nil
-                }
-            }
+            transfer.receiverScreenVisible = false
+            if sending { transfer.endSending() }
         }
-    }
-    private func sendSelectedApps() {
-        guard !selectedAppIDs.isEmpty, transfer.connected, !transfer.busy else { return }
-        startedSending = true
-        do {
-            let url = try store.createNearbyPackage(appIDs: selectedAppIDs)
-            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            guard size <= 100_000_000 else {
-                try? FileManager.default.removeItem(at: url)
-                transferError = "This app is larger than 100 MB. Use Export and AirDrop."
-                startedSending = false
-                return
+        .onChange(of: transfer.acceptedByReceiver) { accepted in
+            if accepted && sending { sendSelectedApps() }
+        }
+        .onChange(of: transfer.recipientConfirmed) { confirmed in
+            guard confirmed, sending else { return }
+            for appID in sentAppIDs {
+                ForgeConversationLog.append(appID, kind: "share", text: "Nearby recipient confirmed importing this app.")
             }
-            transfer.send(url)
-        } catch {
-            startedSending = false
-            transferError = "Could not prepare app: \(error.localizedDescription)"
+            dismiss()
         }
     }
 
+    @ViewBuilder
+    private var senderContent: some View {
+        Section {
+            if transfer.devices.isEmpty && transfer.status == "Looking for nearby devices…" {
+                ProgressView("Looking for nearby devices…")
+            }
+            ForEach(transfer.devices) { device in
+                Button {
+                    prepareOffer(for: device)
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: device.isTablet ? "ipad" : "iphone")
+                            .font(.system(size: 24))
+                            .rotationEffect(.degrees(Double(device.turn) * 90))
+                            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: device.turn)
+                            .frame(width: 40, height: 42)
+                            .accessibilityLabel(device.isTablet ? "iPad" : "iPhone")
+                        Text(device.name)
+                        Spacer()
+                        if chosenDevice?.id == device.id { ProgressView() }
+                    }
+                }
+                .disabled(chosenDevice != nil || transfer.transferActive)
+            }
+        } header: {
+            Text("Devices with HTMLApp open")
+        } footer: {
+            Text("The other device can stay in its Library. It will see the app preview and choose whether to receive it.")
+        }
+
+        if let device = chosenDevice, let app = previewApps.first {
+            Section("Preparing preview") {
+                NearbyAppPreview(html: HTMLAppRuntimeBackend.sharedHTML(app.html, localID: app.id)) { data in
+                    guard chosenDevice?.id == device.id else { return }
+                    chosenDevice = nil
+                    transfer.invite(device, names: previewApps.map(\.name), preview: data)
+                }
+                .id(device.id)
+                .frame(width: 220, height: 220)
+                .frame(maxWidth: .infinity)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                ProgressView("Preparing offer for \(device.name)…")
+            }
+        } else if transfer.transferActive {
+            Section { ProgressView(transfer.sendingBusy ? "Sending app…" : "Waiting for the receiving device…") }
+        }
+    }
+
+    private func prepareOffer(for device: NearbyDevice) {
+        guard chosenDevice == nil, !transfer.transferActive else { return }
+        let apps = store.orderedApps.filter { appIDs.contains($0.id) }
+        guard !apps.isEmpty, apps.count <= 30 else {
+            transfer.status = apps.isEmpty ? "These apps are no longer in your Library." : "Select 30 apps or fewer to send together."
+            return
+        }
+        previewApps = apps
+        chosenDevice = device
+    }
+
+    private func sendSelectedApps() {
+        let reviewed = previewApps
+        let reviewedIDs = Set(reviewed.map(\.id))
+        guard !reviewedIDs.isEmpty,
+              reviewed.allSatisfy({ reviewedApp in
+                store.apps.contains { $0.id == reviewedApp.id && $0.updatedAt == reviewedApp.updatedAt &&
+                        $0.name == reviewedApp.name && $0.html == reviewedApp.html }
+              }) else {
+            transfer.failSending("An app changed after its preview was made. Choose the device to create a new offer.")
+            return
+        }
+        do {
+            let url = try store.createNearbyPackage(appIDs: reviewedIDs)
+            let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            guard let size, (1...NearbyAppTransfer.maximumArchiveBytes).contains(size) else {
+                try? FileManager.default.removeItem(at: url)
+                transfer.failSending("The package is unavailable or exceeds the 100 MB transfer limit.")
+                return
+            }
+            sentAppIDs = reviewedIDs
+            transfer.send(url)
+        } catch {
+            transfer.failSending("Couldn’t prepare the apps: \(error.localizedDescription)")
+        }
+    }
 }
