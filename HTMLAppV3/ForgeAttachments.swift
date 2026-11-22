@@ -402,6 +402,7 @@ private struct ForgeAttachmentReview: View {
     let cancel: () -> Void
     @State private var prompt = ""
     @State private var preparing = true
+    @State private var submitting = false
     @State private var removal: ForgeAttachment?
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
 
@@ -443,11 +444,17 @@ private struct ForgeAttachmentReview: View {
                     Button(action: cancel) {
                         Text("Cancel").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
                     }.modifier(ForgeReviewButtonStyle(kind: .cancel))
-                    Button { generate(prompt.trimmingCharacters(in: .whitespacesAndNewlines)) } label: {
-                        Text("Generate").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
+                    Button {
+                        let request = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !submitting, !request.isEmpty else { return }
+                        submitting = true
+                        generate(request)
+                    } label: {
+                        ForgeGenerationButtonLabel(title: "Generate", isLoading: submitting)
+                            .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
                     }
                     .modifier(ForgeReviewButtonStyle(kind: .generate))
-                    .disabled(preparing || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(submitting || preparing || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 .padding(20)
                 .background(.regularMaterial)

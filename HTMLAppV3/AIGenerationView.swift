@@ -16,6 +16,9 @@ struct AIGenerationView: View {
     @State private var nextRequestFromVoice = false
     @State private var dictationForEdit = false
     @State private var generationTask: Task<Void, Never>?
+    @State private var generationPreparationID: UUID?
+
+    private var startingGeneration: Bool { generationPreparationID != nil }
     @State private var polishTask: Task<UIOverhaulResult, Error>?
     @State private var skipUIPolish = false
     @State private var forgeActivityJobID: String?
@@ -454,7 +457,7 @@ struct AIGenerationView: View {
         Group {
             if ForgeBackgroundUpload.shared.isActive {
                 backgroundForgePendingView
-            } else if existingApp == nil && (exploringStyles || !styleOptions.isEmpty || styleFailure != nil) {
+            } else if existingApp == nil && !session.isWorking && (exploringStyles || !styleOptions.isEmpty || styleFailure != nil) {
                 styleSelectionView
             } else if session.streamedHTML.isEmpty && !session.isWorking && !browserResearch.isBrowsing {
                 if shortcutSource == "libraryMic" && !libraryPromptRequested {
@@ -533,7 +536,7 @@ struct AIGenerationView: View {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") {
                     if demoMode { generationTask?.cancel(); dismiss(); return }
-                    if ForgeBackgroundUpload.shared.isActive || exploringStyles || !styleOptions.isEmpty || styleFailure != nil || session.isWorking || browserResearch.isBrowsing || !session.streamedHTML.isEmpty {
+                    if ForgeBackgroundUpload.shared.isActive || startingGeneration || exploringStyles || !styleOptions.isEmpty || styleFailure != nil || session.isWorking || browserResearch.isBrowsing || !session.streamedHTML.isEmpty {
                         showCancelConfirmation = true
                     } else {
                         AIDebugTraceStore.shared.finish(outcome: "Canceled before starting")
@@ -647,6 +650,7 @@ struct AIGenerationView: View {
             titleVisibility: .visible
         ) {
             Button("Discard and Close", role: .destructive) {
+                generationPreparationID = nil
                 questionAlreadyAsked = false
                 pendingChoiceQuestion = false
                 questionTimer?.cancel()
@@ -849,7 +853,7 @@ struct AIGenerationView: View {
     }
 
     private func retryChecks() {
-        guard canRetryChecks, !session.isWorking, !saving else { return }
+        guard canRetryChecks, !startingGeneration, !session.isWorking, !saving else { return }
         generationTask?.cancel()
         generationTask = Task { await session.verifyCurrent(retryingChecks: true) }
     }
@@ -878,6 +882,7 @@ struct AIGenerationView: View {
                 }
 
                 TextEditor(text: $prompt)
+                    .disabled(startingGeneration)
                     .frame(height: 150)
                     .font(.body)
                 HStack(spacing: 14) {
@@ -990,14 +995,16 @@ struct AIGenerationView: View {
                 Button {
                     submitPromptGeneration()
                 } label: {
-                    Label(generateAfterVoiceTranscription ? "Finishing transcription…" :
-                          (existingApp == nil && !demoMode ? "Start Generating" : "Make My App"),
-                          systemImage: "sparkles")
-                        .frame(maxWidth: .infinity)
+                    ForgeGenerationButtonLabel(
+                        title: existingApp == nil && !demoMode ? "Start Generating" : "Make My App",
+                        isLoading: startingGeneration || generateAfterVoiceTranscription,
+                        loadingTitle: generateAfterVoiceTranscription ? "Finishing transcription…" : "Starting…"
+                    )
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(generateAfterVoiceTranscription ||
+                .disabled(startingGeneration || pendingChoiceQuestion || generateAfterVoiceTranscription ||
                           (prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                            !(isWidgetVoiceEntry && (promptMicHeld || dictation.transcribingOffline))) ||
                           (!demoMode && !AISettingsStore.configuration.isConfigured))
@@ -1140,7 +1147,11 @@ struct AIGenerationView: View {
         let text = (edit ? changePrompt : prompt).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !session.isWorking else { return }
         let originalHTML = session.streamedHTML
-        if !edit { session.beginDraft(prompt: text) }
+        if !edit {
+            styleOptions = []
+            styleFailure = nil
+            session.beginDraft(prompt: text)
+        }
         session.errorMessage = nil
         session.isWorking = true
         session.phase = edit ? "Editing with on-device Apple Intelligence" : "Generating with on-device Apple Intelligence"
@@ -1186,7 +1197,7 @@ struct AIGenerationView: View {
     }
 
     private func submitPromptGeneration() {
-        guard !dictation.testingMic else { return }
+        guard !startingGeneration, !pendingChoiceQuestion, !dictation.testingMic else { return }
         if !isWidgetVoiceEntry && dictation.finishingAppleSpeech { return }
         if isWidgetVoiceEntry && (promptMicHeld || dictation.recording || dictation.requestingPermission) {
             stopPromptRecording()
@@ -1322,18 +1333,22 @@ struct AIGenerationView: View {
                                             )
                                         }
                                         .buttonStyle(.plain)
-                                        .disabled(available == nil || exploringStyles)
+                                        .disabled(startingGeneration || available == nil || exploringStyles)
                                         .accessibilityLabel("View mockup \(slot + 1)")
                                     }
                                     Button {
                                         generateAdditionalStyles()
                                     } label: {
-                                        Image(systemName: "plus.circle.fill").accessibilityLabel("More styles")
-                                            .font(.subheadline.weight(.semibold))
-                                            .frame(height: 46)
+                                        Group {
+                                            if exploringStyles { ProgressView().controlSize(.small) }
+                                            else { Image(systemName: "plus.circle.fill") }
+                                        }
+                                        .accessibilityLabel(exploringStyles ? "Generating more styles" : "More styles")
+                                        .font(.subheadline.weight(.semibold))
+                                        .frame(height: 46)
                                     }
                                     .buttonStyle(.bordered)
-                                    .disabled(exploringStyles || styleOptions.isEmpty)
+                                    .disabled(startingGeneration || exploringStyles || styleOptions.isEmpty)
                                 }
                             }
                             .frame(width: 62, height: min(max(235, geometry.size.height * 0.52), 610))
@@ -1349,7 +1364,10 @@ struct AIGenerationView: View {
                             Text("Style previews aren't available").font(.headline)
                             Text(failure).font(.subheadline).foregroundStyle(.secondary)
                             Button("Try previews again") { exploreStyleOptions() }
-                            Button("Build app directly") { skipStyleSelection() }
+                            Button(action: skipStyleSelection) {
+                                ForgeGenerationButtonLabel(title: "Build app directly", isLoading: startingGeneration)
+                            }
+                            .disabled(startingGeneration)
                         }
                         Spacer()
                     }
@@ -1376,16 +1394,16 @@ struct AIGenerationView: View {
                             }
                             .buttonStyle(.bordered)
                             .accessibilityLabel("Generate new style choices")
+                            .disabled(startingGeneration)
                             Button {
                                 selectedStyle = styleOptions[selectedStyleIndex]
-                                styleOptions = []
-                                styleFailure = nil
                                 generateApp()
                             } label: {
-                                Label("Use this look", systemImage: "checkmark.circle.fill")
+                                ForgeGenerationButtonLabel(title: "Use this look", systemImage: "checkmark.circle.fill", isLoading: startingGeneration)
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
+                            .disabled(startingGeneration)
                         }
                         if let styleFeedbackNotice {
                             Text(styleFeedbackNotice)
@@ -1462,7 +1480,7 @@ struct AIGenerationView: View {
     }
 
     private func generateAdditionalStyles() {
-        guard !exploringStyles else { return }
+        guard !startingGeneration, !exploringStyles else { return }
         let idea = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !idea.isEmpty else { return }
         let firstIndex = (styleOptions.map(\.id).max() ?? -1) + 1
@@ -1501,6 +1519,7 @@ struct AIGenerationView: View {
     }
 
     private func exploreStyleOptions() {
+        guard !startingGeneration else { return }
         HTMLAppFirstUseTips.show("firstAI")
         let idea = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let requestedAppearance = colorScheme == .dark ? "dark" : "light"
@@ -1597,14 +1616,13 @@ struct AIGenerationView: View {
     }
 
     private func skipStyleSelection() {
+        guard !startingGeneration else { return }
         generationTask?.cancel()
         preparedStyleTask?.cancel()
         preparedStyleTask = nil
         preparedStylePrompt = nil
         exploringStyles = false
-        styleOptions = []
         selectedStyleIndex = 0
-        styleFailure = nil
         selectedStyle = nil
         generateApp()
     }
@@ -1782,7 +1800,7 @@ struct AIGenerationView: View {
                                     .disabled(changePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                                 Button(existingApp == nil ? "Save App" : "Save Changes") { saveGeneratedApp() }
                                     .buttonStyle(.borderedProminent)
-                                    .disabled(saving || canRetryChecks)
+                                    .disabled(startingGeneration || saving || canRetryChecks)
                             }
                             if !session.lastEditSummary.isEmpty {
                                 Text(session.lastEditSummary)
@@ -1796,21 +1814,24 @@ struct AIGenerationView: View {
                         } else {
                             HStack(spacing: 10) {
                                 if existingApp == nil {
-                                    Button("Regenerate from scratch") {
+                                    Button {
+                                        guard !startingGeneration else { return }
                                         generationTask?.cancel()
                                         // Preserve the user's approved design and its full
                                         // mockup HTML across a from-scratch coding retry.
                                         showingChange = false
                                         session.clearCheckpoint()
                                         generateApp()
+                                    } label: {
+                                        ForgeGenerationButtonLabel(title: "Regenerate from scratch", isLoading: startingGeneration)
                                     }
-                                    .disabled(session.isWorking || saving)
+                                    .disabled(startingGeneration || session.isWorking || saving)
                                 }
                                 Button(existingApp == nil ? "Change this…" : "Ask AI to edit…") { showingChange = true }
                                     .buttonStyle(.bordered)
                                 Button(existingApp == nil ? "Save App" : "Save Changes") { saveGeneratedApp() }
                                     .buttonStyle(.borderedProminent)
-                                    .disabled(saving || canRetryChecks)
+                                    .disabled(startingGeneration || saving || canRetryChecks)
                             }
                         }
                     }
@@ -2128,6 +2149,7 @@ struct AIGenerationView: View {
         let idea = incoming.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !idea.isEmpty else { return }
         generationTask?.cancel()
+        generationPreparationID = nil
         dictation.stop()
         exploringStyles = false
         styleOptions = []
@@ -2277,7 +2299,11 @@ struct AIGenerationView: View {
     }
 
     private func generateApp() {
+        guard !startingGeneration, !pendingChoiceQuestion, !ForgeBackgroundUpload.shared.isActive,
+              !session.isWorking && (!browserResearch.isBrowsing || preparedStyleTask != nil) else { return }
         if requestOfflineForgeIfNeeded(edit: false) { return }
+        let preparation = UUID()
+        generationPreparationID = preparation
         if !generationRequestLogged {
             ForgeConversationLog.append(conversationID, kind: "user", text: prompt + attachments.items.map { "\nAttachment: \($0.name)" }.joined())
             generationRequestLogged = true
@@ -2287,6 +2313,8 @@ struct AIGenerationView: View {
             let source = prompt
             generationTask = Task {
                 let choice = await ForgeQuickClassifier.decide(for: source)
+                guard generationPreparationID == preparation else { return }
+                generationPreparationID = nil
                 guard !Task.isCancelled else { return }
                 quickMode = choice.fast
                 autoQuickReason = choice.reason
@@ -2302,6 +2330,7 @@ struct AIGenerationView: View {
             questionAlreadyAsked = true
             dictation.stop()
             startForgeActivity(edit: false)
+            let activityJob = forgeActivityJobID
             let source = prompt
             generationTask = Task { @MainActor in
                 let question = await ForgeRunOptions.$quick.withValue(quickMode) {
@@ -2309,18 +2338,21 @@ struct AIGenerationView: View {
                         await Self.askForgeQuestion(for: source + ForgeAttachment.textContext(attachments.items))
                     }
                 }
-                guard !Task.isCancelled else { endForgeActivity(); return }
+                guard generationPreparationID == preparation else { return }
+                generationPreparationID = nil
+                guard !Task.isCancelled else { endForgeActivity(onlyIf: activityJob); return }
                 presentForgeQuestion(question, edit: false)
             }
             return
         }
         HTMLAppFirstUseTips.show("generation")
-        guard !ForgeBackgroundUpload.shared.isActive, !session.isWorking &&
-              (!browserResearch.isBrowsing || preparedStyleTask != nil) else { return }
+        styleOptions = []
+        styleFailure = nil
         if demoMode {
             practiceStep = 1
             milestones.reset()
             session.isWorking = true
+            generationPreparationID = nil
             session.phase = "Reading your request"
             generationTask = Task {
                 for stage in ["Designing the calculator", "Generating live preview",
@@ -2363,6 +2395,7 @@ struct AIGenerationView: View {
         session.beginDraft(prompt: originalPrompt)
         session.phase = "Reading your request"
         session.isWorking = true
+        generationPreparationID = nil
         let activityJob = forgeActivityJobID
         let attachmentJob = UUID()
         activeAttachmentJob = attachmentJob
@@ -2487,6 +2520,7 @@ struct AIGenerationView: View {
     }
 
     private func applyAIChange() {
+        guard !startingGeneration else { return }
         guard !dictation.finishingAppleSpeech, !dictation.testingMic else { return }
         guard transcriptReview == nil else { return }
         if demoMode {
@@ -2841,6 +2875,7 @@ Requested edit:
     }
 
     private func stopKeepingDraft() {
+        generationPreparationID = nil
         questionAlreadyAsked = false
         pendingChoiceQuestion = false
         questionTimer?.cancel()
@@ -3049,6 +3084,26 @@ Requested edit:
     private func injectIcon(_ data: Data, into html: String) -> String {
         let tag = "<link rel=\"apple-touch-icon icon\" href=\"data:image/png;base64,\(data.base64EncodedString())\">"
         return ForgeEditIconContext.inserting(tag, into: ForgeEditIconContext(html).html)
+    }
+}
+
+struct ForgeGenerationButtonLabel: View {
+    var title: String
+    var systemImage: String? = nil
+    var isLoading: Bool
+    var loadingTitle = "Starting…"
+
+    var body: some View {
+        if isLoading {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small).accessibilityHidden(true)
+                Text(loadingTitle)
+            }
+        } else if let systemImage {
+            Label(title, systemImage: systemImage)
+        } else {
+            Text(title)
+        }
     }
 }
 

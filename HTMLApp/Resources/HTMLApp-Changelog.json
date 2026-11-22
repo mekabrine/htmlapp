@@ -1,5 +1,35 @@
 [
   {
+    "version": "1.9.33",
+    "summary": "Added immediate Forge generation feedback, improved verification and repair, enabled multi-file app updates, and added pasted skill import.",
+    "changes": [
+      {
+        "title": "See when Forge is starting",
+        "description": "Generate shows a spinner during preparation and transcription. Once the build starts, Forge shows its progress.",
+        "symbol": "sparkles",
+        "tint": "purple"
+      },
+      {
+        "title": "More reliable Forge checks",
+        "description": "Forge can apply multi-part repairs and rerun workflow checks. After two failed retries, you can choose to save the draft with unresolved checks.",
+        "symbol": "checkmark.shield",
+        "tint": "blue"
+      },
+      {
+        "title": "Import and update several apps at once",
+        "description": "Select multiple files in Files. Matching HTML app names and icons update the existing apps while keeping their data.",
+        "symbol": "folder.badge.plus",
+        "tint": "green"
+      },
+      {
+        "title": "Paste a Forge skill",
+        "description": "Import Markdown files or paste the contents of a skill directly into Forge.",
+        "symbol": "doc.on.clipboard",
+        "tint": "purple"
+      }
+    ]
+  },
+  {
     "version": "1.9.32",
     "summary": "Added native walking routes, reliable nearby category searches, and more precise Forge workflow diagnostics.",
     "changes": [

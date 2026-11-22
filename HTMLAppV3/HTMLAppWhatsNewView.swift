@@ -15,8 +15,8 @@ enum HTMLAppReleaseNotes {
 
     // Compile-time release identity. This is not computed from a possibly
     // stale IPA Info.plist or the GitHub runner's commit count.
-    static let compiledVersion = "1.9.32"
-    static let compiledBuild = "137"
+    static let compiledVersion = "1.9.33"
+    static let compiledBuild = "138"
 
     static var installedVersion: String { compiledVersion }
     static var installedBuild: String { compiledBuild }
@@ -33,15 +33,18 @@ enum HTMLAppReleaseNotes {
     static func entries(for version: String) -> [Entry] {
         guard version == compiledVersion else { return [] }
         return [
-            Entry(id: "walking-routes", title: "Walking directions inside your apps",
-                  description: "Forge can use Apple Maps to show walking steps, routed miles, and estimated minutes inside generated apps.",
-                  symbol: "figure.walk", tint: .green),
-            Entry(id: "nearby-categories", title: "Search more nearby categories",
-                  description: "Category lookups run in sequence, and an app can use a confirmed school or other venue as its search center. Forge prioritizes the installed map tools over unrelated API suggestions.",
-                  symbol: "location.magnifyingglass", tint: .blue),
-            Entry(id: "workflow-diagnostics", title: "Clearer app checks and retries",
-                  description: "Forge identifies the exact control and display mode when a workflow fails. Retry keeps the last failure in view so repairs can use it.",
-                  symbol: "checkmark.shield", tint: .purple)
+            Entry(id: "instant-generation", title: "See when Forge is starting",
+                  description: "Generate shows a spinner during preparation and transcription. Once the build starts, Forge shows its progress.",
+                  symbol: "sparkles", tint: .purple),
+            Entry(id: "repair-retries", title: "More reliable Forge checks",
+                  description: "Forge can apply multi-part repairs and rerun workflow checks. After two failed retries, you can choose to save the draft with unresolved checks.",
+                  symbol: "checkmark.shield", tint: .blue),
+            Entry(id: "multi-file-import", title: "Import and update several apps at once",
+                  description: "Select multiple files in Files. Matching HTML app names and icons update the existing apps while keeping their data.",
+                  symbol: "folder.badge.plus", tint: .green),
+            Entry(id: "paste-skills", title: "Paste a Forge skill",
+                  description: "Import Markdown files or paste the contents of a skill directly into Forge.",
+                  symbol: "doc.on.clipboard", tint: .purple)
         ]
     }
 }

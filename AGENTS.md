@@ -14,6 +14,11 @@ marketing version and build number in `project.yml` and synchronize
 entries with short, user-facing notes about that update. Archive every title, description, symbol and tint from What’s New, plus a one-line summary
 for the new version in `HTMLApp/Resources/HTMLApp-Changelog.json`, newest first.
 
+When the owner explicitly requests a same-version product update, keep both
+release numbers and append new What's New entries to the current release.
+Synchronize that release's changelog entry and use the `[no-version-bump]`
+commit marker. A same-version request applies to that update only.
+
 For a change that only fixes a build, compiler, CI, or packaging error, keep the
 version, build number, and What's New entries unchanged. Mark that commit with
 `[build-fix]` so the existing version policy check recognizes the exception.

@@ -183,6 +183,7 @@ struct HTMLAppOfflineForgeConsentView: View {
     let isEdit: Bool
     let onConfirm: (HTMLAppOfflineEffort) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var submitting = false
     @AppStorage("htmlapp.offlineForge.effort") private var effortRaw = HTMLAppOfflineEffort.balanced.rawValue
 
     var body: some View {
@@ -222,11 +223,16 @@ struct HTMLAppOfflineForgeConsentView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Not Now") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isEdit ? "Edit Offline" : "Generate Offline") {
+                    Button {
+                        guard !submitting else { return }
+                        submitting = true
                         let effort = HTMLAppOfflineEffort(rawValue: effortRaw) ?? .balanced
                         dismiss()
                         onConfirm(effort)
+                    } label: {
+                        ForgeGenerationButtonLabel(title: isEdit ? "Edit Offline" : "Generate Offline", isLoading: submitting)
                     }
+                    .disabled(submitting)
                 }
             }
         }

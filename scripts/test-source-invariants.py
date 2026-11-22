@@ -306,7 +306,7 @@ assert 'updateLocalHTML(app, html: payload.html, name: app.name, summary: app.su
 
 # Regeneration must preserve the user-approved mockup, including when a
 # background URLSession request uses the refined planner brief.
-regen = forge.split('Button("Regenerate from scratch") {', 1)[1].split('Button(existingApp == nil ?', 1)[0]
+regen = forge.split('guard !startingGeneration else { return }\n                                        generationTask?.cancel()', 1)[1].split('Button(existingApp == nil ?', 1)[0]
 assert 'selectedStyle = nil' not in regen, "Regenerating must retain the chosen design"
 assert 'let designBrief = selectedStyle.map' in forge
 assert 'message = selectedStyle.map { base + "\\n\\n" + $0.buildInstruction } ?? base' in forge
@@ -851,7 +851,12 @@ assert f'CURRENT_PROJECT_VERSION: "{build}"' in project
 # New app creation offers three previews when the preference is enabled.
 assert 'shortcutSource == "libraryMic" ? libraryVoiceStylePreviews : stylePickerEnabled' in forge
 assert 'if showStyles && existingApp == nil && !demoMode {' in forge
-assert '(existingApp == nil && !demoMode ? "Start Generating" : "Make My App")' in forge
+assert 'title: existingApp == nil && !demoMode ? "Start Generating" : "Make My App"' in forge
+assert 'generationPreparationID = preparation' in generation_start
+assert 'guard generationPreparationID == preparation' in generation_start
+assert 'isLoading: startingGeneration || generateAfterVoiceTranscription' in forge
+assert 'isLoading: showingGeneration' in source("HTMLAppV3/LockScreenVoiceCreateView.swift")
+assert 'title: "Generate", isLoading: submitting' in source("HTMLAppV3/ForgeAttachments.swift")
 assert 'for index in 0..<3 {' in forge
 
 # Experimental offline cache and runtime continuity.

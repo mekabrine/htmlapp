@@ -127,21 +127,21 @@ struct LockScreenVoiceCreateView: View {
             .safeAreaInset(edge: .bottom) {
                 Button {
                     let idea = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !idea.isEmpty else { return }
+                    guard !showingGeneration, !idea.isEmpty else { return }
                     startupTask?.cancel()
                     dictation.cancel()
                     generationContext = context.items
                     generationPrompt = idea
                     showingGeneration = true
                 } label: {
-                    Label("Generate", systemImage: "sparkles")
+                    ForgeGenerationButtonLabel(title: "Generate", systemImage: "sparkles", isLoading: showingGeneration)
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (dictation.recording && !needsMicTest) || dictation.transcribingOffline || dictation.testingMic || dictation.finishingAppleSpeech)
+                .disabled(showingGeneration || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (dictation.recording && !needsMicTest) || dictation.transcribingOffline || dictation.testingMic || dictation.finishingAppleSpeech)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
                 .background(.regularMaterial)

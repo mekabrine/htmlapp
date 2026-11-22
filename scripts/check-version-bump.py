@@ -3,7 +3,7 @@
 
 Use [build-fix] in the commit subject only when a commit exclusively fixes a
 build/CI/compiler/package failure and intentionally should not trigger What's New.
-Use [no-version-bump] only for an owner-requested same-version update. The current release notes must still match the changelog.
+Use [no-version-bump] only for an owner-requested same-version update. Append notes to the current release and update its changelog entry.
 """
 
 from pathlib import Path
@@ -88,6 +88,10 @@ if (not expected_changes or not changelog or changelog[0]["version"] != new_vers
     raise SystemExit("Archive every current What's New title, description, symbol and tint in the newest changelog entry.")
 
 if same_version:
+    previous = json.loads(git("show", f"{parent}:HTMLApp/Resources/HTMLApp-Changelog.json"))
+    previous_changes = previous[0]["changes"]
+    if expected_changes[:len(previous_changes)] != previous_changes or len(expected_changes) == len(previous_changes):
+        raise SystemExit("Append What's New entries to the current release for a same-version update.")
     print(f"Same-version update verified: {new_version} ({new_build}).")
     sys.exit(0)
 
