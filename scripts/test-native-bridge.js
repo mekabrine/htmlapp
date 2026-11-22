@@ -403,6 +403,19 @@ function testForgeWorkflowProbe() {
   assert.match(probe({ ...fixture, tap: '#missing' }, true), /^blocked:Tap control #missing was missing/);
 }
 
+async function testForgeStorageProbe() {
+  const verifier = fs.readFileSync(path.join(root, 'HTMLAppV3/HTMLRuntimeVerifier.swift'), 'utf8');
+  const script = verifier.split('let storageProbe = #"""')[1].split('"""#')[0];
+  const probe = vm.runInNewContext('(async (selector, expected, requiresLocalSeed) => {' + script + '})', {
+    window: { __htmlappQAStorageSeeded: false },
+    document: { querySelector: () => ({ getClientRects: () => [1], innerText: 'Blue · 5 min' }) },
+    setTimeout: resolve => resolve()
+  });
+  assert.equal(await probe('#historyList', 'Blue', true), 'seed-unavailable');
+  assert.equal(await probe('#historyList', 'Blue', false), 'matched');
+  assert.equal(await probe('#historyList', 'Red', false), 'missing');
+}
+
 function testForgeTapabilityProbe() {
   const verifier = fs.readFileSync(path.join(root, 'HTMLAppV3/HTMLRuntimeVerifier.swift'), 'utf8');
   const script = verifier.split('let touchabilityProbe = #"""')[1].split('"""#')[0];
@@ -458,6 +471,7 @@ function testForgeScriptDiagnostics() {
   await testForgeDrivingScenario();
   testForgeScreenSelection();
   testForgeWorkflowProbe();
+  await testForgeStorageProbe();
   testForgeTapabilityProbe();
   testForgeScriptDiagnostics();
   console.log('Native bridge and app viewport JS tests passed.');

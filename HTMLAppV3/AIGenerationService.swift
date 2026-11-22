@@ -1427,7 +1427,9 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         let original = streamedHTML
         var testMode = ForgeTestMode.selected
         let legacyFixture = beforeEdit.flatMap(HTMLRuntimeVerifier.legacyStorageFixture)
-        let previousWorkflows = beforeEdit.map(HTMLRuntimeVerifier.workflowFixtures) ?? []
+            ?? HTMLRuntimeVerifier.legacyStorageFixture(original)
+        let priorWorkflows = beforeEdit.map(HTMLRuntimeVerifier.workflowFixtures) ?? []
+        let previousWorkflows = priorWorkflows.isEmpty ? HTMLRuntimeVerifier.workflowFixtures(original) : priorWorkflows
         if testMode == .fast, editRequest != nil, lastEditWasComplex { testMode = .balanced }
         if forceChecks && testMode == .skip { testMode = .fast }
         if testMode == .skip {
@@ -1444,11 +1446,13 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         AIDebugTraceStore.shared.append("QA CLASSIFICATION",
             "Blocking: \(initial.blocking.count); Advisory: \(initial.advisory.count)\n" +
             (initial.blocking + initial.advisory).joined(separator: "\n"))
-        let unverifiedWorkflows = initial.advisory.filter { $0.hasPrefix("Workflow verification unavailable:") }
-        draftHasBlockingQA = !initial.blocking.isEmpty || !unverifiedWorkflows.isEmpty
-        if initial.blocking.isEmpty && !unverifiedWorkflows.isEmpty {
-            verificationReport = unverifiedWorkflows.joined(separator: " ")
-            throw AIGenerationError.unresolvedAppChecks(unverifiedWorkflows)
+        let unavailableChecks = initial.advisory.filter {
+            $0.hasPrefix("Workflow verification unavailable:") || $0.hasPrefix("Storage verification unavailable:")
+        }
+        draftHasBlockingQA = !initial.blocking.isEmpty || !unavailableChecks.isEmpty
+        if initial.blocking.isEmpty && !unavailableChecks.isEmpty {
+            verificationReport = unavailableChecks.joined(separator: " ")
+            throw AIGenerationError.unresolvedAppChecks(unavailableChecks)
         }
         if initial.blocking.isEmpty {
             let summary = testMode == .fast
@@ -1475,12 +1479,16 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
         if !previousFailure.isEmpty {
             repairEvidence += "\nA previous repair attempt was rejected. Reconsider the diagnosis using the current probe evidence. Previous retest: " + previousFailure
         }
+        let runtimeDiagnostics = initial.advisory.filter {
+            $0.hasPrefix("opaque script error:") || $0.hasPrefix("unhandled rejection:") ||
+                $0.hasPrefix("console.error:") || $0.hasPrefix("resource error:")
+        }
         var plan = ""
         phase = "Diagnosing failed app checks"
         do {
             plan = try await AIHTMLAgent.planQARepair(
                 html: iconContext.html, request: request, issues: initial.blocking,
-                previousFailure: previousFailure, config: planner)
+                previousFailure: previousFailure, runtimeDiagnostics: runtimeDiagnostics, config: planner)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -1499,13 +1507,13 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             qaRepairResponseBytes = response.utf8.count
             repairSummary = Self.repairSummary(in: response)
             let output = AIHTMLAgent.parse(response)
-            let fixed = output.patch.trimmed.isEmpty
-                ? output.html
-                : HTMLPatchApplier.apply(output.patch, to: iconContext.html)
+            let patchResult = output.patch.trimmed.isEmpty ? nil
+                : HTMLPatchApplier.applyDetailed(output.patch, to: iconContext.html)
+            let fixed: String? = patchResult == nil ? output.html : patchResult?.html
             if let fixed, !fixed.trimmed.isEmpty, fixed != iconContext.html {
                 repairedHTML = iconContext.restoringIcons(in: fixed)
             } else {
-                let issue = "The AI repair did not produce an applicable change."
+                let issue = patchResult?.failureReason ?? "The AI repair did not change the draft."
                 AIDebugTraceStore.shared.append("QA PATCH", issue)
                 remaining.append(issue)
             }
@@ -1525,7 +1533,8 @@ Your previous response was cut off before the HTMLApp output was complete. Conti
             remaining = retest.blocking + retest.advisory.filter {
                 $0.hasPrefix("Runtime: offscreen WebView verification timed out") ||
                 $0.hasPrefix("Runtime: WebView was unavailable") ||
-                $0.hasPrefix("Workflow verification unavailable:")
+                $0.hasPrefix("Workflow verification unavailable:") ||
+                $0.hasPrefix("Storage verification unavailable:")
             }
             let oldModel = ForgeSemanticAppModel.build(html: original, purpose: "")
             let repairedModel = ForgeSemanticAppModel.build(html: repairedHTML, purpose: "")
@@ -3010,7 +3019,7 @@ Icon direction: infer the most distinctive product metaphor yourself. Do not req
 
     static func planQARepair(
         html: String, request: String, issues: [String], previousFailure: String,
-        config: AIProviderConfiguration
+        runtimeDiagnostics: [String], config: AIProviderConfiguration
     ) async throws -> String {
         let system = """
 Diagnose confirmed failures in a generated HTMLApp using the supplied source and local WebKit test results.
@@ -3028,6 +3037,9 @@ APP REQUEST:
 
 CONFIRMED FAILURES:
 \(issues.joined(separator: "\n"))
+
+RUNTIME DIAGNOSTICS (may explain startup failures):
+\(runtimeDiagnostics.prefix(5).joined(separator: "\n"))
 
 PREVIOUS RETEST:
 \(previousFailure.isEmpty ? "None." : previousFailure)
@@ -3051,7 +3063,7 @@ SOURCE:
 You are HTMLApp's Coding Agent. Apply the smallest code changes that resolve the confirmed app-check failures.
 Verify the diagnosis against the source. If the diagnosis is unavailable, use the test failures directly.
 Preserve the app's UI, working controls, IDs, storage keys, bundled files and native integrations.
-Return exact, unique SEARCH/REPLACE blocks under <htmlapp_patch>...</htmlapp_patch>.
+Return one <htmlapp_patch> section containing one or more blocks. Use the literal markers "<<<<<<< SEARCH", "=======", and ">>>>>>> REPLACE", each on its own line. Put the exact source between the first two markers and the replacement between the last two.
 If a patch cannot express the change, return a complete <htmlapp_code>...</htmlapp_code> document.
 Include <repair_summary>one sentence explaining the actual change</repair_summary>.
 """
@@ -3149,7 +3161,7 @@ Interrupted/malformed response:
         let summary = value("build_summary", in: text).trimmed
         return AIGenerationOutput(
             html: sanitizeHTMLPayload(value("htmlapp_code", in: text)),
-            patch: sanitizePatchPayload(value("htmlapp_patch", in: text)),
+            patch: patch(from: text),
             description: value("description", in: text).trimmed,
             iconScript: value("icon_script", in: text).trimmed,
             assetScripts: parseAssetScripts(value("asset_scripts", in: text)),
@@ -3196,7 +3208,7 @@ Interrupted/malformed response:
 
     private static func sanitizePatchPayload(_ raw: String) -> String {
         var patch = stripMarkdownFences(raw)
-        if let start = patch.range(of: "<<<<<<< SEARCH")?.lowerBound {
+        if !patch.hasPrefix("<search>"), let start = patch.range(of: "<<<<<<< SEARCH")?.lowerBound {
             patch = String(patch[start...])
         }
         return patch.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3289,7 +3301,9 @@ Interrupted/malformed response:
     }
 
     static func verification(from text: String) -> String { value("verification", in: text).trimmed }
-    static func patch(from text: String) -> String { value("htmlapp_patch", in: text) }
+    static func patch(from text: String) -> String {
+        HTMLPatchApplier.responsePayload(in: text) { sanitizePatchPayload($0) }
+    }
     static func iconScript(from text: String) -> String { value("icon_script", in: text) }
 
     private static func values(_ tag: String, in text: String) -> [String] {
@@ -3329,6 +3343,24 @@ enum HTMLPatchApplier {
         let replacement: String
     }
 
+    static func responsePayload(in response: String, sanitize: (String) -> String) -> String {
+        let open = "<htmlapp_patch>", close = "</htmlapp_patch>"
+        var rest = response[...]
+        var payloads: [String] = []
+        while let start = rest.range(of: open) {
+            let body = rest[start.upperBound...]
+            guard let end = body.range(of: close),
+                  body[..<end.lowerBound].range(of: open) == nil else {
+                // Preserve malformed output as a failed patch, never a partial transaction.
+                return open
+            }
+            let payload = sanitize(String(body[..<end.lowerBound]))
+            if !payload.isEmpty { payloads.append(payload) }
+            rest = body[end.upperBound...]
+        }
+        return payloads.joined(separator: "\n")
+    }
+
     static func apply(_ patch: String, to source: String) -> String? {
         applyDetailed(patch, to: source).html
     }
@@ -3366,6 +3398,10 @@ enum HTMLPatchApplier {
     }
 
     private static func parseBlocks(_ patch: String) -> [Block]? {
+        let text = patch.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("<search>") {
+            return parseTaggedBlocks(text)
+        }
         enum State { case outside, search, replacement }
         var state = State.outside
         var search: [String] = []
@@ -3396,6 +3432,29 @@ enum HTMLPatchApplier {
         }
         // Reject the whole transaction if even the last block was cut off.
         return state == .outside ? blocks : nil
+    }
+
+    private static func parseTaggedBlocks(_ text: String) -> [Block]? {
+        let pattern = #"\s*<search>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*</search>\s*<replace>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*</replace>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let complete = NSRange(text.startIndex..., in: text)
+        let matches = regex.matches(in: text, range: complete)
+        guard let last = matches.last, NSMaxRange(last.range) == complete.length else { return nil }
+        var blocks: [Block] = []
+        var nextLocation = 0
+        for match in matches {
+            guard match.range.location == nextLocation,
+                  let searchRange = Range(match.range(at: 1), in: text),
+                  let replacementRange = Range(match.range(at: 2), in: text) else { return nil }
+            let search = String(text[searchRange])
+            guard !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !search.contains("]]>") else { return nil }
+            let replacement = String(text[replacementRange])
+            guard !replacement.contains("]]>") else { return nil }
+            blocks.append(Block(search: search, replacement: replacement))
+            nextLocation = NSMaxRange(match.range)
+        }
+        return blocks
     }
 
     private static func uniqueRange(of search: String, in source: String) -> MatchResult {

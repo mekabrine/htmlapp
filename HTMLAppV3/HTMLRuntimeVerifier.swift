@@ -136,12 +136,22 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             forMainFrameOnly: true
         ))
 
-        if let values = legacyFixture?.localStorage,
+        if let values = legacyFixture?.localStorage, !values.isEmpty,
            let data = try? JSONSerialization.data(withJSONObject: values),
            let json = String(data: data, encoding: .utf8) {
-            controller.addUserScript(WKUserScript(
-                source: "try { for (const [key,value] of Object.entries(\(json))) localStorage.setItem(key,value); } catch (_) {}",
-                injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            controller.addUserScript(WKUserScript(source: """
+                (() => {
+                  try {
+                    for (const [key,value] of Object.entries(\(json))) {
+                      localStorage.setItem(key, value);
+                      if (localStorage.getItem(key) !== value) throw new Error('readback failed');
+                    }
+                    window.__htmlappQAStorageSeeded = true;
+                  } catch (error) {
+                    window.__htmlappQAStorageSeeded = false;
+                  }
+                })();
+                """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         if testDriving {
             controller.addUserScript(WKUserScript(source: Self.driveFixtures, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -434,17 +444,26 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             } catch { appendIssue("Current venue: driving scenario could not execute.") }
         }
         if let fixture = legacyFixture {
-            let script = """
-            for (let pass = 0; pass < 20; pass++) {
-              const element = document.querySelector(selector);
-              if (element?.getClientRects().length && element.innerText.includes(expected)) return true;
-              await new Promise(resolve => setTimeout(resolve, 40));
+            let arguments: [String: Any] = [
+                "selector": fixture.selector, "expected": fixture.expectedText,
+                "requiresLocalSeed": !(fixture.localStorage ?? [:]).isEmpty
+            ]
+            do {
+                let result = try await webView.callAsyncJavaScript(Self.storageProbe, arguments: arguments, in: nil, in: .page)
+                switch result as? String {
+                case "matched": break
+                case "seed-unavailable":
+                    appendIssue("Storage verification unavailable: WebView could not seed the localStorage sample.")
+                case "invalid-selector":
+                    appendIssue("Storage fixture: the sample selector is invalid.")
+                case "missing":
+                    appendIssue("Legacy storage: the sample record did not appear in \(fixture.selector) after startup.")
+                default:
+                    appendIssue("Storage verification unavailable: the app check returned no storage result.")
+                }
+            } catch {
+                appendIssue("Storage verification unavailable: " + error.localizedDescription)
             }
-            return false;
-            """
-            let result = try? await webView.callAsyncJavaScript(script,
-                arguments: ["selector": fixture.selector, "expected": fixture.expectedText], in: nil, in: .page)
-            if (result as? Bool) != true { appendIssue("Legacy storage: the sample record did not appear after startup.") }
         }
         for workflow in workflows {
             await checkWorkflow(workflow, in: webView)
@@ -523,11 +542,11 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
 
     private func checkWorkflow(_ workflow: ForgeWorkflowFixture, in webView: WKWebView) async {
         let selectors = ["tap": workflow.tap, "expected": workflow.visible]
-        guard let bytes = try? JSONSerialization.data(withJSONObject: selectors),
-              let json = String(data: bytes, encoding: .utf8) else { return }
+        let script = "return (\(Self.workflowProbe))(selectors, tap);"
         do {
-            let setup = "((Self.workflowProbe))((json), true)"
-            guard let initial = try await evaluate(setup, in: webView) as? String else {
+            let setup = try await webView.callAsyncJavaScript(
+                script, arguments: ["selectors": selectors, "tap": true], in: nil, in: .page)
+            guard let initial = setup as? String else {
                 appendIssue("Workflow verification unavailable: " + workflow.name + " returned no test result.")
                 return
             }
@@ -544,8 +563,9 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             for _ in 0..<14 {
                 try await Task.sleep(nanoseconds: 40_000_000)
                 guard !completed else { return }
-                let poll = "((Self.workflowProbe))((json), false)"
-                guard let current = try await evaluate(poll, in: webView) as? String else {
+                let poll = try await webView.callAsyncJavaScript(
+                    script, arguments: ["selectors": selectors, "tap": false], in: nil, in: .page)
+                guard let current = poll as? String else {
                     appendIssue("Workflow verification unavailable: " + workflow.name + " returned no result after the tap.")
                     return
                 }
@@ -559,6 +579,18 @@ private final class HTMLRuntimeCheckSession: NSObject, WKNavigationDelegate, WKS
             appendIssue("Workflow verification unavailable: " + workflow.name + " — " + error.localizedDescription)
         }
     }
+
+    private static let storageProbe = #"""
+    if (requiresLocalSeed && window.__htmlappQAStorageSeeded !== true) return 'seed-unavailable';
+    for (let pass = 0; pass < 20; pass++) {
+      let element;
+      try { element = document.querySelector(selector); }
+      catch (_) { return 'invalid-selector'; }
+      if (element?.getClientRects().length && element.innerText.includes(expected)) return 'matched';
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+    return 'missing';
+    """#
 
     private static let workflowProbe = #"""
     (selectors, click) => {

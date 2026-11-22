@@ -564,6 +564,11 @@ assert "native_timeout" in native and "clearTimeout(item.timer)" in native
 
 assert "Math.min(innerHeight, rect.bottom)" in runtime_verifier
 assert "filter(item => item.bounds).slice(0, 35)" in runtime_verifier
+assert r'return (\(Self.workflowProbe))(selectors, tap);' in runtime_verifier
+assert 'arguments: ["selectors": selectors, "tap": true]' in runtime_verifier
+assert 'arguments: ["selectors": selectors, "tap": false]' in runtime_verifier
+assert 'window.__htmlappQAStorageSeeded = true' in runtime_verifier
+assert "Storage verification unavailable:" in qa
 assert 'let normalized = String(value.reversed().drop(while: { $0 == "/" }).reversed())' in source("HTMLAppV3/AIConfiguration.swift")
 assert '"hasData": sum != nil' in source("HTMLAppV3/HTMLAppHealthReader.swift")
 

@@ -30,6 +30,22 @@ struct GenerationReliabilityTests {
         precondition(HTMLPatchApplier.apply(patch("const x = '=======';", "const x = 'ok';"),
                                           to: "const x = '=======';") == "const x = 'ok';")
         precondition(HTMLPatchApplier.apply(first.replacingOccurrences(of: "\n", with: "\r\n"), to: "alpha") == "one")
+        func taggedPatch(_ search: String, _ replacement: String) -> String {
+            "<htmlapp_patch>\n<search><![CDATA[" + search + "]]></search>\n" +
+                "<replace><![CDATA[" + replacement + "]]></replace>\n</htmlapp_patch>"
+        }
+        func payload(_ response: String) -> String {
+            HTMLPatchApplier.responsePayload(in: response) { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        }
+        let taggedFirst = taggedPatch("  alpha", "  one")
+        let taggedSecond = taggedPatch("  beta", "  two")
+        let taggedThird = taggedPatch("  gamma", "")
+        let source = "  alpha\n  beta\n  gamma"
+        precondition(HTMLPatchApplier.apply(payload(taggedFirst + taggedSecond + taggedThird), to: source) == "  one\n  two\n")
+        precondition(HTMLPatchApplier.apply(payload(taggedFirst + taggedPatch("missing", "x")), to: source) == nil)
+        precondition(HTMLPatchApplier.apply(payload(taggedFirst + "<htmlapp_patch><search>"), to: source) == nil)
+        precondition(HTMLPatchApplier.apply(payload(taggedFirst + "<htmlapp_patch><search></search></htmlapp_patch>"), to: source) == nil)
+        precondition(HTMLPatchApplier.apply(payload("<htmlapp_patch>" + first + "</htmlapp_patch><htmlapp_patch>" + second + "</htmlapp_patch>"), to: "alpha beta") == "one two")
         let icon = "<link href='data:image/png;base64," + String(repeating: "A", count: 200_000)
             + "' rel='apple-touch-icon icon'>"
         let photo = "<img src='data:image/png;base64,appPhoto'>"
