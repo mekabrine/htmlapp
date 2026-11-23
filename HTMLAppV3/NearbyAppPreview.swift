@@ -58,11 +58,10 @@ struct NearbyAppPreview: UIViewRepresentable {
                     guard let list else { self.finish(nil); return }
                     webView.configuration.userContentController.add(list)
                     let source = Self.restrictNetwork(in: html)
-                    if HTMLAppDocumentMode.usesPackageRuntime(source) {
-                        self.navigation = self.resources.load(source, into: webView)
-                    } else {
-                        self.navigation = webView.loadHTMLString(source, baseURL: nil)
-                    }
+                    self.navigation = self.resources.loadDocument(
+                        source, packageRuntime: HTMLAppDocumentMode.usesPackageRuntime(source),
+                        into: webView, legacyBaseURL: nil
+                    )
                 }
             }
         }

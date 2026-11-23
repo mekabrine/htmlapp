@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.9.37",
+    "summary": "Makes bundled libraries available to older saved apps and starts caching linked libraries on online opens.",
+    "changes": [
+      {
+        "title": "Libraries available offline",
+        "description": "Saved apps can load bundled libraries like Chart.js offline. When offline caching is enabled, HTMLApp also tries to save linked scripts and stylesheets as you open an app online.",
+        "symbol": "shippingbox",
+        "tint": "blue"
+      }
+    ]
+  },
+  {
     "version": "1.9.36",
     "summary": "Redesigned Nearby Transfer with a direct device picker, live orientation icons, and app previews before acceptance.",
     "changes": [

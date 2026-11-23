@@ -27,6 +27,14 @@ final class HTMLAppResourceScheme: NSObject, WKURLSchemeHandler {
         url.port == nil && url.query == nil
     }
 
+    func loadDocument(_ html: String, packageRuntime: Bool, into webView: WKWebView, legacyBaseURL: URL?) -> WKNavigation? {
+        if packageRuntime { return load(html, into: webView) }
+        let document = HTMLAppDocumentMode.resolvingBundledLibraries(
+            in: html, origin: "\(Self.scheme)://\(host)"
+        )
+        return webView.loadHTMLString(document, baseURL: legacyBaseURL)
+    }
+
     @discardableResult
     func load(_ html: String, into webView: WKWebView) -> WKNavigation? {
         document = Data(html.utf8)

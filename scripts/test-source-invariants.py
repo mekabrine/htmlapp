@@ -917,7 +917,7 @@ assert 'title: "Experimental Offline Copy"' in editor_web
 assert 'HTMLAppRuntimeStateStore.consume(appID: appID)' in editor_web
 assert 'HTMLAppRuntimeStateStore.opened(appID: app.id)' in app_core
 assert 'HTMLAppCaptureRuntimeState' in editor_web
-assert 'HTMLAppOfflineCache.shared.shouldRefreshOnOpen' in app_core
+assert 'offlineCache.shouldRefreshOnOpen' in app_core
 assert 'HTMLAppRuntimeStateStore.remove(appID: app.id)' in app_core
 assert 'pendingSwitchApp = nil' in app_core
 assert 'replaceRunningApp(with: app)' in app_core

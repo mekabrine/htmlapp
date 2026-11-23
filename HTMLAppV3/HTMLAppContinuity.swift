@@ -416,11 +416,15 @@ final class HTMLAppOfflineCache {
     }
 
     func rewriteHTMLForOffline(appID: String, html: String) -> (String, Int) {
-        let entries = manifest(appID: appID).entries.values
+        let entries = manifest(appID: appID).entries
         guard !entries.isEmpty else { return (html, 0) }
-        var output = html
         var count = 0
-        for entry in entries.sorted(by: { $0.originalURL.count > $1.originalURL.count }) {
+        var output = HTMLAppDocumentMode.replacingLibraryReferences(in: html) { url in
+            guard let entry = entries[url] else { return nil }
+            count += 1
+            return entry.relativePath
+        }
+        for entry in entries.values.sorted(by: { $0.originalURL.count > $1.originalURL.count }) {
             let original = entry.originalURL
             let local = entry.relativePath
             let forms = [
@@ -546,6 +550,17 @@ final class HTMLAppOfflineCache {
         let count = UserDefaults.standard.integer(forKey: key) + 1
         UserDefaults.standard.set(count, forKey: key)
         return count % 3 == 0
+    }
+
+    func cacheLibrariesOnOpen(appID: String, html: String) async {
+        guard !HTMLAppSourcePolicy.networkOnly, !isOffline else { return }
+        let entries = manifest(appID: appID).entries
+        let base = SourceCache.shared.baseURL(appID: appID)
+        let missing = HTMLAppDocumentMode.remoteLibraries(in: html).filter { url in
+            guard let entry = entries[url] else { return true }
+            return !FileManager.default.fileExists(atPath: base.appendingPathComponent(entry.relativePath).path)
+        }
+        await cache(appID: appID, urls: Array(missing.prefix(40)))
     }
 
     func refreshFromHTML(appID: String, html: String) async {

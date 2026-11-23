@@ -582,9 +582,10 @@ struct HTMLWebView: UIViewRepresentable {
         webView.scrollView.minimumZoomScale = 1
         webView.scrollView.maximumZoomScale = 1
         webView.allowsBackForwardNavigationGestures = false
-        context.coordinator.openingNavigation = HTMLAppDocumentMode.usesPackageRuntime(html)
-            ? resources.load(initialDocument, into: webView)
-            : webView.loadHTMLString(initialDocument, baseURL: SourceCache.shared.baseURL(appID: appID))
+        context.coordinator.openingNavigation = resources.loadDocument(
+            initialDocument, packageRuntime: HTMLAppDocumentMode.usesPackageRuntime(html),
+            into: webView, legacyBaseURL: SourceCache.shared.baseURL(appID: appID)
+        )
         return webView
     }
 
@@ -593,11 +594,11 @@ struct HTMLWebView: UIViewRepresentable {
         guard context.coordinator.lastHTML != html else { return }
         context.coordinator.lastHTML = html
         let document = context.coordinator.documentForReload(originalHTML: html)
-        if HTMLAppDocumentMode.usesPackageRuntime(html),
-           let resources = uiView.configuration.urlSchemeHandler(forURLScheme: HTMLAppResourceScheme.scheme) as? HTMLAppResourceScheme {
-            context.coordinator.openingNavigation = resources.load(document, into: uiView)
-        } else {
-            context.coordinator.openingNavigation = uiView.loadHTMLString(document, baseURL: SourceCache.shared.baseURL(appID: appID))
+        if let resources = uiView.configuration.urlSchemeHandler(forURLScheme: HTMLAppResourceScheme.scheme) as? HTMLAppResourceScheme {
+            context.coordinator.openingNavigation = resources.loadDocument(
+                document, packageRuntime: HTMLAppDocumentMode.usesPackageRuntime(html),
+                into: uiView, legacyBaseURL: SourceCache.shared.baseURL(appID: appID)
+            )
         }
     }
 

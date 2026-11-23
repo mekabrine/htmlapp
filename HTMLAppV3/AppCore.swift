@@ -928,9 +928,13 @@ final class AppStore: ObservableObject {
             if let template = HTMLAppBackendProvisioning.template(in: launchedApp.html) {
                 HTMLAppBackendProvisioning.enqueue(launchedApp, template: template)
             }
-            if HTMLAppOfflineCache.shared.shouldRefreshOnOpen(appID: launchedApp.id),
-               !HTMLAppOfflineCache.shared.isOffline {
-                await HTMLAppOfflineCache.shared.refreshFromHTML(appID: launchedApp.id, html: launchedApp.html)
+            let offlineCache = HTMLAppOfflineCache.shared
+            if !HTMLAppSourcePolicy.networkOnly, !offlineCache.isOffline {
+                if offlineCache.shouldRefreshOnOpen(appID: launchedApp.id) {
+                    await offlineCache.refreshFromHTML(appID: launchedApp.id, html: launchedApp.html)
+                } else {
+                    await offlineCache.cacheLibrariesOnOpen(appID: launchedApp.id, html: launchedApp.html)
+                }
             }
         }
         deferredLaunchSave?.cancel()
